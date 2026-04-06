@@ -1,0 +1,33 @@
+meta {
+  name: create-chapter-2
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "Chapter 2: Into the Void",
+    "summary": "The crew encounters strange signals from deep space.",
+    "sort_order": 2
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("sort_order is 2", function() {
+    expect(res.body.sort_order).to.equal(2);
+  });
+}

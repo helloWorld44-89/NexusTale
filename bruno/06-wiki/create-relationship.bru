@@ -1,0 +1,60 @@
+meta {
+  name: create-relationship
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/relationships
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "from_entity_id": "{{characterId}}",
+    "to_entity_id": "{{entityId}}",
+    "type": "stationed_at",
+    "description": "Commander Voss commands the garrison at Kepler Station."
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("relationshipId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("type is stationed_at", function() {
+    expect(res.body.type).to.equal("stationed_at");
+  });
+
+  test("from_entity_id is characterId", function() {
+    const characterId = bru.getEnvVar("characterId");
+    expect(res.body.from_entity_id).to.equal(characterId);
+  });
+
+  test("to_entity_id is entityId", function() {
+    const entityId = bru.getEnvVar("entityId");
+    expect(res.body.to_entity_id).to.equal(entityId);
+  });
+
+  test("description is set", function() {
+    expect(res.body.description).to.be.a("string");
+    expect(res.body.description.length).to.be.greaterThan(0);
+  });
+
+  test("has UUID id", function() {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    expect(res.body.id).to.match(uuidRegex);
+  });
+}

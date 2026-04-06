@@ -1,0 +1,45 @@
+meta {
+  name: list-scenes
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters/{{chapterId}}/scenes
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("scenes are ordered by sort_order", function() {
+    if (res.body.length >= 2) {
+      expect(res.body[0].sort_order).to.be.lessThan(res.body[1].sort_order);
+    }
+  });
+
+  test("scenes have all expected fields", function() {
+    const scene = res.body[0];
+    expect(scene).to.have.property("id");
+    expect(scene).to.have.property("chapter_id");
+    expect(scene).to.have.property("title");
+    expect(scene).to.have.property("content");
+    expect(scene).to.have.property("pov");
+    expect(scene).to.have.property("tense");
+    expect(scene).to.have.property("tags");
+    expect(scene).to.have.property("summary");
+    expect(scene).to.have.property("summary_stale");
+    expect(scene).to.have.property("sort_order");
+  });
+}

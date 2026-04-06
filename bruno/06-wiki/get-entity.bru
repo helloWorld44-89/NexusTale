@@ -1,0 +1,38 @@
+meta {
+  name: get-entity
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/entities/{{entityId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("id matches requested entity", function() {
+    const entityId = bru.getEnvVar("entityId");
+    expect(res.body.id).to.equal(entityId);
+  });
+
+  test("type is location", function() {
+    expect(res.body.type).to.equal("location");
+  });
+
+  test("name is Kepler Station", function() {
+    expect(res.body.name).to.equal("Kepler Station");
+  });
+
+  test("attributes is an object", function() {
+    expect(res.body.attributes).to.be.an("object");
+  });
+}

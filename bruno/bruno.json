@@ -1,0 +1,6 @@
+{
+  "version": "1",
+  "name": "NexusTale API Tests",
+  "type": "collection",
+  "ignore": ["node_modules", ".git"]
+}

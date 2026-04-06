@@ -1,0 +1,38 @@
+meta {
+  name: list-relationships
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/relationships
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("contains at least one relationship", function() {
+    expect(res.body.length).to.be.greaterThanOrEqual(1);
+  });
+
+  test("each relationship has required fields", function() {
+    res.body.forEach(function(r) {
+      expect(r.id).to.be.a("string");
+      expect(r.from_entity_id).to.be.a("string");
+      expect(r.to_entity_id).to.be.a("string");
+      expect(r.type).to.be.a("string");
+    });
+  });
+}

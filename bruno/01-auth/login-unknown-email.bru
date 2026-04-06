@@ -1,0 +1,29 @@
+meta {
+  name: login-unknown-email
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/v1/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "nobody@nexustale.dev",
+    "password": "password123"
+  }
+}
+
+tests {
+  test("status is 401", function() {
+    expect(res.status).to.equal(401);
+  });
+
+  test("does not leak whether email exists", function() {
+    expect(res.body.message).to.equal("unauthorized");
+    expect(res.body.detail).to.equal("invalid email or password");
+  });
+}

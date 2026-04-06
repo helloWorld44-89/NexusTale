@@ -1,0 +1,37 @@
+meta {
+  name: get-graph
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/graph
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("has entities array", function() {
+    expect(res.body.entities).to.be.an("array");
+  });
+
+  test("has relationships array", function() {
+    expect(res.body.relationships).to.be.an("array");
+  });
+
+  test("entities contains location and character", function() {
+    expect(res.body.entities.length).to.be.greaterThanOrEqual(2);
+  });
+
+  test("relationships contains at least one edge", function() {
+    expect(res.body.relationships.length).to.be.greaterThanOrEqual(1);
+  });
+}

@@ -1,0 +1,25 @@
+meta {
+  name: travel-to-canon
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/timelines/canon/travel
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("current_timeline is now canon", function() {
+    expect(res.body.current_timeline).to.equal("canon");
+  });
+}

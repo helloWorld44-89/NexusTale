@@ -1,0 +1,77 @@
+meta {
+  name: create-location
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/entities
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "type": "location",
+    "name": "Kepler Station",
+    "summary": "A remote deep-space refuelling station on the edge of the Kepler Belt.",
+    "attributes": {
+      "region": "Kepler Belt",
+      "climate": "artificial",
+      "population": 4200
+    }
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("entityId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("type is location", function() {
+    expect(res.body.type).to.equal("location");
+  });
+
+  test("name is set", function() {
+    expect(res.body.name).to.equal("Kepler Station");
+  });
+
+  test("summary is set", function() {
+    expect(res.body.summary).to.be.a("string");
+    expect(res.body.summary.length).to.be.greaterThan(0);
+  });
+
+  test("attributes is an object", function() {
+    expect(res.body.attributes).to.be.an("object");
+    expect(res.body.attributes.region).to.equal("Kepler Belt");
+  });
+
+  test("project_id matches", function() {
+    const projectId = bru.getEnvVar("projectId");
+    expect(res.body.project_id).to.equal(projectId);
+  });
+
+  test("no parent entity", function() {
+    expect(res.body.parent_entity_id).to.be.undefined;
+  });
+
+  test("has UUID id", function() {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    expect(res.body.id).to.match(uuidRegex);
+  });
+
+  test("has timestamps", function() {
+    expect(res.body.created_at).to.be.a("string");
+    expect(res.body.updated_at).to.be.a("string");
+  });
+}

@@ -1,0 +1,25 @@
+meta {
+  name: delete-magic-rule
+  type: http
+  seq: 20
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/magic-rules/{{magicRuleId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns deleted message", function() {
+    expect(res.body.message).to.equal("magic rule deleted");
+  });
+}

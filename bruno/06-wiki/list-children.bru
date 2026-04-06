@@ -1,0 +1,41 @@
+meta {
+  name: list-children
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/entities/{{entityId}}/children
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("contains the lore entry", function() {
+    expect(res.body.length).to.be.greaterThanOrEqual(1);
+  });
+
+  test("each child has correct parent_entity_id", function() {
+    const entityId = bru.getEnvVar("entityId");
+    res.body.forEach(function(e) {
+      expect(e.parent_entity_id).to.equal(entityId);
+    });
+  });
+
+  test("lore entry is present", function() {
+    const names = res.body.map(function(e) { return e.name; });
+    expect(names).to.include("The Docking Riots of 2387");
+  });
+}

@@ -1,0 +1,25 @@
+meta {
+  name: get-project-bad-uuid
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/not-a-uuid
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 400 for invalid UUID", function() {
+    expect(res.status).to.equal(400);
+  });
+
+  test("returns invalid UUID message", function() {
+    expect(res.body.message).to.equal("invalid UUID");
+  });
+}

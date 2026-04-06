@@ -1,0 +1,25 @@
+meta {
+  name: status-after-canonize
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/status
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("current_timeline is canon (returned after canonize)", function() {
+    expect(res.body.current_timeline).to.equal("canon");
+  });
+}

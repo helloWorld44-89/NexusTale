@@ -1,0 +1,27 @@
+meta {
+  name: diverge-reserved-name
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/timelines
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "timeline_name": "canon"
+  }
+}
+
+tests {
+  test("status is 400 when using reserved name 'canon'", function() {
+    expect(res.status).to.equal(400);
+  });
+}

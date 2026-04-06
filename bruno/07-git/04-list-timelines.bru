@@ -1,0 +1,40 @@
+meta {
+  name: list-timelines
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/timelines
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("timelines is an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("canon timeline exists", function() {
+    const canon = res.body.find(t => t.name === "canon");
+    expect(canon).to.not.be.undefined;
+    expect(canon.is_canon).to.equal(true);
+  });
+
+  test("only one timeline before any diverge", function() {
+    expect(res.body.length).to.equal(1);
+  });
+
+  test("canon is active", function() {
+    const canon = res.body.find(t => t.name === "canon");
+    expect(canon.is_active).to.equal(true);
+  });
+}

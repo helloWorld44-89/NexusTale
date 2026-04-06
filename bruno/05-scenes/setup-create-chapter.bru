@@ -1,0 +1,35 @@
+meta {
+  name: setup-create-chapter
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "Scene Test Chapter",
+    "summary": "A chapter for testing scene operations.",
+    "sort_order": 99
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("chapterId", res.body.id);
+  }
+}
+
+tests {
+  test("chapter created for scene tests", function() {
+    expect(res.status).to.equal(201);
+  });
+}

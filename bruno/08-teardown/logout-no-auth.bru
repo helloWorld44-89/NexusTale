@@ -1,0 +1,23 @@
+meta {
+  name: logout-no-auth
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/v1/auth/logout
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refresh_token": "doesnt-matter"
+  }
+}
+
+tests {
+  test("status is 401 without bearer token", function() {
+    expect(res.status).to.equal(401);
+  });
+}

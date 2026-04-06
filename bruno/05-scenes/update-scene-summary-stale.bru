@@ -1,0 +1,40 @@
+meta {
+  name: update-scene-summary-stale
+  type: http
+  seq: 7
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters/{{chapterId}}/scenes/{{sceneId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "content": "Completely rewritten scene content that invalidates the old summary.",
+    "summary_stale": true
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("summary_stale is now true", function() {
+    expect(res.body.summary_stale).to.equal(true);
+  });
+
+  test("content is updated", function() {
+    expect(res.body.content).to.include("Completely rewritten");
+  });
+
+  test("old summary is preserved until regenerated", function() {
+    expect(res.body.summary.length).to.be.greaterThan(0);
+  });
+}

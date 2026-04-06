@@ -1,0 +1,66 @@
+meta {
+  name: create-timeline-event
+  type: http
+  seq: 15
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/timeline
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "entity_id": "{{entityId}}",
+    "name": "Kepler Station Commissioned",
+    "description": "The United Earth Fleet officially commissions Kepler Station as a tier-1 deep-space outpost.",
+    "era": "Second Expansion",
+    "year": 2341,
+    "month": 3,
+    "day": 17
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("timelineEventId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("name is set", function() {
+    expect(res.body.name).to.equal("Kepler Station Commissioned");
+  });
+
+  test("era is set", function() {
+    expect(res.body.era).to.equal("Second Expansion");
+  });
+
+  test("year is 2341", function() {
+    expect(res.body.year).to.equal(2341);
+  });
+
+  test("month and day are set", function() {
+    expect(res.body.month).to.equal(3);
+    expect(res.body.day).to.equal(17);
+  });
+
+  test("entity_id matches location", function() {
+    const entityId = bru.getEnvVar("entityId");
+    expect(res.body.entity_id).to.equal(entityId);
+  });
+
+  test("has UUID id", function() {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    expect(res.body.id).to.match(uuidRegex);
+  });
+}

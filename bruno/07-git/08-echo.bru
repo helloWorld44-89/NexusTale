@@ -1,0 +1,35 @@
+meta {
+  name: echo
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/echo?from={{chronicleSha}}&to={{timelineChronicle}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("from_sha matches", function() {
+    const fromSha = bru.getEnvVar("chronicleSha");
+    expect(res.body.from_sha).to.equal(fromSha);
+  });
+
+  test("to_sha matches", function() {
+    const toSha = bru.getEnvVar("timelineChronicle");
+    expect(res.body.to_sha).to.equal(toSha);
+  });
+
+  test("diff is a string", function() {
+    expect(res.body.diff).to.be.a("string");
+  });
+}

@@ -1,0 +1,30 @@
+meta {
+  name: list-magic-rules
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/magic-rules
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("contains FTL Lag rule", function() {
+    const names = res.body.map(function(r) { return r.name; });
+    expect(names).to.include("FTL Lag");
+  });
+}

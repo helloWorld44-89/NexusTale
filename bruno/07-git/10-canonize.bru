@@ -1,0 +1,39 @@
+meta {
+  name: canonize
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/timelines/{{timelineName}}/canonize
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200 (merged) or 409 (paradox)", function() {
+    expect([200, 409]).to.include(res.status);
+  });
+
+  test("response has has_paradox field", function() {
+    expect(res.body.has_paradox).to.be.a("boolean");
+  });
+
+  test("if merged: merged_sha is present", function() {
+    if (res.status === 200) {
+      expect(res.body.merged_sha).to.be.a("string");
+      expect(res.body.merged_sha.length).to.equal(40);
+    }
+  });
+
+  test("if paradox: paradox_note explains the conflict", function() {
+    if (res.status === 409) {
+      expect(res.body.paradox_note).to.be.a("string");
+      expect(res.body.paradox_note.length).to.be.greaterThan(0);
+    }
+  });
+}

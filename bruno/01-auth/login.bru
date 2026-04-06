@@ -1,0 +1,42 @@
+meta {
+  name: login
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "writer@nexustale.dev",
+    "password": "password123"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("accessToken", res.body.tokens.access_token);
+    bru.setEnvVar("refreshToken", res.body.tokens.refresh_token);
+    bru.setEnvVar("userId", res.body.user.id);
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns user data", function() {
+    expect(res.body.user.email).to.equal("writer@nexustale.dev");
+    expect(res.body.user.display_name).to.equal("Test Writer");
+  });
+
+  test("returns token pair", function() {
+    expect(res.body.tokens.access_token).to.be.a("string");
+    expect(res.body.tokens.refresh_token).to.be.a("string");
+  });
+}

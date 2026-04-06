@@ -1,0 +1,55 @@
+meta {
+  name: chronicle
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/chronicle
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "note": "Commander Voss boards the Argo — opening chapter complete"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("chronicleSha", res.body.sha);
+  }
+  // 200 means nothing changed since last chronicle — also save the sha
+  if (res.status === 200 && res.body.last_chronicle) {
+    bru.setEnvVar("chronicleSha", res.body.last_chronicle.sha);
+  }
+}
+
+tests {
+  test("status is 201 or 200", function() {
+    expect([200, 201]).to.include(res.status);
+  });
+
+  test("chronicle has sha", function() {
+    const entry = res.status === 201 ? res.body : res.body.last_chronicle;
+    expect(entry.sha).to.be.a("string");
+    expect(entry.sha.length).to.equal(40);
+  });
+
+  test("chronicle has short_sha", function() {
+    const entry = res.status === 201 ? res.body : res.body.last_chronicle;
+    expect(entry.short_sha).to.be.a("string");
+    expect(entry.short_sha.length).to.equal(7);
+  });
+
+  test("chronicle note matches", function() {
+    if (res.status === 201) {
+      expect(res.body.note).to.equal("Commander Voss boards the Argo — opening chapter complete");
+    }
+  });
+}

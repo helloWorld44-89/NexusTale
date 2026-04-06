@@ -1,0 +1,31 @@
+meta {
+  name: create-project-validation
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "description": "Missing required title field"
+  }
+}
+
+tests {
+  test("status is 400 without title", function() {
+    expect(res.status).to.equal(400);
+  });
+
+  test("returns validation error", function() {
+    expect(res.body.message).to.equal("validation error");
+  });
+}

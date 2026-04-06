@@ -1,0 +1,40 @@
+meta {
+  name: update-project
+  type: http
+  seq: 8
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "The Last Starship: Revised",
+    "description": "An updated synopsis for the sci-fi epic."
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("title is updated", function() {
+    expect(res.body.title).to.equal("The Last Starship: Revised");
+  });
+
+  test("description is updated", function() {
+    expect(res.body.description).to.equal("An updated synopsis for the sci-fi epic.");
+  });
+
+  test("updated_at changed", function() {
+    expect(res.body.updated_at).to.be.a("string");
+  });
+}

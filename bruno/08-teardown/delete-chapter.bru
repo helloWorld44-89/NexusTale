@@ -1,0 +1,25 @@
+meta {
+  name: delete-chapter
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters/{{chapterId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns deleted message", function() {
+    expect(res.body.message).to.equal("chapter deleted");
+  });
+}

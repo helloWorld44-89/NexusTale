@@ -1,0 +1,49 @@
+meta {
+  name: update-entity
+  type: http
+  seq: 7
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/entities/{{entityId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "summary": "A remote deep-space refuelling station on the edge of the Kepler Belt. Recently fortified.",
+    "attributes": {
+      "region": "Kepler Belt",
+      "climate": "artificial",
+      "population": 4200,
+      "fortified": true
+    }
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("summary is updated", function() {
+    expect(res.body.summary).to.include("Recently fortified");
+  });
+
+  test("attributes reflect update", function() {
+    expect(res.body.attributes.fortified).to.equal(true);
+  });
+
+  test("name is unchanged", function() {
+    expect(res.body.name).to.equal("Kepler Station");
+  });
+
+  test("updated_at is a string", function() {
+    expect(res.body.updated_at).to.be.a("string");
+  });
+}

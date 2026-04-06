@@ -1,0 +1,26 @@
+meta {
+  name: get-chapter
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters/{{chapterId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns the correct chapter", function() {
+    const chapterId = bru.getEnvVar("chapterId");
+    expect(res.body.id).to.equal(chapterId);
+  });
+}

@@ -1,0 +1,38 @@
+meta {
+  name: list-projects
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("contains at least one project", function() {
+    expect(res.body.length).to.be.greaterThan(0);
+  });
+
+  test("projects have expected fields", function() {
+    const project = res.body[0];
+    expect(project).to.have.property("id");
+    expect(project).to.have.property("title");
+    expect(project).to.have.property("owner_id");
+    expect(project).to.have.property("genres");
+    expect(project).to.have.property("archived");
+  });
+}

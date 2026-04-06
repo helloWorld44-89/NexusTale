@@ -1,0 +1,67 @@
+meta {
+  name: create-project
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "The Last Starship",
+    "description": "A sci-fi epic about humanity's final voyage to the stars.",
+    "genres": ["sci-fi", "adventure", "drama"]
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("projectId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("returns project with title", function() {
+    expect(res.body.title).to.equal("The Last Starship");
+  });
+
+  test("returns project with description", function() {
+    expect(res.body.description).to.equal("A sci-fi epic about humanity's final voyage to the stars.");
+  });
+
+  test("returns genres array", function() {
+    expect(res.body.genres).to.be.an("array");
+    expect(res.body.genres).to.include("sci-fi");
+  });
+
+  test("archived defaults to false", function() {
+    expect(res.body.archived).to.equal(false);
+  });
+
+  test("owner_id matches logged in user", function() {
+    const userId = bru.getEnvVar("userId");
+    expect(res.body.owner_id).to.equal(userId);
+  });
+
+  test("has UUID id", function() {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    expect(res.body.id).to.match(uuidRegex);
+  });
+
+  test("has timestamps", function() {
+    expect(res.body.created_at).to.be.a("string");
+    expect(res.body.updated_at).to.be.a("string");
+  });
+}

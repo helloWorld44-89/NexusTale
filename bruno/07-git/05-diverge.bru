@@ -1,0 +1,51 @@
+meta {
+  name: diverge
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/timelines
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "timeline_name": "voss-stays-behind"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("timelineName", res.body.name);
+    bru.setEnvVar("timelineChronicle", res.body.head_sha);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("timeline name matches", function() {
+    expect(res.body.name).to.equal("voss-stays-behind");
+  });
+
+  test("is_canon is false", function() {
+    expect(res.body.is_canon).to.equal(false);
+  });
+
+  test("is_active is true (switched to new timeline)", function() {
+    expect(res.body.is_active).to.equal(true);
+  });
+
+  test("has head_sha", function() {
+    expect(res.body.head_sha).to.be.a("string");
+    expect(res.body.head_sha.length).to.equal(40);
+  });
+}

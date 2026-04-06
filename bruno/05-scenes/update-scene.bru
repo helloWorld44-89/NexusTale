@@ -1,0 +1,54 @@
+meta {
+  name: update-scene
+  type: http
+  seq: 6
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters/{{chapterId}}/scenes/{{sceneId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "content": "Captain Elara Chen gripped the armrests of her command chair as the countdown reached zero. The Prometheus shuddered, groaned, and then surged upward on a pillar of blue-white plasma. Through the forward viewport, Earth shrank from a world of green and blue to a marble, to a point of brilliant light lost among the stars.\n\n\"All stations, report,\" she said, her voice steady despite the tremor in her hands.",
+    "summary": "The Prometheus launches. Captain Chen orders status reports as Earth disappears behind them.",
+    "summary_stale": false
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("content is updated", function() {
+    expect(res.body.content).to.include("All stations, report");
+  });
+
+  test("summary is updated", function() {
+    expect(res.body.summary).to.include("status reports");
+  });
+
+  test("pov preserved (not nulled by partial update)", function() {
+    expect(res.body.pov).to.equal("third-limited");
+  });
+
+  test("tense preserved", function() {
+    expect(res.body.tense).to.equal("past");
+  });
+
+  test("tags preserved", function() {
+    expect(res.body.tags).to.be.an("array");
+    expect(res.body.tags).to.include("elara");
+  });
+
+  test("summary_stale set to false", function() {
+    expect(res.body.summary_stale).to.equal(false);
+  });
+}

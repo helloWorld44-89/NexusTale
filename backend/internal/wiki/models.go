@@ -1,0 +1,129 @@
+package wiki
+
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// ========================
+// Entity DTOs
+// ========================
+
+type CreateEntityRequest struct {
+	// ParentEntityID is only set when creating a child entity (e.g. lore under a location).
+	// The handler populates it from the URL rather than the request body for child routes.
+	ParentEntityID *uuid.UUID      `json:"parent_entity_id"`
+	Type           string          `json:"type" binding:"required,oneof=character location faction item concept lore"`
+	Name           string          `json:"name" binding:"required,min=1,max=200"`
+	Summary        string          `json:"summary"`
+	Attributes     json.RawMessage `json:"attributes"`
+}
+
+type UpdateEntityRequest struct {
+	Name       *string         `json:"name"`
+	Summary    *string         `json:"summary"`
+	Attributes json.RawMessage `json:"attributes"`
+}
+
+type EntityResponse struct {
+	ID             uuid.UUID       `json:"id"`
+	ProjectID      uuid.UUID       `json:"project_id"`
+	ParentEntityID *uuid.UUID      `json:"parent_entity_id,omitempty"`
+	Type           string          `json:"type"`
+	Name           string          `json:"name"`
+	Summary        string          `json:"summary"`
+	Attributes     json.RawMessage `json:"attributes"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+}
+
+// ========================
+// Relationship DTOs
+// ========================
+
+type CreateRelationshipRequest struct {
+	FromEntityID uuid.UUID `json:"from_entity_id" binding:"required"`
+	ToEntityID   uuid.UUID `json:"to_entity_id" binding:"required"`
+	Type         string    `json:"type" binding:"required"`
+	Description  string    `json:"description"`
+}
+
+type RelationshipResponse struct {
+	ID           uuid.UUID `json:"id"`
+	ProjectID    uuid.UUID `json:"project_id"`
+	FromEntityID uuid.UUID `json:"from_entity_id"`
+	ToEntityID   uuid.UUID `json:"to_entity_id"`
+	Type         string    `json:"type"`
+	Description  string    `json:"description"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// ========================
+// Magic Rule DTOs
+// ========================
+
+type CreateMagicRuleRequest struct {
+	Name        string `json:"name" binding:"required,min=1,max=200"`
+	Description string `json:"description"`
+}
+
+type UpdateMagicRuleRequest struct {
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+}
+
+type MagicRuleResponse struct {
+	ID          uuid.UUID `json:"id"`
+	ProjectID   uuid.UUID `json:"project_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// ========================
+// Timeline Event DTOs
+// ========================
+
+type CreateTimelineEventRequest struct {
+	EntityID    *uuid.UUID `json:"entity_id"`
+	Name        string     `json:"name" binding:"required,min=1,max=200"`
+	Description string     `json:"description"`
+	Era         string     `json:"era"`
+	Year        *int32     `json:"year"`
+	Month       *int32     `json:"month"`
+	Day         *int32     `json:"day"`
+}
+
+type UpdateTimelineEventRequest struct {
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	Era         *string `json:"era"`
+}
+
+type TimelineEventResponse struct {
+	ID          uuid.UUID  `json:"id"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	EntityID    *uuid.UUID `json:"entity_id,omitempty"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Era         string     `json:"era"`
+	Year        *int32     `json:"year,omitempty"`
+	Month       *int32     `json:"month,omitempty"`
+	Day         *int32     `json:"day,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// ========================
+// Composite responses
+// ========================
+
+// GraphResponse is returned by GET /wiki/graph.
+// The frontend can use entities + relationships to render a node-edge diagram.
+type GraphResponse struct {
+	Entities      []EntityResponse       `json:"entities"`
+	Relationships []RelationshipResponse `json:"relationships"`
+}

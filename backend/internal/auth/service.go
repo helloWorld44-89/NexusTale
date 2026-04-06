@@ -1,0 +1,204 @@
+package auth
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/jconder44/nexustale/pkg/apperror"
+	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
+)
+
+type Service struct {
+	queries            *sqlcgen.Queries
+	jwtSecret          []byte
+	accessTokenExpiry  time.Duration
+	refreshTokenExpiry time.Duration
+	bcryptCost         int
+}
+
+func NewService(queries *sqlcgen.Queries, jwtSecret string, accessExpiry, refreshExpiry time.Duration, bcryptCost int) *Service {
+	return &Service{
+		queries:            queries,
+		jwtSecret:          []byte(jwtSecret),
+		accessTokenExpiry:  accessExpiry,
+		refreshTokenExpiry: refreshExpiry,
+		bcryptCost:         bcryptCost,
+	}
+}
+
+func (s *Service) Register(ctx context.Context, req RegisterRequest) (*AuthResponse, error) {
+	// Check if user already exists
+	_, err := s.queries.GetUserByEmail(ctx, req.Email)
+	if err == nil {
+		return nil, apperror.Conflict("email already registered")
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperror.Internal(fmt.Sprintf("check user: %v", err))
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), s.bcryptCost)
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("hash password: %v", err))
+	}
+
+	user, err := s.queries.CreateUser(ctx, sqlcgen.CreateUserParams{
+		Email:        req.Email,
+		DisplayName:  req.DisplayName,
+		PasswordHash: string(hash),
+		Role:         sqlcgen.UserRoleAuthor,
+	})
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("create user: %v", err))
+	}
+
+	tokens, err := s.generateTokenPair(ctx, user.ID, user.Email, user.DisplayName, Role(user.Role))
+	if err != nil {
+		return nil, err
+	}
+
+	return &AuthResponse{
+		User: UserResponse{
+			ID:          user.ID,
+			Email:       user.Email,
+			DisplayName: user.DisplayName,
+			Role:        Role(user.Role),
+			CreatedAt:   user.CreatedAt.Time,
+		},
+		Tokens: *tokens,
+	}, nil
+}
+
+func (s *Service) Login(ctx context.Context, req LoginRequest) (*AuthResponse, error) {
+	user, err := s.queries.GetUserByEmail(ctx, req.Email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperror.Unauthorized("invalid email or password")
+	}
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("get user: %v", err))
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		return nil, apperror.Unauthorized("invalid email or password")
+	}
+
+	tokens, err := s.generateTokenPair(ctx, user.ID, user.Email, user.DisplayName, Role(user.Role))
+	if err != nil {
+		return nil, err
+	}
+
+	return &AuthResponse{
+		User: UserResponse{
+			ID:          user.ID,
+			Email:       user.Email,
+			DisplayName: user.DisplayName,
+			Role:        Role(user.Role),
+			CreatedAt:   user.CreatedAt.Time,
+		},
+		Tokens: *tokens,
+	}, nil
+}
+
+func (s *Service) Refresh(ctx context.Context, req RefreshRequest) (*TokenPair, error) {
+	tokenHash := hashToken(req.RefreshToken)
+
+	stored, err := s.queries.GetRefreshToken(ctx, tokenHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperror.Unauthorized("invalid or expired refresh token")
+	}
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("get refresh token: %v", err))
+	}
+
+	// Delete old token (rotation)
+	if err := s.queries.DeleteRefreshToken(ctx, tokenHash); err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("delete old refresh token: %v", err))
+	}
+
+	user, err := s.queries.GetUserByID(ctx, stored.UserID)
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("get user for refresh: %v", err))
+	}
+
+	tokens, err := s.generateTokenPair(ctx, user.ID, user.Email, user.DisplayName, Role(user.Role))
+	if err != nil {
+		return nil, err
+	}
+
+	return tokens, nil
+}
+
+func (s *Service) Logout(ctx context.Context, req LogoutRequest) error {
+	tokenHash := hashToken(req.RefreshToken)
+	return s.queries.DeleteRefreshToken(ctx, tokenHash)
+}
+
+func (s *Service) ValidateAccessToken(tokenStr string) (*Claims, error) {
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return s.jwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		return nil, apperror.Unauthorized("invalid access token")
+	}
+	return claims, nil
+}
+
+func (s *Service) generateTokenPair(ctx context.Context, userID uuid.UUID, email, displayName string, role Role) (*TokenPair, error) {
+	now := time.Now()
+
+	claims := Claims{
+		UserID:      userID,
+		Email:       email,
+		DisplayName: displayName,
+		Role:        role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			Subject:   userID.String(),
+		},
+	}
+
+	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.jwtSecret)
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("sign access token: %v", err))
+	}
+
+	refreshBytes := make([]byte, 32)
+	if _, err := rand.Read(refreshBytes); err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("generate refresh token: %v", err))
+	}
+	refreshToken := hex.EncodeToString(refreshBytes)
+
+	_, err = s.queries.CreateRefreshToken(ctx, sqlcgen.CreateRefreshTokenParams{
+		UserID:    userID,
+		TokenHash: hashToken(refreshToken),
+		ExpiresAt: pgtype.Timestamptz{Time: now.Add(s.refreshTokenExpiry), Valid: true},
+	})
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("store refresh token: %v", err))
+	}
+
+	return &TokenPair{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}, nil
+}
+
+func hashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}

@@ -1,0 +1,37 @@
+meta {
+  name: list-entities
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/entities
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("contains at least 3 entities", function() {
+    expect(res.body.length).to.be.greaterThanOrEqual(3);
+  });
+
+  test("each entity has required fields", function() {
+    res.body.forEach(function(e) {
+      expect(e.id).to.be.a("string");
+      expect(e.type).to.be.a("string");
+      expect(e.name).to.be.a("string");
+    });
+  });
+}

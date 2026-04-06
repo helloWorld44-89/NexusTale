@@ -1,0 +1,25 @@
+meta {
+  name: chronicle-no-note
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/chronicle
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {}
+}
+
+tests {
+  test("status is 400 when note is missing", function() {
+    expect(res.status).to.equal(400);
+  });
+}

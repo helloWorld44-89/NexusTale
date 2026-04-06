@@ -1,0 +1,25 @@
+meta {
+  name: get-project-not-found
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/00000000-0000-0000-0000-000000000000
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 404", function() {
+    expect(res.status).to.equal(404);
+  });
+
+  test("returns not found message", function() {
+    expect(res.body.message).to.include("not found");
+  });
+}

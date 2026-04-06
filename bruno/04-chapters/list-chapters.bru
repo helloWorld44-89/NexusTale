@@ -1,0 +1,40 @@
+meta {
+  name: list-chapters
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("chapters are ordered by sort_order", function() {
+    if (res.body.length >= 2) {
+      expect(res.body[0].sort_order).to.be.lessThan(res.body[1].sort_order);
+    }
+  });
+
+  test("chapters have expected fields", function() {
+    const ch = res.body[0];
+    expect(ch).to.have.property("id");
+    expect(ch).to.have.property("project_id");
+    expect(ch).to.have.property("title");
+    expect(ch).to.have.property("summary");
+    expect(ch).to.have.property("sort_order");
+  });
+}

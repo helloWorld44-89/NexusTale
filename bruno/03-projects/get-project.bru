@@ -1,0 +1,36 @@
+meta {
+  name: get-project
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns the correct project", function() {
+    const projectId = bru.getEnvVar("projectId");
+    expect(res.body.id).to.equal(projectId);
+  });
+
+  test("has all project fields", function() {
+    expect(res.body).to.have.property("title");
+    expect(res.body).to.have.property("description");
+    expect(res.body).to.have.property("genres");
+    expect(res.body).to.have.property("owner_id");
+    expect(res.body).to.have.property("archived");
+    expect(res.body).to.have.property("created_at");
+    expect(res.body).to.have.property("updated_at");
+  });
+}

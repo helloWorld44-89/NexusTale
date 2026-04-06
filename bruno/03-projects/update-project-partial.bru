@@ -1,0 +1,36 @@
+meta {
+  name: update-project-partial
+  type: http
+  seq: 9
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "The Last Starship: Final"
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("title is updated", function() {
+    expect(res.body.title).to.equal("The Last Starship: Final");
+  });
+
+  test("description is preserved (not nulled)", function() {
+    expect(res.body.description).to.be.a("string");
+    expect(res.body.description.length).to.be.greaterThan(0);
+  });
+}

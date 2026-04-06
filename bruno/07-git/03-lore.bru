@@ -1,0 +1,43 @@
+meta {
+  name: lore
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/lore
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+params:query {
+  page: 1
+  per_page: 10
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("lore is an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("has at least one chronicle", function() {
+    expect(res.body.length).to.be.greaterThan(0);
+  });
+
+  test("each entry has sha, short_sha, note, author, created_at", function() {
+    const entry = res.body[0];
+    expect(entry.sha).to.be.a("string");
+    expect(entry.short_sha).to.be.a("string");
+    expect(entry.note).to.be.a("string");
+    expect(entry.author).to.be.a("string");
+    expect(entry.created_at).to.be.a("string");
+  });
+}

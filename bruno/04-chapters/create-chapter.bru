@@ -1,0 +1,57 @@
+meta {
+  name: create-chapter
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "Chapter 1: The Departure",
+    "summary": "The crew boards the starship and leaves Earth behind.",
+    "sort_order": 1
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("chapterId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("returns chapter with title", function() {
+    expect(res.body.title).to.equal("Chapter 1: The Departure");
+  });
+
+  test("returns chapter with summary", function() {
+    expect(res.body.summary).to.equal("The crew boards the starship and leaves Earth behind.");
+  });
+
+  test("sort_order is set", function() {
+    expect(res.body.sort_order).to.equal(1);
+  });
+
+  test("project_id matches", function() {
+    const projectId = bru.getEnvVar("projectId");
+    expect(res.body.project_id).to.equal(projectId);
+  });
+
+  test("has UUID id", function() {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    expect(res.body.id).to.match(uuidRegex);
+  });
+}

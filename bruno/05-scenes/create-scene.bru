@@ -1,0 +1,79 @@
+meta {
+  name: create-scene
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters/{{chapterId}}/scenes
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "The Launch",
+    "content": "Captain Elara Chen gripped the armrests of her command chair as the countdown reached zero. The Prometheus shuddered, then surged upward on a pillar of plasma. Through the viewport, Earth shrank from a world to a marble to a point of light.",
+    "pov": "third-limited",
+    "tense": "past",
+    "tags": ["action", "launch", "elara"],
+    "summary": "The Prometheus launches from Earth with Captain Chen at the helm.",
+    "sort_order": 1
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("sceneId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("returns scene with title", function() {
+    expect(res.body.title).to.equal("The Launch");
+  });
+
+  test("content is stored", function() {
+    expect(res.body.content).to.include("Captain Elara Chen");
+  });
+
+  test("pov is set", function() {
+    expect(res.body.pov).to.equal("third-limited");
+  });
+
+  test("tense is set", function() {
+    expect(res.body.tense).to.equal("past");
+  });
+
+  test("tags are stored as array", function() {
+    expect(res.body.tags).to.be.an("array");
+    expect(res.body.tags).to.include("elara");
+    expect(res.body.tags.length).to.equal(3);
+  });
+
+  test("summary is set", function() {
+    expect(res.body.summary).to.include("Prometheus launches");
+  });
+
+  test("summary_stale defaults to false", function() {
+    expect(res.body.summary_stale).to.equal(false);
+  });
+
+  test("chapter_id matches", function() {
+    const chapterId = bru.getEnvVar("chapterId");
+    expect(res.body.chapter_id).to.equal(chapterId);
+  });
+
+  test("has UUID id", function() {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    expect(res.body.id).to.match(uuidRegex);
+  });
+}

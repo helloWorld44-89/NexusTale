@@ -1,0 +1,39 @@
+meta {
+  name: update-magic-rule
+  type: http
+  seq: 14
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/magic-rules/{{magicRuleId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "description": "Any ship travelling faster than light experiences a communication blackout lasting 1 hour per light-year crossed. No exceptions. Military vessels may use quantum-burst relays to partially bypass this."
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("description is updated", function() {
+    expect(res.body.description).to.include("quantum-burst relays");
+  });
+
+  test("name is unchanged", function() {
+    expect(res.body.name).to.equal("FTL Lag");
+  });
+
+  test("updated_at is a string", function() {
+    expect(res.body.updated_at).to.be.a("string");
+  });
+}

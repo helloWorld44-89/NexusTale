@@ -1,0 +1,17 @@
+meta {
+  name: git-no-auth
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/status
+  body: none
+  auth: none
+}
+
+tests {
+  test("status is 401 without token", function() {
+    expect(res.status).to.equal(401);
+  });
+}

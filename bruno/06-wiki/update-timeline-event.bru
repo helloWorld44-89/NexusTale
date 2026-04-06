@@ -1,0 +1,39 @@
+meta {
+  name: update-timeline-event
+  type: http
+  seq: 17
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/timeline/{{timelineEventId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "description": "The United Earth Fleet officially commissions Kepler Station as a tier-1 deep-space outpost. Ceremony attended by Admiral Chen."
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("description is updated", function() {
+    expect(res.body.description).to.include("Admiral Chen");
+  });
+
+  test("name is unchanged", function() {
+    expect(res.body.name).to.equal("Kepler Station Commissioned");
+  });
+
+  test("year is unchanged", function() {
+    expect(res.body.year).to.equal(2341);
+  });
+}

@@ -1,0 +1,25 @@
+meta {
+  name: delete-timeline-event
+  type: http
+  seq: 21
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/timeline/{{timelineEventId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns deleted message", function() {
+    expect(res.body.message).to.equal("timeline event deleted");
+  });
+}

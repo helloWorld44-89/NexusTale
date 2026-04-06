@@ -1,0 +1,38 @@
+meta {
+  name: list-timeline-events
+  type: http
+  seq: 16
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/timeline
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("contains commissioning event", function() {
+    const names = res.body.map(function(e) { return e.name; });
+    expect(names).to.include("Kepler Station Commissioned");
+  });
+
+  test("events have year field", function() {
+    res.body.forEach(function(e) {
+      if (e.year !== undefined) {
+        expect(e.year).to.be.a("number");
+      }
+    });
+  });
+}

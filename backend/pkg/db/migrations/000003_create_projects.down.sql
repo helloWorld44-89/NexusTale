@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS scenes;
+DROP TABLE IF EXISTS chapters;
+DROP TABLE IF EXISTS project_collaborators;
+DROP TABLE IF EXISTS projects;

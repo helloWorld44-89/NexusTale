@@ -1,0 +1,57 @@
+meta {
+  name: create-character
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/entities
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "type": "character",
+    "name": "Commander Voss",
+    "summary": "Veteran fleet commander stationed at Kepler Station after the Proxima conflict.",
+    "attributes": {
+      "role": "commander",
+      "allegiance": "United Earth Fleet",
+      "homeworld": "Mars"
+    }
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("characterId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("type is character", function() {
+    expect(res.body.type).to.equal("character");
+  });
+
+  test("name is set", function() {
+    expect(res.body.name).to.equal("Commander Voss");
+  });
+
+  test("attributes.role is set", function() {
+    expect(res.body.attributes.role).to.equal("commander");
+  });
+
+  test("has UUID id", function() {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    expect(res.body.id).to.match(uuidRegex);
+  });
+}

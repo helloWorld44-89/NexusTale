@@ -1,0 +1,36 @@
+meta {
+  name: list-entities-by-type
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/entities?type=character
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("all returned entities are characters", function() {
+    res.body.forEach(function(e) {
+      expect(e.type).to.equal("character");
+    });
+  });
+
+  test("Commander Voss is in the list", function() {
+    const names = res.body.map(function(e) { return e.name; });
+    expect(names).to.include("Commander Voss");
+  });
+}

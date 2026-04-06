@@ -1,0 +1,40 @@
+meta {
+  name: create-scene-2
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters/{{chapterId}}/scenes
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "First Contact",
+    "content": "The signal pulsed through the static like a heartbeat. Not random noise—structured, intentional, unmistakable.",
+    "pov": "third-limited",
+    "tense": "past",
+    "tags": ["mystery", "signal"],
+    "sort_order": 2
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("sort_order is 2", function() {
+    expect(res.body.sort_order).to.equal(2);
+  });
+
+  test("empty summary defaults to empty string", function() {
+    expect(res.body.summary).to.equal("");
+  });
+}

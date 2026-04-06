@@ -1,0 +1,40 @@
+meta {
+  name: update-chapter
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/chapters/{{chapterId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "Chapter 1: The Departure (Revised)",
+    "summary": "Updated summary with more detail about the launch sequence."
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("title is updated", function() {
+    expect(res.body.title).to.equal("Chapter 1: The Departure (Revised)");
+  });
+
+  test("summary is updated", function() {
+    expect(res.body.summary).to.include("launch sequence");
+  });
+
+  test("sort_order is preserved", function() {
+    expect(res.body.sort_order).to.equal(1);
+  });
+}

@@ -1,0 +1,31 @@
+meta {
+  name: git-status
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/git/status
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("current_timeline is canon", function() {
+    expect(res.body.current_timeline).to.equal("canon");
+  });
+
+  test("last_chronicle is the init commit", function() {
+    expect(res.body.last_chronicle).to.be.an("object");
+    expect(res.body.last_chronicle.sha).to.be.a("string");
+    expect(res.body.last_chronicle.sha.length).to.equal(40);
+  });
+}
