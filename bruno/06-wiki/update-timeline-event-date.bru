@@ -1,0 +1,49 @@
+meta {
+  name: update-timeline-event-date
+  type: http
+  seq: 19
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/timeline/{{timelineEventId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "year": 2342,
+    "month": 11,
+    "day": 1
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("year is updated", function() {
+    expect(res.body.year).to.equal(2342);
+  });
+
+  test("month is updated", function() {
+    expect(res.body.month).to.equal(11);
+  });
+
+  test("day is updated", function() {
+    expect(res.body.day).to.equal(1);
+  });
+
+  test("name is unchanged", function() {
+    expect(res.body.name).to.equal("Kepler Station Commissioned");
+  });
+
+  test("era is unchanged", function() {
+    expect(res.body.era).to.equal("Second Expansion");
+  });
+}

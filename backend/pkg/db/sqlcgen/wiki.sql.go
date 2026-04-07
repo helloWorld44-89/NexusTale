@@ -570,6 +570,9 @@ UPDATE wiki_timeline_events
 SET name        = COALESCE($2, name),
     description = COALESCE($3, description),
     era         = COALESCE($4, era),
+    year        = COALESCE($5, year),
+    month       = COALESCE($6, month),
+    day         = COALESCE($7, day),
     updated_at  = now()
 WHERE id = $1
 RETURNING id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at
@@ -580,6 +583,9 @@ type UpdateTimelineEventParams struct {
 	Name        pgtype.Text `json:"name"`
 	Description pgtype.Text `json:"description"`
 	Era         pgtype.Text `json:"era"`
+	Year        pgtype.Int4 `json:"year"`
+	Month       pgtype.Int4 `json:"month"`
+	Day         pgtype.Int4 `json:"day"`
 }
 
 func (q *Queries) UpdateTimelineEvent(ctx context.Context, arg UpdateTimelineEventParams) (WikiTimelineEvent, error) {
@@ -588,6 +594,9 @@ func (q *Queries) UpdateTimelineEvent(ctx context.Context, arg UpdateTimelineEve
 		arg.Name,
 		arg.Description,
 		arg.Era,
+		arg.Year,
+		arg.Month,
+		arg.Day,
 	)
 	var i WikiTimelineEvent
 	err := row.Scan(

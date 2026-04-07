@@ -101,6 +101,9 @@ type UpdateTimelineEventRequest struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	Era         *string `json:"era"`
+	Year        *int32  `json:"year"`
+	Month       *int32  `json:"month"`
+	Day         *int32  `json:"day"`
 }
 
 type TimelineEventResponse struct {

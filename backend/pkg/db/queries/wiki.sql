@@ -109,6 +109,9 @@ UPDATE wiki_timeline_events
 SET name        = COALESCE(sqlc.narg('name'), name),
     description = COALESCE(sqlc.narg('description'), description),
     era         = COALESCE(sqlc.narg('era'), era),
+    year        = COALESCE(sqlc.narg('year'), year),
+    month       = COALESCE(sqlc.narg('month'), month),
+    day         = COALESCE(sqlc.narg('day'), day),
     updated_at  = now()
 WHERE id = $1
 RETURNING *;

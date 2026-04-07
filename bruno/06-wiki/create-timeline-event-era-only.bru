@@ -1,0 +1,54 @@
+meta {
+  name: create-timeline-event-era-only
+  type: http
+  seq: 18
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/timeline
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "name": "The Long Silence",
+    "era": "Age of Mending"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("eraOnlyEventId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("name is set", function() {
+    expect(res.body.name).to.equal("The Long Silence");
+  });
+
+  test("era is set", function() {
+    expect(res.body.era).to.equal("Age of Mending");
+  });
+
+  test("year is null for era-only event", function() {
+    expect(res.body.year).to.be.undefined;
+  });
+
+  test("month is null for era-only event", function() {
+    expect(res.body.month).to.be.undefined;
+  });
+
+  test("day is null for era-only event", function() {
+    expect(res.body.day).to.be.undefined;
+  });
+}

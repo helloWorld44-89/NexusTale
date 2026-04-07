@@ -315,6 +315,15 @@ func (s *Service) UpdateTimelineEvent(ctx context.Context, id uuid.UUID, req Upd
 	if req.Era != nil {
 		params.Era = pgtype.Text{String: *req.Era, Valid: true}
 	}
+	if req.Year != nil {
+		params.Year = pgtype.Int4{Int32: *req.Year, Valid: true}
+	}
+	if req.Month != nil {
+		params.Month = pgtype.Int4{Int32: *req.Month, Valid: true}
+	}
+	if req.Day != nil {
+		params.Day = pgtype.Int4{Int32: *req.Day, Valid: true}
+	}
 
 	e, err := s.queries.UpdateTimelineEvent(ctx, params)
 	if errors.Is(err, pgx.ErrNoRows) {

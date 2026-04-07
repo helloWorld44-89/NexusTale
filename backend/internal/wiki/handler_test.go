@@ -457,7 +457,7 @@ func TestTimelineEventCRUD(t *testing.T) {
 		t.Error("expected nil year for era-only event")
 	}
 
-	// Update
+	// Update description only — name should be preserved
 	w4 := httptest.NewRecorder()
 	r.ServeHTTP(w4, testutil.AuthRequest("PATCH", eventURL, token, map[string]interface{}{
 		"description": "The world was split into three shards by the Void God's final act.",
@@ -469,6 +469,35 @@ func TestTimelineEventCRUD(t *testing.T) {
 	json.Unmarshal(w4.Body.Bytes(), &updatedEvent)
 	if updatedEvent.Name != "The First Sundering" {
 		t.Error("update should not change name when not provided")
+	}
+
+	// Update date fields
+	newYear := int32(2)
+	newMonth := int32(3)
+	newDay := int32(15)
+	w4b := httptest.NewRecorder()
+	r.ServeHTTP(w4b, testutil.AuthRequest("PATCH", eventURL, token, map[string]interface{}{
+		"year":  newYear,
+		"month": newMonth,
+		"day":   newDay,
+	}))
+	if w4b.Code != http.StatusOK {
+		t.Fatalf("update timeline event date: %d: %s", w4b.Code, w4b.Body.String())
+	}
+	var dateUpdated wiki.TimelineEventResponse
+	json.Unmarshal(w4b.Body.Bytes(), &dateUpdated)
+	if dateUpdated.Year == nil || *dateUpdated.Year != 2 {
+		t.Errorf("expected year 2 after update, got %v", dateUpdated.Year)
+	}
+	if dateUpdated.Month == nil || *dateUpdated.Month != 3 {
+		t.Errorf("expected month 3 after update, got %v", dateUpdated.Month)
+	}
+	if dateUpdated.Day == nil || *dateUpdated.Day != 15 {
+		t.Errorf("expected day 15 after update, got %v", dateUpdated.Day)
+	}
+	// Era and name should be unchanged
+	if dateUpdated.Era != "Age of Breaking" {
+		t.Errorf("era should be unchanged after date update, got '%s'", dateUpdated.Era)
 	}
 
 	// Delete
