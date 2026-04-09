@@ -62,20 +62,20 @@
       changed_when: true
 
     - name: Pull latest images
-      ansible.builtin.shell: docker compose -f {{ compose_file }} pull
+      ansible.builtin.shell: docker compose -f {{ compose_file }} --env-file {{ deploy_dir }}/.env pull
       args:
         chdir: "{{ deploy_dir }}"
       register: pull_result
       changed_when: "'Pull complete' in pull_result.stdout or 'Downloaded' in pull_result.stdout"
 
     - name: Deploy stack
-      ansible.builtin.shell: docker compose -f {{ compose_file }} up -d --remove-orphans
+      ansible.builtin.shell: docker compose -f {{ compose_file }} --env-file {{ deploy_dir }}/.env up -d --remove-orphans
       args:
         chdir: "{{ deploy_dir }}"
       changed_when: true
 
     - name: Remove stopped containers
-      ansible.builtin.shell: docker compose -f {{ compose_file }} ps -q --filter status=exited | xargs -r docker rm
+      ansible.builtin.shell: docker compose -f {{ compose_file }} --env-file {{ deploy_dir }}/.env ps -q --filter status=exited | xargs -r docker rm
       args:
         chdir: "{{ deploy_dir }}"
       changed_when: false
