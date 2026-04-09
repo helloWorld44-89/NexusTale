@@ -1,0 +1,99 @@
+# Deployment compose file for the dev VM.
+# Uses pre-built images from GHCR rather than building from source.
+# The Ansible playbook writes a .env file alongside this file before running it.
+#
+# Required env vars (from .env):
+#   IMAGE_TAG                      — git sha or "dev"
+#   NEXUSTALE_AUTH_JWTSECRET       — JWT signing secret
+#   NEXUSTALE_DB_PASSWORD          — Postgres password
+#   NEXUSTALE_MINIO_ACCESSKEY      — MinIO root user
+#   NEXUSTALE_MINIO_SECRETKEY      — MinIO root password
+
+services:
+
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexustale
+      POSTGRES_PASSWORD: ${NEXUSTALE_DB_PASSWORD}
+      POSTGRES_DB: nexustale
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexustale"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${NEXUSTALE_MINIO_ACCESSKEY}
+      MINIO_ROOT_PASSWORD: ${NEXUSTALE_MINIO_SECRETKEY}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Application ─────────────────────────────────────────────────────────────
+
+  api:
+    image: ghcr.io/helloworld44-89/nexustale/api:${IMAGE_TAG:-dev}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      NEXUSTALE_SERVER_PORT: "8080"
+      NEXUSTALE_SERVER_MODE: "debug"
+      NEXUSTALE_DB_URL: "postgres://nexustale:${NEXUSTALE_DB_PASSWORD}@postgres:5432/nexustale?sslmode=disable"
+      NEXUSTALE_DB_MIGRATIONSPATH: "file:///migrations"
+      NEXUSTALE_DB_MAXCONNS: "10"
+      NEXUSTALE_DB_MINCONNS: "2"
+      NEXUSTALE_AUTH_JWTSECRET: "${NEXUSTALE_AUTH_JWTSECRET}"
+      NEXUSTALE_AUTH_ACCESSTOKENEXPIRY: "15m"
+      NEXUSTALE_AUTH_REFRESHTOKENEXPIRY: "168h"
+      NEXUSTALE_AUTH_BCRYPTCOST: "12"
+      NEXUSTALE_REDIS_URL: "redis://redis:6379"
+      NEXUSTALE_MINIO_ENDPOINT: "minio:9000"
+      NEXUSTALE_MINIO_ACCESSKEY: "${NEXUSTALE_MINIO_ACCESSKEY}"
+      NEXUSTALE_MINIO_SECRETKEY: "${NEXUSTALE_MINIO_SECRETKEY}"
+      NEXUSTALE_MINIO_BUCKET: "nexustale"
+      NEXUSTALE_MINIO_USESSL: "false"
+      NEXUSTALE_GIT_REPOSPATH: "/data/repos"
+    volumes:
+      - git-repos:/data/repos
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  git-repos:
