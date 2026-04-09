@@ -1,0 +1,77 @@
+name: Dev CI/CD
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+
+  # ── Job 1: Test, Build, Push ────────────────────────────────────────────────
+  build:
+    name: Test, Build & Push
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: backend/go.sum
+
+      - name: Run tests
+        run: make test
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build and push API image
+        run: |
+          docker build \
+            -f infra/docker/Dockerfile.api \
+            -t ghcr.io/helloWorld44-89/nexustale/api:dev \
+            -t ghcr.io/helloWorld44-89/nexustale/api:${{ github.sha }} \
+            .
+          docker push ghcr.io/helloWorld44-89/nexustale/api:dev
+          docker push ghcr.io/helloWorld44-89/nexustale/api:${{ github.sha }}
+
+  # ── Job 2: Deploy via Ansible ───────────────────────────────────────────────
+  deploy:
+    name: Deploy to Dev VM
+    needs: build
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write Ansible vars file
+        run: |
+          cat > /tmp/nexustale-deploy-vars.yml << 'EOF'
+          image_tag: "${{ github.sha }}"
+          ghcr_token: "${{ secrets.GHCR_PULL_TOKEN }}"
+          nexustale_db_password: "${{ secrets.NEXUSTALE_DB_PASSWORD }}"
+          nexustale_jwt_secret: "${{ secrets.NEXUSTALE_JWT_SECRET }}"
+          nexustale_minio_accesskey: "${{ secrets.NEXUSTALE_MINIO_ACCESSKEY }}"
+          nexustale_minio_secretkey: "${{ secrets.NEXUSTALE_MINIO_SECRETKEY }}"
+          EOF
+          chmod 600 /tmp/nexustale-deploy-vars.yml
+
+      - name: Run Ansible playbook
+        run: |
+          ansible-playbook infra/ansible/deploy-dev.yml \
+            -i "${{ secrets.DEV_VM_HOST }}," \
+            --extra-vars "dev_vm_host=${{ secrets.DEV_VM_HOST }}" \
+            --extra-vars "dev_vm_user=${{ secrets.DEV_VM_USER }}" \
+            --extra-vars "@/tmp/nexustale-deploy-vars.yml"
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+
+      - name: Clean up vars file
+        if: always()
+        run: rm -f /tmp/nexustale-deploy-vars.yml
