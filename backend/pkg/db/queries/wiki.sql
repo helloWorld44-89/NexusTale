@@ -92,8 +92,11 @@ DELETE FROM wiki_magic_rules WHERE id = $1;
 -- ========================
 
 -- name: CreateTimelineEvent :one
-INSERT INTO wiki_timeline_events (project_id, entity_id, name, description, era, year, month, day)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO wiki_timeline_events (
+    project_id, entity_id, name, description, era,
+    year, month, day,
+    anchor_event_id, anchor_offset_year, anchor_offset_month, anchor_offset_day
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- name: GetTimelineEvent :one
@@ -106,13 +109,17 @@ ORDER BY year NULLS LAST, month NULLS LAST, day NULLS LAST, name ASC;
 
 -- name: UpdateTimelineEvent :one
 UPDATE wiki_timeline_events
-SET name        = COALESCE(sqlc.narg('name'), name),
-    description = COALESCE(sqlc.narg('description'), description),
-    era         = COALESCE(sqlc.narg('era'), era),
-    year        = COALESCE(sqlc.narg('year'), year),
-    month       = COALESCE(sqlc.narg('month'), month),
-    day         = COALESCE(sqlc.narg('day'), day),
-    updated_at  = now()
+SET name                = COALESCE(sqlc.narg('name'), name),
+    description         = COALESCE(sqlc.narg('description'), description),
+    era                 = COALESCE(sqlc.narg('era'), era),
+    year                = COALESCE(sqlc.narg('year'), year),
+    month               = COALESCE(sqlc.narg('month'), month),
+    day                 = COALESCE(sqlc.narg('day'), day),
+    anchor_event_id     = COALESCE(sqlc.narg('anchor_event_id'), anchor_event_id),
+    anchor_offset_year  = COALESCE(sqlc.narg('anchor_offset_year'), anchor_offset_year),
+    anchor_offset_month = COALESCE(sqlc.narg('anchor_offset_month'), anchor_offset_month),
+    anchor_offset_day   = COALESCE(sqlc.narg('anchor_offset_day'), anchor_offset_day),
+    updated_at          = now()
 WHERE id = $1
 RETURNING *;
 

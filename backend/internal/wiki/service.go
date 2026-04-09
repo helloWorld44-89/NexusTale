@@ -258,9 +258,18 @@ func (s *Service) DeleteMagicRule(ctx context.Context, id uuid.UUID) error {
 // ========================
 
 func (s *Service) CreateTimelineEvent(ctx context.Context, projectID uuid.UUID, req CreateTimelineEventRequest) (*TimelineEventResponse, error) {
+	hasAbsolute := req.Year != nil || req.Month != nil || req.Day != nil
+	if req.AnchorEventID != nil && hasAbsolute {
+		return nil, apperror.Validation("anchor_event_id and absolute year/month/day are mutually exclusive")
+	}
+
 	entityID := pgtype.UUID{}
 	if req.EntityID != nil {
 		entityID = pgtype.UUID{Bytes: [16]byte(*req.EntityID), Valid: true}
+	}
+	anchorEventID := pgtype.UUID{}
+	if req.AnchorEventID != nil {
+		anchorEventID = pgtype.UUID{Bytes: [16]byte(*req.AnchorEventID), Valid: true}
 	}
 
 	year := pgtype.Int4{}
@@ -275,20 +284,40 @@ func (s *Service) CreateTimelineEvent(ctx context.Context, projectID uuid.UUID, 
 	if req.Day != nil {
 		day = pgtype.Int4{Int32: *req.Day, Valid: true}
 	}
+	offsetYear := pgtype.Int4{}
+	if req.AnchorOffsetYear != nil {
+		offsetYear = pgtype.Int4{Int32: *req.AnchorOffsetYear, Valid: true}
+	}
+	offsetMonth := pgtype.Int4{}
+	if req.AnchorOffsetMonth != nil {
+		offsetMonth = pgtype.Int4{Int32: *req.AnchorOffsetMonth, Valid: true}
+	}
+	offsetDay := pgtype.Int4{}
+	if req.AnchorOffsetDay != nil {
+		offsetDay = pgtype.Int4{Int32: *req.AnchorOffsetDay, Valid: true}
+	}
 
 	e, err := s.queries.CreateTimelineEvent(ctx, sqlcgen.CreateTimelineEventParams{
-		ProjectID:   projectID,
-		EntityID:    entityID,
-		Name:        req.Name,
-		Description: req.Description,
-		Era:         req.Era,
-		Year:        year,
-		Month:       month,
-		Day:         day,
+		ProjectID:          projectID,
+		EntityID:           entityID,
+		Name:               req.Name,
+		Description:        req.Description,
+		Era:                req.Era,
+		Year:               year,
+		Month:              month,
+		Day:                day,
+		AnchorEventID:      anchorEventID,
+		AnchorOffsetYear:   offsetYear,
+		AnchorOffsetMonth:  offsetMonth,
+		AnchorOffsetDay:    offsetDay,
 	})
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("create timeline event: %v", err))
 	}
+
+	// Resolve the single event against an empty peer set (no anchor chain needed
+	// for a freshly created event that references events already in the DB — the
+	// full resolution happens on List). Return raw values for the create response.
 	return toTimelineEventResponse(e), nil
 }
 
@@ -297,14 +326,19 @@ func (s *Service) ListTimelineEvents(ctx context.Context, projectID uuid.UUID) (
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("list timeline events: %v", err))
 	}
-	result := make([]TimelineEventResponse, len(rows))
-	for i, e := range rows {
-		result[i] = *toTimelineEventResponse(e)
+	result, err := ResolveEvents(rows)
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("resolve timeline anchors: %v", err))
 	}
 	return result, nil
 }
 
 func (s *Service) UpdateTimelineEvent(ctx context.Context, id uuid.UUID, req UpdateTimelineEventRequest) (*TimelineEventResponse, error) {
+	hasAbsolute := req.Year != nil || req.Month != nil || req.Day != nil
+	if req.AnchorEventID != nil && hasAbsolute {
+		return nil, apperror.Validation("anchor_event_id and absolute year/month/day are mutually exclusive")
+	}
+
 	params := sqlcgen.UpdateTimelineEventParams{ID: id}
 	if req.Name != nil {
 		params.Name = pgtype.Text{String: *req.Name, Valid: true}
@@ -323,6 +357,18 @@ func (s *Service) UpdateTimelineEvent(ctx context.Context, id uuid.UUID, req Upd
 	}
 	if req.Day != nil {
 		params.Day = pgtype.Int4{Int32: *req.Day, Valid: true}
+	}
+	if req.AnchorEventID != nil {
+		params.AnchorEventID = pgtype.UUID{Bytes: [16]byte(*req.AnchorEventID), Valid: true}
+	}
+	if req.AnchorOffsetYear != nil {
+		params.AnchorOffsetYear = pgtype.Int4{Int32: *req.AnchorOffsetYear, Valid: true}
+	}
+	if req.AnchorOffsetMonth != nil {
+		params.AnchorOffsetMonth = pgtype.Int4{Int32: *req.AnchorOffsetMonth, Valid: true}
+	}
+	if req.AnchorOffsetDay != nil {
+		params.AnchorOffsetDay = pgtype.Int4{Int32: *req.AnchorOffsetDay, Valid: true}
 	}
 
 	e, err := s.queries.UpdateTimelineEvent(ctx, params)
@@ -420,6 +466,22 @@ func toTimelineEventResponse(e sqlcgen.WikiTimelineEvent) *TimelineEventResponse
 	if e.Day.Valid {
 		v := e.Day.Int32
 		resp.Day = &v
+	}
+	if e.AnchorEventID.Valid {
+		id := uuid.UUID(e.AnchorEventID.Bytes)
+		resp.AnchorEventID = &id
+		if e.AnchorOffsetYear.Valid {
+			v := e.AnchorOffsetYear.Int32
+			resp.AnchorOffsetYear = &v
+		}
+		if e.AnchorOffsetMonth.Valid {
+			v := e.AnchorOffsetMonth.Int32
+			resp.AnchorOffsetMonth = &v
+		}
+		if e.AnchorOffsetDay.Valid {
+			v := e.AnchorOffsetDay.Int32
+			resp.AnchorOffsetDay = &v
+		}
 	}
 	return resp
 }

@@ -92,18 +92,30 @@ type CreateTimelineEventRequest struct {
 	Name        string     `json:"name" binding:"required,min=1,max=200"`
 	Description string     `json:"description"`
 	Era         string     `json:"era"`
-	Year        *int32     `json:"year"`
-	Month       *int32     `json:"month"`
-	Day         *int32     `json:"day"`
+	// Absolute date — mutually exclusive with AnchorEventID.
+	Year  *int32 `json:"year"`
+	Month *int32 `json:"month"`
+	Day   *int32 `json:"day"`
+	// Relative anchoring — set this OR absolute year/month/day, not both.
+	AnchorEventID    *uuid.UUID `json:"anchor_event_id"`
+	AnchorOffsetYear *int32     `json:"anchor_offset_year"`
+	AnchorOffsetMonth *int32    `json:"anchor_offset_month"`
+	AnchorOffsetDay  *int32     `json:"anchor_offset_day"`
 }
 
 type UpdateTimelineEventRequest struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	Era         *string `json:"era"`
-	Year        *int32  `json:"year"`
-	Month       *int32  `json:"month"`
-	Day         *int32  `json:"day"`
+	// Absolute date fields — mutually exclusive with AnchorEventID.
+	Year  *int32 `json:"year"`
+	Month *int32 `json:"month"`
+	Day   *int32 `json:"day"`
+	// Relative anchoring — set this OR absolute year/month/day, not both.
+	AnchorEventID    *uuid.UUID `json:"anchor_event_id"`
+	AnchorOffsetYear *int32     `json:"anchor_offset_year"`
+	AnchorOffsetMonth *int32    `json:"anchor_offset_month"`
+	AnchorOffsetDay  *int32     `json:"anchor_offset_day"`
 }
 
 type TimelineEventResponse struct {
@@ -113,11 +125,17 @@ type TimelineEventResponse struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
 	Era         string     `json:"era"`
-	Year        *int32     `json:"year,omitempty"`
-	Month       *int32     `json:"month,omitempty"`
-	Day         *int32     `json:"day,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	// Resolved absolute date (computed from anchor chain if anchored).
+	Year  *int32 `json:"year,omitempty"`
+	Month *int32 `json:"month,omitempty"`
+	Day   *int32 `json:"day,omitempty"`
+	// Anchor metadata — present when this event uses relative anchoring.
+	AnchorEventID    *uuid.UUID `json:"anchor_event_id,omitempty"`
+	AnchorOffsetYear *int32     `json:"anchor_offset_year,omitempty"`
+	AnchorOffsetMonth *int32    `json:"anchor_offset_month,omitempty"`
+	AnchorOffsetDay  *int32     `json:"anchor_offset_day,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ========================

@@ -127,20 +127,27 @@ func (q *Queries) CreateRelationship(ctx context.Context, arg CreateRelationship
 
 const createTimelineEvent = `-- name: CreateTimelineEvent :one
 
-INSERT INTO wiki_timeline_events (project_id, entity_id, name, description, era, year, month, day)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at
+INSERT INTO wiki_timeline_events (
+    project_id, entity_id, name, description, era,
+    year, month, day,
+    anchor_event_id, anchor_offset_year, anchor_offset_month, anchor_offset_day
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at, anchor_event_id, anchor_offset_year, anchor_offset_month, anchor_offset_day
 `
 
 type CreateTimelineEventParams struct {
-	ProjectID   uuid.UUID   `json:"project_id"`
-	EntityID    pgtype.UUID `json:"entity_id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Era         string      `json:"era"`
-	Year        pgtype.Int4 `json:"year"`
-	Month       pgtype.Int4 `json:"month"`
-	Day         pgtype.Int4 `json:"day"`
+	ProjectID         uuid.UUID   `json:"project_id"`
+	EntityID          pgtype.UUID `json:"entity_id"`
+	Name              string      `json:"name"`
+	Description       string      `json:"description"`
+	Era               string      `json:"era"`
+	Year              pgtype.Int4 `json:"year"`
+	Month             pgtype.Int4 `json:"month"`
+	Day               pgtype.Int4 `json:"day"`
+	AnchorEventID     pgtype.UUID `json:"anchor_event_id"`
+	AnchorOffsetYear  pgtype.Int4 `json:"anchor_offset_year"`
+	AnchorOffsetMonth pgtype.Int4 `json:"anchor_offset_month"`
+	AnchorOffsetDay   pgtype.Int4 `json:"anchor_offset_day"`
 }
 
 // ========================
@@ -156,6 +163,10 @@ func (q *Queries) CreateTimelineEvent(ctx context.Context, arg CreateTimelineEve
 		arg.Year,
 		arg.Month,
 		arg.Day,
+		arg.AnchorEventID,
+		arg.AnchorOffsetYear,
+		arg.AnchorOffsetMonth,
+		arg.AnchorOffsetDay,
 	)
 	var i WikiTimelineEvent
 	err := row.Scan(
@@ -170,6 +181,10 @@ func (q *Queries) CreateTimelineEvent(ctx context.Context, arg CreateTimelineEve
 		&i.Day,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnchorEventID,
+		&i.AnchorOffsetYear,
+		&i.AnchorOffsetMonth,
+		&i.AnchorOffsetDay,
 	)
 	return i, err
 }
@@ -269,7 +284,7 @@ func (q *Queries) GetRelationship(ctx context.Context, id uuid.UUID) (WikiRelati
 }
 
 const getTimelineEvent = `-- name: GetTimelineEvent :one
-SELECT id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at FROM wiki_timeline_events WHERE id = $1
+SELECT id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at, anchor_event_id, anchor_offset_year, anchor_offset_month, anchor_offset_day FROM wiki_timeline_events WHERE id = $1
 `
 
 func (q *Queries) GetTimelineEvent(ctx context.Context, id uuid.UUID) (WikiTimelineEvent, error) {
@@ -287,6 +302,10 @@ func (q *Queries) GetTimelineEvent(ctx context.Context, id uuid.UUID) (WikiTimel
 		&i.Day,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnchorEventID,
+		&i.AnchorOffsetYear,
+		&i.AnchorOffsetMonth,
+		&i.AnchorOffsetDay,
 	)
 	return i, err
 }
@@ -437,7 +456,7 @@ func (q *Queries) ListRelationshipsByProject(ctx context.Context, projectID uuid
 }
 
 const listTimelineEventsByProject = `-- name: ListTimelineEventsByProject :many
-SELECT id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at FROM wiki_timeline_events
+SELECT id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at, anchor_event_id, anchor_offset_year, anchor_offset_month, anchor_offset_day FROM wiki_timeline_events
 WHERE project_id = $1
 ORDER BY year NULLS LAST, month NULLS LAST, day NULLS LAST, name ASC
 `
@@ -463,6 +482,10 @@ func (q *Queries) ListTimelineEventsByProject(ctx context.Context, projectID uui
 			&i.Day,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AnchorEventID,
+			&i.AnchorOffsetYear,
+			&i.AnchorOffsetMonth,
+			&i.AnchorOffsetDay,
 		); err != nil {
 			return nil, err
 		}
@@ -567,25 +590,33 @@ func (q *Queries) UpdateMagicRule(ctx context.Context, arg UpdateMagicRuleParams
 
 const updateTimelineEvent = `-- name: UpdateTimelineEvent :one
 UPDATE wiki_timeline_events
-SET name        = COALESCE($2, name),
-    description = COALESCE($3, description),
-    era         = COALESCE($4, era),
-    year        = COALESCE($5, year),
-    month       = COALESCE($6, month),
-    day         = COALESCE($7, day),
-    updated_at  = now()
+SET name                = COALESCE($2, name),
+    description         = COALESCE($3, description),
+    era                 = COALESCE($4, era),
+    year                = COALESCE($5, year),
+    month               = COALESCE($6, month),
+    day                 = COALESCE($7, day),
+    anchor_event_id     = COALESCE($8, anchor_event_id),
+    anchor_offset_year  = COALESCE($9, anchor_offset_year),
+    anchor_offset_month = COALESCE($10, anchor_offset_month),
+    anchor_offset_day   = COALESCE($11, anchor_offset_day),
+    updated_at          = now()
 WHERE id = $1
-RETURNING id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at
+RETURNING id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at, anchor_event_id, anchor_offset_year, anchor_offset_month, anchor_offset_day
 `
 
 type UpdateTimelineEventParams struct {
-	ID          uuid.UUID   `json:"id"`
-	Name        pgtype.Text `json:"name"`
-	Description pgtype.Text `json:"description"`
-	Era         pgtype.Text `json:"era"`
-	Year        pgtype.Int4 `json:"year"`
-	Month       pgtype.Int4 `json:"month"`
-	Day         pgtype.Int4 `json:"day"`
+	ID                uuid.UUID   `json:"id"`
+	Name              pgtype.Text `json:"name"`
+	Description       pgtype.Text `json:"description"`
+	Era               pgtype.Text `json:"era"`
+	Year              pgtype.Int4 `json:"year"`
+	Month             pgtype.Int4 `json:"month"`
+	Day               pgtype.Int4 `json:"day"`
+	AnchorEventID     pgtype.UUID `json:"anchor_event_id"`
+	AnchorOffsetYear  pgtype.Int4 `json:"anchor_offset_year"`
+	AnchorOffsetMonth pgtype.Int4 `json:"anchor_offset_month"`
+	AnchorOffsetDay   pgtype.Int4 `json:"anchor_offset_day"`
 }
 
 func (q *Queries) UpdateTimelineEvent(ctx context.Context, arg UpdateTimelineEventParams) (WikiTimelineEvent, error) {
@@ -597,6 +628,10 @@ func (q *Queries) UpdateTimelineEvent(ctx context.Context, arg UpdateTimelineEve
 		arg.Year,
 		arg.Month,
 		arg.Day,
+		arg.AnchorEventID,
+		arg.AnchorOffsetYear,
+		arg.AnchorOffsetMonth,
+		arg.AnchorOffsetDay,
 	)
 	var i WikiTimelineEvent
 	err := row.Scan(
@@ -611,6 +646,10 @@ func (q *Queries) UpdateTimelineEvent(ctx context.Context, arg UpdateTimelineEve
 		&i.Day,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnchorEventID,
+		&i.AnchorOffsetYear,
+		&i.AnchorOffsetMonth,
+		&i.AnchorOffsetDay,
 	)
 	return i, err
 }

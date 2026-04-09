@@ -64,7 +64,7 @@ jobs:
 
       - name: Run Ansible playbook
         run: |
-          ansible-playbook infra/ansible/deploy-dev.yml \
+          ansible-playbook infra/ansible/deployments/deploy-dev.yml \
             -i "${{ secrets.DEV_VM_HOST }}," \
             --extra-vars "dev_vm_host=${{ secrets.DEV_VM_HOST }}" \
             --extra-vars "dev_vm_user=${{ secrets.DEV_VM_USER }}" \

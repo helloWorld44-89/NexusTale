@@ -159,15 +159,19 @@ type WikiRelationship struct {
 }
 
 type WikiTimelineEvent struct {
-	ID          uuid.UUID          `json:"id"`
-	ProjectID   uuid.UUID          `json:"project_id"`
-	EntityID    pgtype.UUID        `json:"entity_id"`
-	Name        string             `json:"name"`
-	Description string             `json:"description"`
-	Era         string             `json:"era"`
-	Year        pgtype.Int4        `json:"year"`
-	Month       pgtype.Int4        `json:"month"`
-	Day         pgtype.Int4        `json:"day"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID                uuid.UUID          `json:"id"`
+	ProjectID         uuid.UUID          `json:"project_id"`
+	EntityID          pgtype.UUID        `json:"entity_id"`
+	Name              string             `json:"name"`
+	Description       string             `json:"description"`
+	Era               string             `json:"era"`
+	Year              pgtype.Int4        `json:"year"`
+	Month             pgtype.Int4        `json:"month"`
+	Day               pgtype.Int4        `json:"day"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	AnchorEventID     pgtype.UUID        `json:"anchor_event_id"`
+	AnchorOffsetYear  pgtype.Int4        `json:"anchor_offset_year"`
+	AnchorOffsetMonth pgtype.Int4        `json:"anchor_offset_month"`
+	AnchorOffsetDay   pgtype.Int4        `json:"anchor_offset_day"`
 }
