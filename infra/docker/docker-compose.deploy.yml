@@ -87,6 +87,14 @@ services:
       minio:
         condition: service_started
 
+  frontend:
+    image: ghcr.io/helloworld44-89/nexustale/frontend:${IMAGE_TAG:-dev}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
 volumes:
   postgres-data:
   redis-data:

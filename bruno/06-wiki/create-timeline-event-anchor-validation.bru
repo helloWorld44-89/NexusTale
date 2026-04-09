@@ -1,0 +1,33 @@
+meta {
+  name: create-timeline-event-anchor-validation
+  type: http
+  seq: 22
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/timeline
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "name": "Invalid Event",
+    "anchor_event_id": "{{timelineEventId}}",
+    "year": 2400
+  }
+}
+
+tests {
+  test("status is 400 when anchor and absolute date both set", function() {
+    expect(res.status).to.equal(400);
+  });
+
+  test("error message mentions mutual exclusion", function() {
+    expect(res.body.detail).to.include("mutually exclusive");
+  });
+}

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(make sqlc:*)",
+      "Bash(sqlc generate:*)",
+      "Bash(/root/go/bin/sqlc generate:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)"
+    ]
+  }
+}
