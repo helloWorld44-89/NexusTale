@@ -2,7 +2,7 @@
 // Mounted in Editor when leftPanel === 'git'.
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/services/api'
-import type { Timeline, ChronicleEntry, GitStatus } from '@/services/api'
+import type { TimelineInfo, ChronicleEntry, GitStatusResponse } from '@/services/api'
 
 interface GitPanelProps {
   token: string
@@ -13,8 +13,8 @@ type View = 'timelines' | 'lore'
 
 export default function GitPanel({ token, projectId }: GitPanelProps) {
   const [view, setView] = useState<View>('timelines')
-  const [status, setStatus] = useState<GitStatus | null>(null)
-  const [timelines, setTimelines] = useState<Timeline[]>([])
+  const [status, setStatus] = useState<GitStatusResponse | null>(null)
+  const [timelines, setTimelines] = useState<TimelineInfo[]>([])
   const [lore, setLore] = useState<ChronicleEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -90,7 +90,9 @@ export default function GitPanel({ token, projectId }: GitPanelProps) {
           <div className="flex items-center gap-1.5 text-xs text-brand-muted">
             <BranchIcon />
             <span className="text-brand-text font-medium">{status.current_timeline}</span>
-            {status.dirty && <span className="text-brand-gold ml-auto">unsaved changes</span>}
+            {status.last_chronicle && (
+              <span className="text-brand-muted/60 text-[10px] ml-auto font-mono">{status.last_chronicle.short_sha}</span>
+            )}
           </div>
         )}
       </div>
@@ -172,7 +174,7 @@ function TimelinesView({
   onCanonize,
   onDiverge,
 }: {
-  timelines: Timeline[]
+  timelines: TimelineInfo[]
   busy: boolean
   onTravel: (name: string) => void
   onCanonize: (name: string) => void
@@ -202,9 +204,9 @@ function TimelinesView({
             )}
           </div>
 
-          {tl.last_chronicle && (
-            <p className="text-xs text-brand-muted truncate pl-5 mb-2">{tl.last_chronicle.note}</p>
-          )}
+          <p className="text-[10px] font-mono text-brand-muted/60 truncate pl-5 mb-1">
+            {tl.head_sha.slice(0, 7)}
+          </p>
 
           <div className="flex gap-1.5 pl-5">
             {!tl.is_active && (
@@ -253,7 +255,7 @@ function LoreView({ entries }: { entries: ChronicleEntry[] }) {
         <div key={e.sha} className="py-2 border-b border-brand-border/50 last:border-0">
           <div className="flex items-center gap-2 mb-0.5">
             <span className="font-mono text-[10px] text-brand-purple bg-brand-purple/10 px-1.5 py-0.5 rounded">{e.short_sha}</span>
-            <span className="text-[10px] text-brand-muted ml-auto">{formatDate(e.timestamp)}</span>
+            <span className="text-[10px] text-brand-muted ml-auto">{formatDate(e.created_at)}</span>
           </div>
           <p className="text-xs text-brand-text leading-relaxed">{e.note}</p>
         </div>

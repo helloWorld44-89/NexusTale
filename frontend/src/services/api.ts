@@ -1,21 +1,33 @@
+// Hand-written fetch layer. All domain types are imported from the generated
+// api-types.ts (produced by `npm run gen:api` from docs/openapi.yaml).
+// Do not define response shapes here — update the spec and regenerate instead.
+import type { components } from './api-types'
+
 const BASE = '/api/v1'
 
-export interface User {
-  id: string
-  email: string
-  display_name: string
-  role: string
-}
+// ── Re-export generated types for consumers ───────────────────────────────────
 
-export interface TokenPair {
-  access_token: string
-  refresh_token: string
-}
+export type User                   = components['schemas']['UserResponse']
+export type TokenPair              = components['schemas']['TokenPair']
+export type AuthResponse           = components['schemas']['AuthResponse']
+export type Project                = components['schemas']['ProjectResponse']
+export type Chapter                = components['schemas']['ChapterResponse']
+export type Scene                  = components['schemas']['SceneResponse']
+export type ChronicleEntry         = components['schemas']['ChronicleEntry']
+export type NothingToChronicle     = components['schemas']['NothingToChronicle']
+export type GitStatusResponse      = components['schemas']['GitStatusResponse']
+export type TimelineInfo           = components['schemas']['TimelineInfo']
+export type EchoResponse           = components['schemas']['EchoResponse']
+export type CanonizeResult         = components['schemas']['CanonizeResult']
+export type EntityType             = components['schemas']['EntityType']
+export type WikiEntity             = components['schemas']['EntityResponse']
+export type WikiRelationship       = components['schemas']['RelationshipResponse']
+export type WikiGraph              = components['schemas']['WikiGraphResponse']
+export type MagicRule              = components['schemas']['MagicRuleResponse']
+export type WikiTimelineEvent      = components['schemas']['TimelineEventResponse']
+export type AutolinkMatch          = components['schemas']['AutolinkMatch']
 
-export interface AuthResponse {
-  user: User
-  tokens: TokenPair
-}
+// ── Error class ───────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
   constructor(
@@ -26,6 +38,8 @@ export class ApiError extends Error {
     this.name = 'ApiError'
   }
 }
+
+// ── Base fetch helper ─────────────────────────────────────────────────────────
 
 async function request<T>(
   method: string,
@@ -52,134 +66,6 @@ async function request<T>(
   }
 
   return res.json() as Promise<T>
-}
-
-// ── Domain types ─────────────────────────────────────────────────────────────
-
-export interface Project {
-  id: string
-  owner_id: string
-  title: string
-  description: string
-  genres: string[]
-  archived: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface Chapter {
-  id: string
-  project_id: string
-  title: string
-  summary: string
-  sort_order: number
-  created_at: string
-  updated_at: string
-}
-
-export interface Scene {
-  id: string
-  chapter_id: string
-  title: string
-  content: string
-  pov: string
-  tense: string
-  tags: string[]
-  summary: string
-  summary_stale: boolean
-  sort_order: number
-  created_at: string
-  updated_at: string
-}
-
-// ── Git / Chronicle types ─────────────────────────────────────────────────────
-
-export interface ChronicleEntry {
-  sha: string
-  short_sha: string
-  note: string
-  author: string
-  timestamp: string
-}
-
-export interface ChronicleResponse {
-  sha: string
-  short_sha: string
-  note: string
-  author: string
-  timestamp: string
-}
-
-export interface NothingToChronicle {
-  message: string
-  last_chronicle: ChronicleEntry | null
-}
-
-export interface GitStatus {
-  current_timeline: string
-  last_chronicle: ChronicleEntry | null
-  dirty: boolean
-  modified_paths: string[]
-}
-
-export interface Timeline {
-  name: string
-  is_canon: boolean
-  is_active: boolean
-  last_chronicle: ChronicleEntry | null
-}
-
-export interface EchoResponse {
-  from_sha: string
-  to_sha: string
-  diff: string
-}
-
-export interface CanonizeResponse {
-  merged_timeline: string
-  fast_forwarded: boolean
-  head_sha: string
-}
-
-// ── Wiki types ────────────────────────────────────────────────────────────────
-
-export type EntityType = 'character' | 'location' | 'faction' | 'item' | 'concept' | 'lore'
-
-export interface WikiEntity {
-  id: string
-  project_id: string
-  parent_entity_id: string | null
-  type: EntityType
-  name: string
-  summary: string
-  attributes: Record<string, string>
-  created_at: string
-  updated_at: string
-}
-
-export interface WikiRelationship {
-  id: string
-  source_id: string
-  target_id: string
-  label: string
-  created_at: string
-}
-
-export interface WikiTimelineEvent {
-  id: string
-  project_id: string
-  name: string
-  description: string | null
-  era: string | null
-  year: number | null
-  month: number | null
-  day: number | null
-  anchor_event_id: string | null
-  anchor_offset_year: number | null
-  anchor_offset_month: number | null
-  anchor_offset_day: number | null
-  created_at: string
-  updated_at: string
 }
 
 // ── API client ────────────────────────────────────────────────────────────────
@@ -235,10 +121,10 @@ export const api = {
 
   git: {
     status: (token: string, projectId: string) =>
-      request<GitStatus>('GET', `/projects/${projectId}/git/status`, undefined, token),
+      request<GitStatusResponse>('GET', `/projects/${projectId}/git/status`, undefined, token),
 
     chronicle: (token: string, projectId: string, note: string) =>
-      request<ChronicleResponse | NothingToChronicle>('POST', `/projects/${projectId}/git/chronicle`, { note }, token),
+      request<ChronicleEntry | NothingToChronicle>('POST', `/projects/${projectId}/git/chronicle`, { note }, token),
 
     lore: (token: string, projectId: string, page = 1, perPage = 20) =>
       request<ChronicleEntry[]>('GET', `/projects/${projectId}/git/lore?page=${page}&per_page=${perPage}`, undefined, token),
@@ -247,16 +133,16 @@ export const api = {
       request<EchoResponse>('GET', `/projects/${projectId}/git/echo?from=${from}&to=${to}`, undefined, token),
 
     timelines: (token: string, projectId: string) =>
-      request<Timeline[]>('GET', `/projects/${projectId}/git/timelines`, undefined, token),
+      request<TimelineInfo[]>('GET', `/projects/${projectId}/git/timelines`, undefined, token),
 
     diverge: (token: string, projectId: string, timelineName: string, fromSha?: string) =>
-      request<Timeline[]>('POST', `/projects/${projectId}/git/timelines`, { timeline_name: timelineName, from_sha: fromSha }, token),
+      request<TimelineInfo[]>('POST', `/projects/${projectId}/git/timelines`, { timeline_name: timelineName, from_sha: fromSha }, token),
 
     travel: (token: string, projectId: string, timelineName: string) =>
       request<void>('POST', `/projects/${projectId}/git/timelines/${encodeURIComponent(timelineName)}/travel`, {}, token),
 
     canonize: (token: string, projectId: string, timelineName: string) =>
-      request<CanonizeResponse>('POST', `/projects/${projectId}/git/timelines/${encodeURIComponent(timelineName)}/canonize`, {}, token),
+      request<CanonizeResult>('POST', `/projects/${projectId}/git/timelines/${encodeURIComponent(timelineName)}/canonize`, {}, token),
   },
 
   wiki: {
@@ -277,14 +163,35 @@ export const api = {
     deleteEntity: (token: string, projectId: string, entityId: string) =>
       request<void>('DELETE', `/projects/${projectId}/wiki/entities/${entityId}`, undefined, token),
 
+    // Relationships — field names match the backend: from_entity_id / to_entity_id / type
     listRelationships: (token: string, projectId: string) =>
       request<WikiRelationship[]>('GET', `/projects/${projectId}/wiki/relationships`, undefined, token),
 
-    createRelationship: (token: string, projectId: string, sourceId: string, targetId: string, label: string) =>
-      request<WikiRelationship>('POST', `/projects/${projectId}/wiki/relationships`, { source_id: sourceId, target_id: targetId, label }, token),
+    createRelationship: (token: string, projectId: string, fromEntityId: string, toEntityId: string, type: string, description?: string) =>
+      request<WikiRelationship>('POST', `/projects/${projectId}/wiki/relationships`, {
+        from_entity_id: fromEntityId,
+        to_entity_id:   toEntityId,
+        type,
+        description,
+      }, token),
 
     deleteRelationship: (token: string, projectId: string, relationshipId: string) =>
       request<void>('DELETE', `/projects/${projectId}/wiki/relationships/${relationshipId}`, undefined, token),
+
+    getGraph: (token: string, projectId: string) =>
+      request<WikiGraph>('GET', `/projects/${projectId}/wiki/graph`, undefined, token),
+
+    listMagicRules: (token: string, projectId: string) =>
+      request<MagicRule[]>('GET', `/projects/${projectId}/wiki/magic-rules`, undefined, token),
+
+    createMagicRule: (token: string, projectId: string, data: { name: string; description?: string }) =>
+      request<MagicRule>('POST', `/projects/${projectId}/wiki/magic-rules`, data, token),
+
+    updateMagicRule: (token: string, projectId: string, ruleId: string, data: { name?: string; description?: string }) =>
+      request<MagicRule>('PATCH', `/projects/${projectId}/wiki/magic-rules/${ruleId}`, data, token),
+
+    deleteMagicRule: (token: string, projectId: string, ruleId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/wiki/magic-rules/${ruleId}`, undefined, token),
 
     listTimeline: (token: string, projectId: string) =>
       request<WikiTimelineEvent[]>('GET', `/projects/${projectId}/wiki/timeline`, undefined, token),
