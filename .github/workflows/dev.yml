@@ -64,10 +64,11 @@ jobs:
 
       - name: Run Ansible playbook
         run: |
-          ansible-playbook infra/ansible/deployments/deploy-dev.yml \
+          ansible-playbook $GITHUB_WORKSPACE/infra/ansible/deploy-dev.yml \
             -i "${{ secrets.DEV_VM_HOST }}," \
             --extra-vars "dev_vm_host=${{ secrets.DEV_VM_HOST }}" \
             --extra-vars "dev_vm_user=${{ secrets.DEV_VM_USER }}" \
+            --extra-vars "workspace=$GITHUB_WORKSPACE" \
             --extra-vars "@/tmp/nexustale-deploy-vars.yml"
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
