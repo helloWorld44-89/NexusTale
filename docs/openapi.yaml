@@ -1,0 +1,1448 @@
+openapi: 3.1.0
+
+info:
+  title: NexusTale API
+  version: "1.0.0"
+  description: >
+    REST API for NexusTale — a sci-fi/fantasy novel-writing platform with
+    Git-backed versioning, world wiki, and AI co-author support.
+
+servers:
+  - url: /api/v1
+    description: Current API prefix (served by nginx reverse-proxy in all environments)
+
+security: []  # default unauthenticated; individual operations override via bearerAuth
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ── Reusable error shapes ───────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    BadRequest:
+      description: Validation or binding error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    InternalError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+
+    # ── Shared ────────────────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      properties:
+        message: { type: string }
+        detail:  { type: string }
+
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, display_name, password]
+      properties:
+        email:        { type: string, format: email }
+        display_name: { type: string, minLength: 2, maxLength: 100 }
+        password:     { type: string, minLength: 8, maxLength: 128 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string }
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    LogoutRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token]
+      properties:
+        access_token:  { type: string }
+        refresh_token: { type: string }
+
+    UserResponse:
+      type: object
+      required: [id, email, display_name, role, created_at]
+      properties:
+        id:           { type: string, format: uuid }
+        email:        { type: string, format: email }
+        display_name: { type: string }
+        role:         { type: string, enum: [reader, writer, editor, admin] }
+        created_at:   { type: string, format: date-time }
+
+    AuthResponse:
+      type: object
+      required: [user, tokens]
+      properties:
+        user:   { $ref: '#/components/schemas/UserResponse' }
+        tokens: { $ref: '#/components/schemas/TokenPair' }
+
+    # ── Projects ──────────────────────────────────────────────────────────────
+    CreateProjectRequest:
+      type: object
+      required: [title]
+      properties:
+        title:       { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        genres:      { type: array, items: { type: string } }
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        title:       { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+
+    ProjectResponse:
+      type: object
+      required: [id, owner_id, title, description, genres, archived, created_at, updated_at]
+      properties:
+        id:          { type: string, format: uuid }
+        owner_id:    { type: string, format: uuid }
+        title:       { type: string }
+        description: { type: string }
+        genres:      { type: array, items: { type: string } }
+        archived:    { type: boolean }
+        created_at:  { type: string, format: date-time }
+        updated_at:  { type: string, format: date-time }
+
+    # ── Chapters ──────────────────────────────────────────────────────────────
+    CreateChapterRequest:
+      type: object
+      required: [title]
+      properties:
+        title:      { type: string, minLength: 1, maxLength: 200 }
+        summary:    { type: string }
+        sort_order: { type: integer }
+
+    UpdateChapterRequest:
+      type: object
+      properties:
+        title:      { type: string, minLength: 1, maxLength: 200 }
+        summary:    { type: string }
+        sort_order: { type: integer }
+
+    ChapterResponse:
+      type: object
+      required: [id, project_id, title, summary, sort_order, created_at, updated_at]
+      properties:
+        id:         { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        title:      { type: string }
+        summary:    { type: string }
+        sort_order: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    # ── Scenes ────────────────────────────────────────────────────────────────
+    CreateSceneRequest:
+      type: object
+      required: [title]
+      properties:
+        title:      { type: string, minLength: 1, maxLength: 200 }
+        content:    { type: string }
+        pov:        { type: string }
+        tense:      { type: string }
+        tags:       { type: array, items: { type: string } }
+        summary:    { type: string }
+        sort_order: { type: integer }
+
+    UpdateSceneRequest:
+      type: object
+      properties:
+        title:         { type: string, minLength: 1, maxLength: 200 }
+        content:       { type: string }
+        pov:           { type: string }
+        tense:         { type: string }
+        summary:       { type: string }
+        summary_stale: { type: boolean }
+        sort_order:    { type: integer }
+
+    SceneResponse:
+      type: object
+      required: [id, chapter_id, title, content, sort_order, created_at, updated_at]
+      properties:
+        id:            { type: string, format: uuid }
+        chapter_id:    { type: string, format: uuid }
+        title:         { type: string }
+        content:       { type: string }
+        pov:           { type: string }
+        tense:         { type: string }
+        tags:          { type: array, items: { type: string } }
+        summary:       { type: string }
+        summary_stale: { type: boolean }
+        sort_order:    { type: integer }
+        created_at:    { type: string, format: date-time }
+        updated_at:    { type: string, format: date-time }
+
+    # ── Git / Chronicle ───────────────────────────────────────────────────────
+    ChronicleRequest:
+      type: object
+      required: [note]
+      properties:
+        note: { type: string, minLength: 1, maxLength: 500 }
+
+    ChronicleEntry:
+      type: object
+      required: [sha, short_sha, note, author, created_at]
+      properties:
+        sha:        { type: string }
+        short_sha:  { type: string }
+        note:       { type: string }
+        author:     { type: string }
+        created_at: { type: string, format: date-time }
+
+    # Chronicle returns 201 with ChronicleEntry on success, or 200 with this
+    # shape when there was nothing new to commit.
+    NothingToChronicle:
+      type: object
+      required: [message]
+      properties:
+        message:        { type: string, example: "nothing to chronicle" }
+        last_chronicle: { $ref: '#/components/schemas/ChronicleEntry', nullable: true }
+
+    TimelineInfo:
+      type: object
+      required: [name, is_canon, is_active, head_sha, created_at]
+      properties:
+        name:       { type: string }
+        is_canon:   { type: boolean }
+        is_active:  { type: boolean }
+        head_sha:   { type: string }
+        created_at: { type: string, format: date-time }
+
+    GitStatusResponse:
+      type: object
+      required: [current_timeline]
+      properties:
+        current_timeline: { type: string }
+        last_chronicle:
+          $ref: '#/components/schemas/ChronicleEntry'
+          nullable: true
+
+    EchoResponse:
+      type: object
+      required: [from_sha, to_sha, diff]
+      properties:
+        from_sha: { type: string }
+        to_sha:   { type: string }
+        diff:     { type: string }
+
+    DivergeRequest:
+      type: object
+      required: [timeline_name]
+      properties:
+        timeline_name: { type: string, minLength: 1, maxLength: 100 }
+        from_sha:      { type: string, description: "Pin the diverge to a specific Chronicle; defaults to HEAD." }
+
+    CanonizeResult:
+      type: object
+      required: [has_paradox]
+      properties:
+        merged_sha:   { type: string }
+        has_paradox:  { type: boolean }
+        paradox_note: { type: string }
+
+    # ── Wiki — Entities ───────────────────────────────────────────────────────
+    EntityType:
+      type: string
+      enum: [character, location, faction, item, concept, lore]
+
+    CreateEntityRequest:
+      type: object
+      required: [type, name]
+      properties:
+        type:             { $ref: '#/components/schemas/EntityType' }
+        name:             { type: string, minLength: 1, maxLength: 200 }
+        summary:          { type: string }
+        attributes:       { type: object, additionalProperties: { type: string } }
+        parent_entity_id: { type: string, format: uuid }
+
+    UpdateEntityRequest:
+      type: object
+      properties:
+        name:       { type: string, minLength: 1, maxLength: 200 }
+        summary:    { type: string }
+        attributes: { type: object, additionalProperties: { type: string } }
+
+    EntityResponse:
+      type: object
+      required: [id, project_id, type, name, summary, attributes, created_at, updated_at]
+      properties:
+        id:               { type: string, format: uuid }
+        project_id:       { type: string, format: uuid }
+        parent_entity_id: { type: string, format: uuid, nullable: true }
+        type:             { $ref: '#/components/schemas/EntityType' }
+        name:             { type: string }
+        summary:          { type: string }
+        attributes:       { type: object, additionalProperties: { type: string } }
+        created_at:       { type: string, format: date-time }
+        updated_at:       { type: string, format: date-time }
+
+    # ── Wiki — Relationships ──────────────────────────────────────────────────
+    CreateRelationshipRequest:
+      type: object
+      required: [from_entity_id, to_entity_id, type]
+      properties:
+        from_entity_id: { type: string, format: uuid }
+        to_entity_id:   { type: string, format: uuid }
+        type:           { type: string, description: "e.g. 'allied_with', 'enemy_of', 'parent_of'" }
+        description:    { type: string }
+
+    RelationshipResponse:
+      type: object
+      required: [id, project_id, from_entity_id, to_entity_id, type, created_at]
+      properties:
+        id:             { type: string, format: uuid }
+        project_id:     { type: string, format: uuid }
+        from_entity_id: { type: string, format: uuid }
+        to_entity_id:   { type: string, format: uuid }
+        type:           { type: string }
+        description:    { type: string }
+        created_at:     { type: string, format: date-time }
+
+    WikiGraphResponse:
+      type: object
+      required: [entities, relationships]
+      properties:
+        entities:      { type: array, items: { $ref: '#/components/schemas/EntityResponse' } }
+        relationships: { type: array, items: { $ref: '#/components/schemas/RelationshipResponse' } }
+
+    # ── Wiki — Magic Rules ────────────────────────────────────────────────────
+    CreateMagicRuleRequest:
+      type: object
+      required: [name]
+      properties:
+        name:        { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+
+    UpdateMagicRuleRequest:
+      type: object
+      properties:
+        name:        { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+
+    MagicRuleResponse:
+      type: object
+      required: [id, project_id, name, description, created_at, updated_at]
+      properties:
+        id:          { type: string, format: uuid }
+        project_id:  { type: string, format: uuid }
+        name:        { type: string }
+        description: { type: string }
+        created_at:  { type: string, format: date-time }
+        updated_at:  { type: string, format: date-time }
+
+    # ── Wiki — Timeline ───────────────────────────────────────────────────────
+    CreateTimelineEventRequest:
+      type: object
+      required: [name]
+      properties:
+        name:               { type: string, minLength: 1, maxLength: 200 }
+        description:        { type: string }
+        entity_id:          { type: string, format: uuid, description: "Optional entity this event is anchored to." }
+        era:                { type: string }
+        year:               { type: integer, nullable: true }
+        month:              { type: integer, nullable: true }
+        day:                { type: integer, nullable: true }
+        anchor_event_id:    { type: string, format: uuid, nullable: true, description: "Mutually exclusive with year/month/day." }
+        anchor_offset_year: { type: integer, nullable: true }
+        anchor_offset_month: { type: integer, nullable: true }
+        anchor_offset_day:  { type: integer, nullable: true }
+
+    UpdateTimelineEventRequest:
+      type: object
+      properties:
+        name:        { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        era:         { type: string }
+        year:        { type: integer, nullable: true }
+        month:       { type: integer, nullable: true }
+        day:         { type: integer, nullable: true }
+
+    TimelineEventResponse:
+      type: object
+      required: [id, project_id, name, description, era, created_at, updated_at]
+      properties:
+        id:                 { type: string, format: uuid }
+        project_id:         { type: string, format: uuid }
+        entity_id:          { type: string, format: uuid, nullable: true }
+        name:               { type: string }
+        description:        { type: string }
+        era:                { type: string }
+        year:               { type: integer, nullable: true }
+        month:              { type: integer, nullable: true }
+        day:                { type: integer, nullable: true }
+        anchor_event_id:    { type: string, format: uuid, nullable: true }
+        anchor_offset_year: { type: integer, nullable: true }
+        anchor_offset_month: { type: integer, nullable: true }
+        anchor_offset_day:  { type: integer, nullable: true }
+        created_at:         { type: string, format: date-time }
+        updated_at:         { type: string, format: date-time }
+
+    # ── Wiki — Autolink ───────────────────────────────────────────────────────
+    AutolinkRequest:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+
+    AutolinkMatch:
+      type: object
+      required: [entity_id, entity_name, start, end]
+      properties:
+        entity_id:   { type: string, format: uuid }
+        entity_name: { type: string }
+        start:       { type: integer }
+        end:         { type: integer }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Paths
+# ═══════════════════════════════════════════════════════════════════════════════
+
+paths:
+
+  # ── Auth ────────────────────────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      operationId: authRegister
+      summary: Register a new user account
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        "201":
+          description: User created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "500": { $ref: '#/components/responses/InternalError' }
+
+  /auth/login:
+    post:
+      operationId: authLogin
+      summary: Log in and receive tokens
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        "200":
+          description: Login successful.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      operationId: authRefresh
+      summary: Rotate refresh token and issue new token pair
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        "200":
+          description: New token pair issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      operationId: authLogout
+      summary: Revoke the refresh token
+      tags: [auth]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
+      responses:
+        "200":
+          description: Logged out.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ── Projects ─────────────────────────────────────────────────────────────────
+
+  /projects:
+    get:
+      operationId: listProjects
+      summary: List all projects owned by the authenticated user
+      tags: [projects]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of projects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProjectResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createProject
+      summary: Create a new project
+      tags: [projects]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProjectRequest' }
+      responses:
+        "201":
+          description: Project created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getProject
+      summary: Get a single project
+      tags: [projects]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Project details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateProject
+      summary: Update project title or description
+      tags: [projects]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProjectRequest' }
+      responses:
+        "200":
+          description: Updated project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteProject
+      summary: Delete a project
+      tags: [projects]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Project deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Chapters ─────────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/chapters:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listChapters
+      summary: List all chapters in a project
+      tags: [chapters]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of chapters.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ChapterResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createChapter
+      summary: Create a new chapter
+      tags: [chapters]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateChapterRequest' }
+      responses:
+        "201":
+          description: Chapter created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChapterResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/chapters/{chapterId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: chapterId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getChapter
+      summary: Get a single chapter
+      tags: [chapters]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Chapter details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChapterResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateChapter
+      summary: Update a chapter
+      tags: [chapters]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateChapterRequest' }
+      responses:
+        "200":
+          description: Updated chapter.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChapterResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteChapter
+      summary: Delete a chapter and all its scenes
+      tags: [chapters]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Chapter deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Scenes ────────────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/chapters/{chapterId}/scenes:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: chapterId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listScenes
+      summary: List all scenes in a chapter
+      tags: [scenes]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of scenes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SceneResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createScene
+      summary: Create a new scene
+      tags: [scenes]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSceneRequest' }
+      responses:
+        "201":
+          description: Scene created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SceneResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/chapters/{chapterId}/scenes/{sceneId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: chapterId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: sceneId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getScene
+      summary: Get a single scene
+      tags: [scenes]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Scene details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SceneResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateScene
+      summary: Update a scene (partial — send only changed fields)
+      tags: [scenes]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSceneRequest' }
+      responses:
+        "200":
+          description: Updated scene.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SceneResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteScene
+      summary: Delete a scene
+      tags: [scenes]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Scene deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Git / Chronicle ───────────────────────────────────────────────────────────
+
+  /projects/{projectId}/git/status:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: gitStatus
+      summary: Current timeline and most recent Chronicle
+      tags: [git]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Git status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitStatusResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/git/chronicle:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: chronicle
+      summary: >
+        Snapshot all scene content and create a commit (Chronicle) on the
+        current Timeline. Returns 201 with the entry on success, or 200 with
+        a "nothing to chronicle" message when nothing changed.
+      tags: [git]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChronicleRequest' }
+      responses:
+        "201":
+          description: Chronicle created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChronicleEntry' }
+        "200":
+          description: Nothing to chronicle.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NothingToChronicle' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/git/lore:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: page
+        in: query
+        schema: { type: integer, default: 1, minimum: 1 }
+      - name: per_page
+        in: query
+        schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+    get:
+      operationId: lore
+      summary: Paginated Chronicle history (git log) for the current Timeline
+      tags: [git]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Chronicle entries, most recent first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ChronicleEntry' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/git/echo:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: from
+        in: query
+        required: true
+        schema: { type: string, description: "Source Chronicle SHA" }
+      - name: to
+        in: query
+        required: true
+        schema: { type: string, description: "Target Chronicle SHA" }
+    get:
+      operationId: echo
+      summary: Unified diff between two Chronicle SHAs
+      tags: [git]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Diff between the two SHAs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EchoResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/git/timelines:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listTimelines
+      summary: List all Timelines (branches) in the project
+      tags: [git]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of timelines.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TimelineInfo' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: diverge
+      summary: Create a new Timeline (branch) and switch to it
+      tags: [git]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DivergeRequest' }
+      responses:
+        "201":
+          description: New timeline created; returns full list of timelines.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TimelineInfo' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/git/timelines/{timelineName}/travel:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: timelineName
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: travelTo
+      summary: Switch the active Timeline (checkout branch)
+      tags: [git]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Now on the requested timeline; returns updated status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitStatusResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "500": { $ref: '#/components/responses/InternalError' }
+
+  /projects/{projectId}/git/timelines/{timelineName}/canonize:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: timelineName
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: canonize
+      summary: >
+        Fast-forward merge a Timeline into Canon. Returns 200 on success or
+        409 if the histories have diverged (a Paradox).
+      tags: [git]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Timeline merged into Canon.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CanonizeResult' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409":
+          description: Paradox — histories have diverged; manual resolution required.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CanonizeResult' }
+
+  # ── Wiki — Entities ───────────────────────────────────────────────────────────
+
+  /projects/{projectId}/wiki/entities:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: type
+        in: query
+        schema: { $ref: '#/components/schemas/EntityType' }
+        description: Filter by entity type.
+    get:
+      operationId: listEntities
+      summary: List wiki entities, optionally filtered by type
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of entities.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EntityResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createEntity
+      summary: Create a new wiki entity
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateEntityRequest' }
+      responses:
+        "201":
+          description: Entity created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/wiki/entities/{entityId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: entityId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getEntity
+      summary: Get a single wiki entity
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Entity details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateEntity
+      summary: Update a wiki entity
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateEntityRequest' }
+      responses:
+        "200":
+          description: Updated entity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteEntity
+      summary: Delete a wiki entity
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Entity deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/wiki/entities/{entityId}/children:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: entityId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listChildEntities
+      summary: List child entities of a parent entity
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Child entities.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EntityResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createChildEntity
+      summary: Create a child entity under a parent
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateEntityRequest' }
+      responses:
+        "201":
+          description: Child entity created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Wiki — Relationships ──────────────────────────────────────────────────────
+
+  /projects/{projectId}/wiki/relationships:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listRelationships
+      summary: List all entity relationships in the project
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of relationships.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RelationshipResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createRelationship
+      summary: Create a relationship between two entities
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRelationshipRequest' }
+      responses:
+        "201":
+          description: Relationship created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RelationshipResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/wiki/relationships/{relationshipId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: relationshipId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: deleteRelationship
+      summary: Delete a relationship
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Relationship deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Wiki — Graph ──────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/wiki/graph:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getWikiGraph
+      summary: Get all entities and relationships in one call (for graph rendering)
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Full wiki graph.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WikiGraphResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Wiki — Magic Rules ────────────────────────────────────────────────────────
+
+  /projects/{projectId}/wiki/magic-rules:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listMagicRules
+      summary: List all magic / world-system rules
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of magic rules.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MagicRuleResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createMagicRule
+      summary: Create a new magic rule
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateMagicRuleRequest' }
+      responses:
+        "201":
+          description: Magic rule created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MagicRuleResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/wiki/magic-rules/{ruleId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: ruleId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateMagicRule
+      summary: Update a magic rule
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMagicRuleRequest' }
+      responses:
+        "200":
+          description: Updated magic rule.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MagicRuleResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteMagicRule
+      summary: Delete a magic rule
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Magic rule deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Wiki — Timeline Events ────────────────────────────────────────────────────
+
+  /projects/{projectId}/wiki/timeline:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listTimelineEvents
+      summary: >
+        List all timeline events with resolved dates. Anchored events
+        have their year/month/day computed from their anchor chain.
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Timeline events.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TimelineEventResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createTimelineEvent
+      summary: Create a new timeline event
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTimelineEventRequest' }
+      responses:
+        "201":
+          description: Timeline event created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimelineEventResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/wiki/timeline/{eventId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: eventId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateTimelineEvent
+      summary: Update a timeline event
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTimelineEventRequest' }
+      responses:
+        "200":
+          description: Updated timeline event.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimelineEventResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteTimelineEvent
+      summary: Delete a timeline event
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Timeline event deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Wiki — Autolink ───────────────────────────────────────────────────────────
+
+  /projects/{projectId}/wiki/autolink:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: autolink
+      summary: Find entity name mentions in a block of text
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: text
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of entity matches with character offsets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AutolinkMatch' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
