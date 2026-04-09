@@ -1,6 +1,7 @@
 // WikiPanel — left-panel view for browsing and editing wiki entities.
 // Mounted in Editor when leftPanel === 'wiki'.
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '@/services/api'
 import type { WikiEntity, EntityType } from '@/services/api'
 
@@ -86,13 +87,22 @@ export default function WikiPanel({ token, projectId }: WikiPanelProps) {
       <div className="px-4 pt-4 pb-2 shrink-0">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-brand-muted uppercase tracking-wider">World Wiki</span>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-brand-purple/10 text-brand-purple hover:bg-brand-purple/20 transition-colors"
-          >
-            <PlusIcon />
-            New
-          </button>
+          <div className="flex items-center gap-1">
+            <Link
+              to={`/projects/${projectId}/wiki`}
+              className="p-1 rounded text-brand-muted hover:text-brand-cyan transition-colors"
+              title="Open full wiki"
+            >
+              <ExternalIcon />
+            </Link>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-brand-purple/10 text-brand-purple hover:bg-brand-purple/20 transition-colors"
+            >
+              <PlusIcon />
+              New
+            </button>
+          </div>
         </div>
 
         {/* Type filter */}
@@ -455,6 +465,15 @@ function PlusIcon() {
   return (
     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M8 3v10M3 8h10" />
+    </svg>
+  )
+}
+
+function ExternalIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9" />
+      <path d="M10 2h4v4M14 2L8 8" />
     </svg>
   )
 }

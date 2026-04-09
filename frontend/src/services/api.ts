@@ -165,6 +165,23 @@ export interface WikiRelationship {
   created_at: string
 }
 
+export interface WikiTimelineEvent {
+  id: string
+  project_id: string
+  name: string
+  description: string | null
+  era: string | null
+  year: number | null
+  month: number | null
+  day: number | null
+  anchor_event_id: string | null
+  anchor_offset_year: number | null
+  anchor_offset_month: number | null
+  anchor_offset_day: number | null
+  created_at: string
+  updated_at: string
+}
+
 // ── API client ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -268,5 +285,42 @@ export const api = {
 
     deleteRelationship: (token: string, projectId: string, relationshipId: string) =>
       request<void>('DELETE', `/projects/${projectId}/wiki/relationships/${relationshipId}`, undefined, token),
+
+    listTimeline: (token: string, projectId: string) =>
+      request<WikiTimelineEvent[]>('GET', `/projects/${projectId}/wiki/timeline`, undefined, token),
+
+    createTimelineEvent: (
+      token: string,
+      projectId: string,
+      data: {
+        name: string
+        description?: string
+        era?: string
+        year?: number
+        month?: number
+        day?: number
+        anchor_event_id?: string
+        anchor_offset_year?: number
+        anchor_offset_month?: number
+        anchor_offset_day?: number
+      },
+    ) => request<WikiTimelineEvent>('POST', `/projects/${projectId}/wiki/timeline`, data, token),
+
+    updateTimelineEvent: (
+      token: string,
+      projectId: string,
+      eventId: string,
+      data: {
+        name?: string
+        description?: string
+        era?: string
+        year?: number | null
+        month?: number | null
+        day?: number | null
+      },
+    ) => request<WikiTimelineEvent>('PATCH', `/projects/${projectId}/wiki/timeline/${eventId}`, data, token),
+
+    deleteTimelineEvent: (token: string, projectId: string, eventId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/wiki/timeline/${eventId}`, undefined, token),
   },
 }
