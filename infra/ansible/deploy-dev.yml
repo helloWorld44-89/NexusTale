@@ -1,0 +1,78 @@
+---
+# deploy-dev.yml
+#
+# Deploys the NexusTale stack to the dev VM.
+# Called by the GitHub Actions dev workflow; variables are injected at
+# runtime via --extra-vars from GitHub secrets.
+#
+# Required extra-vars:
+#   dev_vm_host          — IP or hostname of the dev VM
+#   dev_vm_user          — SSH user on the dev VM
+#   image_tag            — Docker image tag to deploy (git SHA)
+#   ghcr_token           — GitHub PAT with read:packages scope
+#   nexustale_db_password
+#   nexustale_jwt_secret
+#   nexustale_minio_accesskey
+#   nexustale_minio_secretkey
+
+- name: Deploy NexusTale to dev VM
+  hosts: "{{ dev_vm_host }}"
+  remote_user: "{{ dev_vm_user }}"
+  gather_facts: false
+
+  vars:
+    deploy_dir: /opt/docker/nexustale
+    compose_file: "{{ deploy_dir }}/docker-compose.yml"
+    ghcr_registry: ghcr.io
+    ghcr_user: helloworld44-89
+
+  tasks:
+    - name: Ensure deploy directory exists
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}"
+        state: directory
+        mode: "0750"
+
+    - name: Copy deploy compose file
+      ansible.builtin.copy:
+        src: "{{ workspace }}/infra/docker/docker-compose.deploy.yml"
+        dest: "{{ compose_file }}"
+        mode: "0640"
+
+    - name: Write .env file with secrets
+      ansible.builtin.copy:
+        content: |
+          IMAGE_TAG={{ image_tag }}
+          NEXUSTALE_DB_PASSWORD={{ nexustale_db_password }}
+          NEXUSTALE_AUTH_JWTSECRET={{ nexustale_jwt_secret }}
+          NEXUSTALE_MINIO_ACCESSKEY={{ nexustale_minio_accesskey }}
+          NEXUSTALE_MINIO_SECRETKEY={{ nexustale_minio_secretkey }}
+        dest: "{{ deploy_dir }}/.env"
+        mode: "0600"
+      no_log: true
+
+    - name: Log in to GHCR
+      ansible.builtin.shell: |
+        echo "{{ ghcr_token }}" | docker login {{ ghcr_registry }} -u {{ ghcr_user }} --password-stdin
+      no_log: true
+      changed_when: true
+
+    - name: Pull latest images
+      ansible.builtin.shell: docker compose -f {{ compose_file }} pull
+      args:
+        chdir: "{{ deploy_dir }}"
+      register: pull_result
+      changed_when: "'Pull complete' in pull_result.stdout or 'Downloaded' in pull_result.stdout"
+
+    - name: Deploy stack
+      ansible.builtin.shell: docker compose -f {{ compose_file }} up -d --remove-orphans
+      args:
+        chdir: "{{ deploy_dir }}"
+      changed_when: true
+
+    - name: Remove stopped containers
+      ansible.builtin.shell: docker compose -f {{ compose_file }} ps -q --filter status=exited | xargs -r docker rm
+      args:
+        chdir: "{{ deploy_dir }}"
+      changed_when: false
+      ignore_errors: true
