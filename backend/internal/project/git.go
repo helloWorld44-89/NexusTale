@@ -108,16 +108,30 @@ func (g *GitService) Chronicle(repoPath, note string, files map[string]string) (
 		}
 	}
 
+	// Check worktree status before committing. go-git re-stages files by mtime
+	// even when the content hash is identical to HEAD, so ErrEmptyCommit is not
+	// reliable. Inspecting Status() catches this correctly.
+	status, err := wt.Status()
+	if err != nil {
+		return "", fmt.Errorf("status: %w", err)
+	}
+	allClean := true
+	for _, s := range status {
+		if s.Staging != git.Unmodified {
+			allClean = false
+			break
+		}
+	}
+	if allClean {
+		head, _ := repo.Head()
+		return head.Hash().String(), ErrNothingToChronicle
+	}
+
 	hash, err := wt.Commit(note, &git.CommitOptions{
 		Author:            systemAuthor(),
 		AllowEmptyCommits: false,
 	})
 	if err != nil {
-		// go-git returns an error when there is nothing to commit.
-		if errors.Is(err, git.ErrEmptyCommit) {
-			head, _ := repo.Head()
-			return head.Hash().String(), ErrNothingToChronicle
-		}
 		return "", fmt.Errorf("commit: %w", err)
 	}
 

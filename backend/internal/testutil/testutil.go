@@ -74,7 +74,21 @@ func cleanDB(pool *pgxpool.Pool) {
 
 // SetupRouter builds a test router wired with all current services.
 // The wiki group mirrors the mounting in cmd/api/main.go.
+// Git is disabled (nil) — use SetupRouterWithGit for git-enabled tests.
 func SetupRouter(t *testing.T) (*gin.Engine, *sqlcgen.Queries, *auth.Service) {
+	t.Helper()
+	return setupRouter(t, "")
+}
+
+// SetupRouterWithGit is like SetupRouter but wires a real GitService using a
+// temporary directory. Use this for tests that exercise Chronicle, Lore, Echo,
+// Diverge, TravelTo, or Canonize.
+func SetupRouterWithGit(t *testing.T) (*gin.Engine, *sqlcgen.Queries, *auth.Service) {
+	t.Helper()
+	return setupRouter(t, t.TempDir())
+}
+
+func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries, *auth.Service) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -82,7 +96,12 @@ func SetupRouter(t *testing.T) (*gin.Engine, *sqlcgen.Queries, *auth.Service) {
 	queries := sqlcgen.New(pool)
 
 	authService := auth.NewService(queries, TestJWTSecret, TestAccessExpiry, TestRefreshExpiry, TestBcryptCost)
-	projectService := project.NewService(queries, nil) // No git for tests
+
+	var gitSvc *project.GitService
+	if reposPath != "" {
+		gitSvc = project.NewGitService(reposPath)
+	}
+	projectService := project.NewService(queries, gitSvc)
 	wikiService := wiki.NewService(queries)
 
 	authHandler := auth.NewHandler(authService)
