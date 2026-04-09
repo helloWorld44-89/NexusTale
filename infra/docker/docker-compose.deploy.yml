@@ -51,12 +51,6 @@ services:
       - "9001:9001"
     volumes:
       - minio-data:/data
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
 
   # ── Application ─────────────────────────────────────────────────────────────
 
@@ -91,7 +85,7 @@ services:
       redis:
         condition: service_healthy
       minio:
-        condition: service_healthy
+        condition: service_started
 
 volumes:
   postgres-data:
