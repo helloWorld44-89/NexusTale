@@ -5,6 +5,7 @@ import Register from '@/pages/Auth/Register'
 import Dashboard from '@/pages/Dashboard'
 import Editor from '@/pages/Editor'
 import WikiHub from '@/pages/WikiHub'
+import Settings from '@/pages/Settings'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -40,6 +41,15 @@ export function AppRouter() {
         element={
           <ProtectedRoute>
             <WikiHub />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <Settings />
           </ProtectedRoute>
         }
       />

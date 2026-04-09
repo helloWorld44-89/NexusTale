@@ -13,10 +13,14 @@ NexusTale is a sci-fi/fantasy novel-writing tool. Assist with narrative systems,
 | `backend/pkg/` | Shared libs: `db` (pool, migrations), `db/sqlcgen` (generated), `cache`, `storage`, `telemetry`, `apperror`. |
 | `backend/pkg/db/queries/` | sqlc query files; **edit these**, then regenerate—do not hand-edit `sqlcgen/`. |
 | `backend/pkg/db/migrations/` | SQL migrations (golang-migrate style). |
-| `infra/docker/` | Dev `docker-compose` and API Dockerfile. |
-| `infra/k8s/`, `infra/helm/` | Deployment manifests (may be stubs—verify before relying on them). |
-
-There is no committed frontend app yet; the product direction is a **React** UI (served separately or static—follow whatever pattern exists once `package.json` lands).
+| `frontend/` | React 18 + Vite + TypeScript + Tailwind SPA. Entry: `src/main.tsx`. |
+| `frontend/src/services/api.ts` | Fetch wrapper for all backend routes; types imported from `api-types.ts`. |
+| `frontend/src/services/api-types.ts` | **Generated** — do not hand-edit. Run `npm run gen:api` after changing `docs/openapi.yaml`. |
+| `docs/openapi.yaml` | OpenAPI 3.1.0 spec — source of truth for all API types. Edit here, then regenerate. |
+| `infra/docker/` | Dev `docker-compose` and API + frontend Dockerfiles. |
+| `infra/ansible/` | Ansible playbooks for deploying to dev VM. |
+| `infra/k8s/`, `infra/helm/` | Deployment manifests (stubs — not yet used). |
+| `bruno/` | Bruno API test collection (auth, projects, chapters, scenes, wiki, git). |
 
 ## Stack (backend)
 

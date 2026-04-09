@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -195,6 +196,7 @@ func (s *Service) CreateScene(ctx context.Context, chapterID uuid.UUID, req Crea
 		Tags:      tags,
 		Summary:   req.Summary,
 		SortOrder: req.SortOrder,
+		WordCount: countWords(req.Content),
 	})
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("create scene: %v", err))
@@ -232,12 +234,16 @@ func (s *Service) UpdateScene(ctx context.Context, id uuid.UUID, req UpdateScene
 	}
 	if req.Content != nil {
 		params.Content = pgtype.Text{String: *req.Content, Valid: true}
+		params.WordCount = pgtype.Int4{Int32: countWords(*req.Content), Valid: true}
 	}
 	if req.POV != nil {
 		params.Pov = pgtype.Text{String: *req.POV, Valid: true}
 	}
 	if req.Tense != nil {
 		params.Tense = pgtype.Text{String: *req.Tense, Valid: true}
+	}
+	if req.Tags != nil {
+		params.Tags = *req.Tags
 	}
 	if req.Summary != nil {
 		params.Summary = pgtype.Text{String: *req.Summary, Valid: true}
@@ -470,7 +476,13 @@ func toSceneResponse(sc sqlcgen.Scene) *SceneResponse {
 		Summary:      sc.Summary,
 		SummaryStale: sc.SummaryStale,
 		SortOrder:    sc.SortOrder,
+		WordCount:    sc.WordCount,
 		CreatedAt:    sc.CreatedAt.Time,
 		UpdatedAt:    sc.UpdatedAt.Time,
 	}
+}
+
+// countWords returns the number of whitespace-delimited tokens in s.
+func countWords(s string) int32 {
+	return int32(len(strings.Fields(s)))
 }

@@ -25,15 +25,17 @@ type Service struct {
 	accessTokenExpiry  time.Duration
 	refreshTokenExpiry time.Duration
 	bcryptCost         int
+	encKey             []byte // AES-256-GCM key for API key encryption
 }
 
-func NewService(queries *sqlcgen.Queries, jwtSecret string, accessExpiry, refreshExpiry time.Duration, bcryptCost int) *Service {
+func NewService(queries *sqlcgen.Queries, jwtSecret string, accessExpiry, refreshExpiry time.Duration, bcryptCost int, encKey []byte) *Service {
 	return &Service{
 		queries:            queries,
 		jwtSecret:          []byte(jwtSecret),
 		accessTokenExpiry:  accessExpiry,
 		refreshTokenExpiry: refreshExpiry,
 		bcryptCost:         bcryptCost,
+		encKey:             encKey,
 	}
 }
 

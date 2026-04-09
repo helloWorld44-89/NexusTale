@@ -546,6 +546,43 @@ export interface paths {
         patch: operations["updateTimelineEvent"];
         trace?: never;
     };
+    "/users/me/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List stored key hints for the authenticated user */
+        get: operations["listAPIKeys"];
+        put?: never;
+        /** Store or replace an encrypted API key for a provider */
+        post: operations["upsertAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/api-keys/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove the stored key for a provider */
+        delete: operations["deleteAPIKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectId}/wiki/autolink": {
         parameters: {
             query?: never;
@@ -672,6 +709,7 @@ export interface components {
             content?: string;
             pov?: string;
             tense?: string;
+            tags?: string[];
             summary?: string;
             summary_stale?: boolean;
             sort_order?: number;
@@ -689,6 +727,25 @@ export interface components {
             summary?: string;
             summary_stale?: boolean;
             sort_order: number;
+            /** @description Server-computed word count; updated on every content save. */
+            word_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        UpsertAPIKeyRequest: {
+            /** @description e.g. openai, anthropic, gemini, mistral, custom */
+            provider: string;
+            /** @description Raw API key — encrypted at rest, never returned. */
+            key: string;
+        };
+        APIKeyResponse: {
+            /** Format: uuid */
+            id: string;
+            provider: string;
+            /** @description Last 4 characters of the key for display only. */
+            key_hint: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2155,6 +2212,75 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAPIKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of key hints (no raw keys). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIKeyResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    upsertAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertAPIKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored key hint. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIKeyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Key deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };

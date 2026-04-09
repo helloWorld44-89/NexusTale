@@ -13,9 +13,9 @@ import (
 )
 
 const createScene = `-- name: CreateScene :one
-INSERT INTO scenes (chapter_id, title, content, pov, tense, tags, summary, sort_order)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at
+INSERT INTO scenes (chapter_id, title, content, pov, tense, tags, summary, sort_order, word_count)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 `
 
 type CreateSceneParams struct {
@@ -27,6 +27,7 @@ type CreateSceneParams struct {
 	Tags      []string  `json:"tags"`
 	Summary   string    `json:"summary"`
 	SortOrder int32     `json:"sort_order"`
+	WordCount int32     `json:"word_count"`
 }
 
 func (q *Queries) CreateScene(ctx context.Context, arg CreateSceneParams) (Scene, error) {
@@ -39,6 +40,7 @@ func (q *Queries) CreateScene(ctx context.Context, arg CreateSceneParams) (Scene
 		arg.Tags,
 		arg.Summary,
 		arg.SortOrder,
+		arg.WordCount,
 	)
 	var i Scene
 	err := row.Scan(
@@ -54,6 +56,7 @@ func (q *Queries) CreateScene(ctx context.Context, arg CreateSceneParams) (Scene
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.WordCount,
 	)
 	return i, err
 }
@@ -68,7 +71,7 @@ func (q *Queries) DeleteScene(ctx context.Context, id uuid.UUID) error {
 }
 
 const getScene = `-- name: GetScene :one
-SELECT id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at
+SELECT id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 FROM scenes
 WHERE id = $1
 `
@@ -89,12 +92,13 @@ func (q *Queries) GetScene(ctx context.Context, id uuid.UUID) (Scene, error) {
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.WordCount,
 	)
 	return i, err
 }
 
 const listScenesByChapter = `-- name: ListScenesByChapter :many
-SELECT id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at
+SELECT id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 FROM scenes
 WHERE chapter_id = $1
 ORDER BY sort_order ASC
@@ -122,6 +126,7 @@ func (q *Queries) ListScenesByChapter(ctx context.Context, chapterID uuid.UUID) 
 			&i.SortOrder,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.WordCount,
 		); err != nil {
 			return nil, err
 		}
@@ -139,12 +144,14 @@ SET title = COALESCE($2, title),
     content = COALESCE($3, content),
     pov = COALESCE($4, pov),
     tense = COALESCE($5, tense),
-    summary = COALESCE($6, summary),
-    summary_stale = COALESCE($7, summary_stale),
-    sort_order = COALESCE($8, sort_order),
+    tags = COALESCE($6, tags),
+    summary = COALESCE($7, summary),
+    summary_stale = COALESCE($8, summary_stale),
+    sort_order = COALESCE($9, sort_order),
+    word_count = COALESCE($10, word_count),
     updated_at = now()
 WHERE id = $1
-RETURNING id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at
+RETURNING id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 `
 
 type UpdateSceneParams struct {
@@ -153,9 +160,11 @@ type UpdateSceneParams struct {
 	Content      pgtype.Text `json:"content"`
 	Pov          pgtype.Text `json:"pov"`
 	Tense        pgtype.Text `json:"tense"`
+	Tags         []string    `json:"tags"`
 	Summary      pgtype.Text `json:"summary"`
 	SummaryStale pgtype.Bool `json:"summary_stale"`
 	SortOrder    pgtype.Int4 `json:"sort_order"`
+	WordCount    pgtype.Int4 `json:"word_count"`
 }
 
 func (q *Queries) UpdateScene(ctx context.Context, arg UpdateSceneParams) (Scene, error) {
@@ -165,9 +174,11 @@ func (q *Queries) UpdateScene(ctx context.Context, arg UpdateSceneParams) (Scene
 		arg.Content,
 		arg.Pov,
 		arg.Tense,
+		arg.Tags,
 		arg.Summary,
 		arg.SummaryStale,
 		arg.SortOrder,
+		arg.WordCount,
 	)
 	var i Scene
 	err := row.Scan(
@@ -183,6 +194,7 @@ func (q *Queries) UpdateScene(ctx context.Context, arg UpdateSceneParams) (Scene
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.WordCount,
 	)
 	return i, err
 }

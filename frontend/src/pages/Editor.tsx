@@ -10,6 +10,7 @@ import ChatBar from '@/components/ai/ChatBar'
 import GitPanel from '@/components/editor/GitPanel'
 import WikiPanel from '@/components/wiki/WikiPanel'
 import ScribeEditor from '@/components/editor/ScribeEditor'
+import SceneMetadataPanel from '@/components/editor/SceneMetadataPanel'
 import ProjectExplorer from '@/components/project/ProjectExplorer'
 import ActivityBar from '@/components/layout/ActivityBar'
 
@@ -32,6 +33,7 @@ export default function Editor() {
   const [selectedChapterId,  setSelectedChapterId]  = useState<string | null>(null)
   const [selectedSceneId,    setSelectedSceneId]    = useState<string | null>(null)
   const [sceneContents,      setSceneContents]      = useState<Record<string, string>>({})
+  const [sceneData,          setSceneData]          = useState<Record<string, Scene>>({})
   const [sceneToChapter,     setSceneToChapter]     = useState<Record<string, string>>({})
   const [loading,            setLoading]            = useState(true)
   const [leftPanel,          setLeftPanel]          = useState<LeftPanel>('chat')
@@ -65,11 +67,13 @@ export default function Editor() {
         if (cancelled) return
 
         const contents: Record<string, string> = {}
+        const data: Record<string, Scene>      = {}
         const toChapter: Record<string, string> = {}
         const withScenes: ChapterWithScenes[] = sorted.map((ch, i) => {
           const scenes = [...(sceneLists[i] ?? [])].sort((a, b) => a.sort_order - b.sort_order)
           for (const sc of scenes) {
-            contents[sc.id] = sc.content
+            contents[sc.id]  = sc.content
+            data[sc.id]      = sc
             toChapter[sc.id] = ch.id
           }
           return { ...ch, scenes }
@@ -78,6 +82,7 @@ export default function Editor() {
         setProjectTitle(project.title)
         setChapters(withScenes)
         setSceneContents(contents)
+        setSceneData(data)
         setSceneToChapter(toChapter)
 
         // Default selection: first chapter's first scene.
@@ -132,6 +137,7 @@ export default function Editor() {
     const sortOrder = (chapter?.scenes.length ?? 0) + 1
     const scene = await api.scenes.create(accessToken, projectId, chapterId, title, sortOrder)
     setSceneContents((prev) => ({ ...prev, [scene.id]: '' }))
+    setSceneData((prev) => ({ ...prev, [scene.id]: scene }))
     setSceneToChapter((prev) => ({ ...prev, [scene.id]: chapterId }))
     setChapters((prev) =>
       prev.map((c) => c.id === chapterId ? { ...c, scenes: [...c.scenes, scene] } : c)
@@ -188,14 +194,25 @@ export default function Editor() {
           <GitPanel token={accessToken} projectId={projectId} />
         )}
         {leftPanel === 'wiki' && projectId && accessToken && (
-          <WikiPanel token={accessToken} projectId={projectId} />
+          <WikiPanel token={accessToken} projectId={projectId} currentContent={content} />
         )}
-        <ScribeEditor
-          sceneTitle={activeScene?.title ?? 'Select a scene'}
-          content={content}
-          sceneSelected={!!activeScene}
-          onChange={(val) => activeScene && handleContentChange(activeScene.id, val)}
-        />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <ScribeEditor
+            sceneTitle={activeScene?.title ?? 'Select a scene'}
+            content={content}
+            sceneSelected={!!activeScene}
+            onChange={(val) => activeScene && handleContentChange(activeScene.id, val)}
+          />
+          {activeScene && accessToken && projectId && selectedChapterId && sceneData[activeScene.id] && (
+            <SceneMetadataPanel
+              token={accessToken}
+              projectId={projectId}
+              chapterId={selectedChapterId}
+              scene={sceneData[activeScene.id]}
+              onUpdate={(updated) => setSceneData((prev) => ({ ...prev, [updated.id]: updated }))}
+            />
+          )}
+        </div>
         {explorerOpen && (
           <ProjectExplorer
             projectTitle={projectTitle}

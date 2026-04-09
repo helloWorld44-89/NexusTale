@@ -186,13 +186,14 @@ components:
         content:       { type: string }
         pov:           { type: string }
         tense:         { type: string }
+        tags:          { type: array, items: { type: string } }
         summary:       { type: string }
         summary_stale: { type: boolean }
         sort_order:    { type: integer }
 
     SceneResponse:
       type: object
-      required: [id, chapter_id, title, content, sort_order, created_at, updated_at]
+      required: [id, chapter_id, title, content, sort_order, word_count, created_at, updated_at]
       properties:
         id:            { type: string, format: uuid }
         chapter_id:    { type: string, format: uuid }
@@ -204,8 +205,27 @@ components:
         summary:       { type: string }
         summary_stale: { type: boolean }
         sort_order:    { type: integer }
+        word_count:    { type: integer, description: "Server-computed word count; updated on every content save." }
         created_at:    { type: string, format: date-time }
         updated_at:    { type: string, format: date-time }
+
+    # ── API Keys ──────────────────────────────────────────────────────────────
+    UpsertAPIKeyRequest:
+      type: object
+      required: [provider, key]
+      properties:
+        provider: { type: string, description: "e.g. openai, anthropic, gemini, mistral, custom" }
+        key:      { type: string, description: "Raw API key — encrypted at rest, never returned." }
+
+    APIKeyResponse:
+      type: object
+      required: [id, provider, key_hint, created_at, updated_at]
+      properties:
+        id:         { type: string, format: uuid }
+        provider:   { type: string }
+        key_hint:   { type: string, description: "Last 4 characters of the key for display only." }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 
     # ── Git / Chronicle ───────────────────────────────────────────────────────
     ChronicleRequest:
@@ -1416,6 +1436,59 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── User API Keys ─────────────────────────────────────────────────────────────
+
+  /users/me/api-keys:
+    post:
+      operationId: upsertAPIKey
+      summary: Store or replace an encrypted API key for a provider
+      tags: [users]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpsertAPIKeyRequest' }
+      responses:
+        "200":
+          description: Stored key hint.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/APIKeyResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    get:
+      operationId: listAPIKeys
+      summary: List stored key hints for the authenticated user
+      tags: [users]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of key hints (no raw keys).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/APIKeyResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /users/me/api-keys/{provider}:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      operationId: deleteAPIKey
+      summary: Remove the stored key for a provider
+      tags: [users]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Key deleted.
         "401": { $ref: '#/components/responses/Unauthorized' }
         "404": { $ref: '#/components/responses/NotFound' }
 

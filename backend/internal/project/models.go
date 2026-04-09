@@ -92,13 +92,14 @@ type CreateSceneRequest struct {
 }
 
 type UpdateSceneRequest struct {
-	Title        *string `json:"title"`
-	Content      *string `json:"content"`
-	POV          *string `json:"pov"`
-	Tense        *string `json:"tense"`
-	Summary      *string `json:"summary"`
-	SummaryStale *bool   `json:"summary_stale"`
-	SortOrder    *int32  `json:"sort_order"`
+	Title        *string   `json:"title"`
+	Content      *string   `json:"content"`
+	POV          *string   `json:"pov"`
+	Tense        *string   `json:"tense"`
+	Tags         *[]string `json:"tags"`
+	Summary      *string   `json:"summary"`
+	SummaryStale *bool     `json:"summary_stale"`
+	SortOrder    *int32    `json:"sort_order"`
 }
 
 // Response DTOs
@@ -135,6 +136,7 @@ type SceneResponse struct {
 	Summary      string    `json:"summary"`
 	SummaryStale bool      `json:"summary_stale"`
 	SortOrder    int32     `json:"sort_order"`
+	WordCount    int32     `json:"word_count"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
