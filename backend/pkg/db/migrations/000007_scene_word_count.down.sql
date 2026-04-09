@@ -1,0 +1,1 @@
+ALTER TABLE scenes DROP COLUMN IF EXISTS word_count;

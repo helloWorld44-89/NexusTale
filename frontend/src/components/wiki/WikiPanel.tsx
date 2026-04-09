@@ -1,14 +1,18 @@
 // WikiPanel — left-panel view for browsing and editing wiki entities.
 // Mounted in Editor when leftPanel === 'wiki'.
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '@/services/api'
-import type { WikiEntity, EntityType } from '@/services/api'
+import type { WikiEntity, EntityType, AutolinkMatch } from '@/services/api'
 
 interface WikiPanelProps {
   token: string
   projectId: string
+  /** Content of the currently active scene — used for autolink highlighting. */
+  currentContent?: string
 }
+
+const AUTOLINK_DEBOUNCE_MS = 1200
 
 const ENTITY_TYPES: EntityType[] = ['character', 'location', 'faction', 'item', 'concept', 'lore']
 
@@ -21,13 +25,15 @@ const TYPE_COLORS: Record<EntityType, string> = {
   lore: 'text-rose-400 bg-rose-400/10',
 }
 
-export default function WikiPanel({ token, projectId }: WikiPanelProps) {
+export default function WikiPanel({ token, projectId, currentContent }: WikiPanelProps) {
   const [entities, setEntities] = useState<WikiEntity[]>([])
   const [filter, setFilter] = useState<EntityType | 'all'>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<WikiEntity | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [autolinkMatches, setAutolinkMatches] = useState<AutolinkMatch[]>([])
+  const autolinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadEntities = useCallback(async () => {
     setLoading(true)
@@ -51,6 +57,24 @@ export default function WikiPanel({ token, projectId }: WikiPanelProps) {
       if (updated) setSelected(updated)
     }
   }, [entities])
+
+  // Debounced autolink: find wiki entity mentions in the current scene content.
+  useEffect(() => {
+    if (!currentContent || currentContent.trim().length < 3) {
+      setAutolinkMatches([])
+      return
+    }
+    if (autolinkTimer.current) clearTimeout(autolinkTimer.current)
+    autolinkTimer.current = setTimeout(async () => {
+      try {
+        const matches = await api.wiki.autolink(token, projectId, currentContent)
+        setAutolinkMatches(matches)
+      } catch {
+        setAutolinkMatches([])
+      }
+    }, AUTOLINK_DEBOUNCE_MS)
+    return () => { if (autolinkTimer.current) clearTimeout(autolinkTimer.current) }
+  }, [currentContent, token, projectId])
 
   const handleCreated = (entity: WikiEntity) => {
     setEntities((prev) => [entity, ...prev])
@@ -115,6 +139,27 @@ export default function WikiPanel({ token, projectId }: WikiPanelProps) {
           ))}
         </div>
       </div>
+
+      {/* Autolink — entities found in the current scene */}
+      {autolinkMatches.length > 0 && (
+        <div className="px-3 pb-2 shrink-0 border-b border-brand-border">
+          <p className="text-[10px] uppercase tracking-wider text-brand-muted mb-1.5">In this scene</p>
+          <div className="flex flex-wrap gap-1">
+            {autolinkMatches.map((m) => {
+              const entity = entities.find((e) => e.id === m.entity_id)
+              return (
+                <button
+                  key={m.entity_id}
+                  onClick={() => entity && setSelected(entity)}
+                  className="px-2 py-0.5 rounded text-[11px] bg-brand-cyan/10 text-brand-cyan hover:bg-brand-cyan/20 transition-colors"
+                >
+                  {m.entity_name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Entity list */}
       <div className="flex-1 overflow-y-auto min-h-0 px-3 py-1">

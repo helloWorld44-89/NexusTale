@@ -7,12 +7,13 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig
-	DB     DBConfig
-	Auth   AuthConfig
-	Redis  RedisConfig
-	Minio  MinioConfig
-	Git    GitConfig
+	Server     ServerConfig
+	DB         DBConfig
+	Auth       AuthConfig
+	Encryption EncryptionConfig
+	Redis      RedisConfig
+	Minio      MinioConfig
+	Git        GitConfig
 }
 
 type ServerConfig struct {
@@ -50,6 +51,13 @@ type GitConfig struct {
 	ReposPath string
 }
 
+// EncryptionConfig holds the server-side key used for AES-GCM encryption of
+// user-provided API keys. Key must be exactly 32 bytes (64 hex chars).
+// NEXUSTALE_ENCRYPTION_KEY env var — change from default in any real deploy.
+type EncryptionConfig struct {
+	Key string // hex-encoded 32-byte key
+}
+
 func Load() (*Config, error) {
 	v := viper.New()
 	v.SetEnvPrefix("NEXUSTALE")
@@ -74,6 +82,8 @@ func Load() (*Config, error) {
 	v.SetDefault("minio.bucket", "nexustale")
 	v.SetDefault("minio.usessl", false)
 	v.SetDefault("git.repospath", "./data/repos")
+	// 32-byte dev default — must be overridden in production
+	v.SetDefault("encryption.key", "0000000000000000000000000000000000000000000000000000000000000000")
 
 	// Try config file
 	v.SetConfigName("config")
@@ -108,6 +118,9 @@ func Load() (*Config, error) {
 			SecretKey: v.GetString("minio.secretkey"),
 			Bucket:    v.GetString("minio.bucket"),
 			UseSSL:    v.GetBool("minio.usessl"),
+		},
+		Encryption: EncryptionConfig{
+			Key: v.GetString("encryption.key"),
 		},
 		Git: GitConfig{
 			ReposPath: v.GetString("git.repospath"),

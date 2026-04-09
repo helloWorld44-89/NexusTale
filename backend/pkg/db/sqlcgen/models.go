@@ -115,6 +115,7 @@ type Scene struct {
 	SortOrder    int32              `json:"sort_order"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	WordCount    int32              `json:"word_count"`
 }
 
 type User struct {
@@ -123,6 +124,16 @@ type User struct {
 	DisplayName  string             `json:"display_name"`
 	PasswordHash string             `json:"password_hash"`
 	Role         UserRole           `json:"role"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type UserApiKey struct {
+	ID           uuid.UUID          `json:"id"`
+	UserID       uuid.UUID          `json:"user_id"`
+	Provider     string             `json:"provider"`
+	EncryptedKey []byte             `json:"encrypted_key"`
+	KeyHint      string             `json:"key_hint"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }

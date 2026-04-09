@@ -95,7 +95,9 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 	pool := SetupTestDB(t)
 	queries := sqlcgen.New(pool)
 
-	authService := auth.NewService(queries, TestJWTSecret, TestAccessExpiry, TestRefreshExpiry, TestBcryptCost)
+	// Use a zero key for tests — encryption is functional but not secret.
+	testEncKey := make([]byte, 32)
+	authService := auth.NewService(queries, TestJWTSecret, TestAccessExpiry, TestRefreshExpiry, TestBcryptCost, testEncKey)
 
 	var gitSvc *project.GitService
 	if reposPath != "" {

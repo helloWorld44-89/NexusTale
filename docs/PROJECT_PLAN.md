@@ -286,11 +286,25 @@ frontend/
 
 ## 6. Infrastructure & DevOps
 
-- **Local**: existing `docker compose` (Postgres, Redis, MinIO); add optional Ollama service in compose for dev.
-- **Environments**: `dev`, `staging`, `prod`; secrets via env or secret manager.
-- **CI**: `go test`, lint, `sqlc diff` check; frontend typecheck + test + build.
-- **CD**: container image for API; static SPA to CDN or same origin behind reverse proxy.
-- **K8s/Helm**: fill templates when you have real images, ingress, and secrets; optional for early stage.
+### 6.1 Current state (as of 2026-04-09) ✅
+
+- **Local dev**: `docker compose` (Postgres, Redis, MinIO) via `make dev`; API runs with `make run`.
+- **CI/CD — dev branch**: GitHub Actions on a self-hosted runner (mgmt VM).
+  - Push to `dev` → run `go test` → build & push API + frontend images to GHCR (`ghcr.io/helloworld44-89/nexustale/{api,frontend}:dev` and `:{sha}`).
+  - Ansible playbook (`infra/ansible/deploy-dev.yml`) deploys to dev VM via `docker compose` pulling from GHCR.
+  - Secrets stored as GitHub repository secrets.
+- **Dev VM**: full stack running — API (port 8080), frontend/nginx (port 80), Postgres, Redis, MinIO.
+- **nginx**: single `/api/` location block proxies REST + WebSocket; SPA fallback for React Router.
+- **Images**: `infra/docker/Dockerfile.api` (multi-stage Go build), `infra/docker/Dockerfile.frontend` (Vite + nginx).
+- **Deploy compose**: `infra/docker/docker-compose.deploy.yml` — pulls from GHCR, env vars from `.env` written by Ansible.
+
+### 6.2 Remaining infra work
+
+- **Environments**: `staging`, `prod` pipelines not yet built; follow same Ansible pattern.
+- **Secrets**: currently GitHub repo secrets; move to Ansible Vault or a secret manager for prod.
+- **CI additions**: frontend typecheck + lint, `sqlc diff` check to catch uncommitted regen.
+- **K8s/Helm**: templates exist as stubs; fill when scaling beyond a single VM.
+- **Ollama**: add as optional service in local compose for AI dev.
 
 ---
 
@@ -301,6 +315,22 @@ frontend/
 **Actionable checklist:** [specs/phase-a-mvp.md](./specs/phase-a-mvp.md) (tasks **A0–A4** with acceptance criteria).
 
 Summary: README + OpenAPI stub + infra honesty; Wiki v1 (sqlc + REST + tests); Git visibility API; React app (auth, projects, scene editor, wiki, minimal Git panel); CI/docs touch-up.
+
+**Completed as of 2026-04-09:**
+- ✅ Auth (register/login/refresh/logout), JWT middleware
+- ✅ Projects, chapters, scenes — full CRUD + integration tests
+- ✅ Git versioning — Chronicle/Lore/Echo/Diverge/TravelTo/Timelines/Canonize
+- ✅ Wiki — entities, relationships, magic rules, timeline events (all with integration tests)
+- ✅ Timeline relative anchoring — `anchor_event_id` + offset fields, DFS resolution with cycle detection (migration 006, unit tested)
+- ✅ Frontend scaffold — React + Vite + TypeScript + Tailwind; auth, project list, scene editor, wiki components
+- ✅ CI/CD — GitHub Actions (self-hosted runner) → GHCR → Ansible → dev VM; API + frontend deployed and reachable
+- ✅ Bruno test collection — auth, projects, chapters, scenes, wiki (incl. anchor tests), git flows
+
+**Completed (Phase A closed 2026-04-09):**
+- ✅ Git handler integration tests — 21 tests covering full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize flows
+- ✅ Frontend wired to real API — scene editor autosave, wiki hub (entities + timeline CRUD), git panel
+- ✅ OpenAPI spec (`docs/openapi.yaml`, 40 routes); TypeScript codegen (`npm run gen:api`)
+- ✅ CI — frontend typecheck (`tsc --noEmit`), ESLint, API types drift check, `sqlc diff` check
 
 ### Phase B — Guide + AI + export core
 
@@ -339,11 +369,35 @@ Summary: README + OpenAPI stub + infra honesty; Wiki v1 (sqlc + REST + tests); G
 
 ---
 
-## 9. Next actions (convert to tickets)
+## 9. Next actions
 
-1. Execute **[Phase A spec](./specs/phase-a-mvp.md)**; tick boxes in [ROADMAP.md](../ROADMAP.md) as you ship.
-2. Add **OpenAPI** stub for existing routes; generate TypeScript client for React.
-3. Schema design doc for **wiki relationships + timeline** beyond Phase A v1 (extend `docs/specs/` when needed).
-4. Spike: **one WebSocket** echo + auth for collaboration proof of concept.
+### Phase A+ — Pre-Phase B polish
 
-This plan is meant to evolve—trim or reorder phases based on your first beta cohort’s feedback.
+**Completed:**
+- ✅ A+1 — Word count + scene metadata (`SceneMetadataPanel`, migration 007, server-side word count)
+- ✅ A+2 — Secure AI key storage (migration 008, AES-256-GCM, `/users/me/api-keys`, `/settings` page)
+- ✅ A+3 — Autolink wired in editor (debounced wiki entity match badges in WikiPanel)
+
+**In progress / next up** ([full spec](./specs/phase-aplus.md)):
+- ⬜ A+4 — Focus/distraction-free mode (frontend only; `F11` toggle, full-width editor)
+- ⬜ A+5 — Project home/stats page (`GET /projects/:id/stats` + project overview before editor)
+- ⬜ A+6 — User account deletion (`DELETE /users/me` + danger zone in settings)
+- ⬜ A+7 — Light theme (CSS variable swap, Zustand theme store, toggle in settings)
+- ⬜ A+8 — Relationship graph visualization (d3 force layout, WikiHub "Graph" tab)
+
+### Phase B (next major milestone)
+5. **AI integration** — wire `internal/ai` adapters to routes; Ollama for local dev, Anthropic/OpenAI for cloud; chat + scene continuation + summarize endpoints.
+6. **AI memory** — chapter summaries as context anchors; sliding window; pgvector for RAG.
+7. **Export** — wire `internal/export`; Markdown zip (sync) + EPUB (async job + MinIO download URL).
+8. **Novel guide** — step wizard backend + happy-path UI.
+
+### Phase C
+7. **Collaboration** — WebSocket hub (`/api/v1/projects/:id/collab`), CRDT sync, presence via Redis.
+8. **Timeline + plot wiki views** — frontend graph visualization, timeline browser.
+9. **DOCX export + wiki image upload**.
+
+### Infrastructure
+10. **Staging/prod pipelines** — clone dev Ansible playbook; parameterize environment; add prod secrets to vault.
+11. **Ollama in local compose** — optional service for AI dev without cloud keys.
+
+This plan is meant to evolve — trim or reorder phases based on your first beta cohort’s feedback.

@@ -55,8 +55,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Encryption key for API key storage
+	encKey, err := auth.ParseEncryptionKey(cfg.Encryption.Key)
+	if err != nil {
+		slog.Error("invalid encryption key", "error", err)
+		os.Exit(1)
+	}
+
 	// Services
-	authService := auth.NewService(queries, cfg.Auth.JWTSecret, accessExpiry, refreshExpiry, cfg.Auth.BcryptCost)
+	authService := auth.NewService(queries, cfg.Auth.JWTSecret, accessExpiry, refreshExpiry, cfg.Auth.BcryptCost, encKey)
 	gitService := project.NewGitService(cfg.Git.ReposPath)
 	projectService := project.NewService(queries, gitService)
 	wikiService := wiki.NewService(queries)
@@ -78,6 +85,8 @@ func main() {
 	{
 		authGroup := v1.Group("/auth")
 		authHandler.RegisterRoutes(authGroup)
+
+		authHandler.RegisterAPIKeyRoutes(v1)
 
 		projectsGroup := v1.Group("/projects", auth.RequireAuth(authService))
 		projectHandler.RegisterRoutes(projectsGroup)

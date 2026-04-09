@@ -26,6 +26,7 @@ export type WikiGraph              = components['schemas']['WikiGraphResponse']
 export type MagicRule              = components['schemas']['MagicRuleResponse']
 export type WikiTimelineEvent      = components['schemas']['TimelineEventResponse']
 export type AutolinkMatch          = components['schemas']['AutolinkMatch']
+export type APIKeyResponse         = components['schemas']['APIKeyResponse']
 
 // ── Error class ───────────────────────────────────────────────────────────────
 
@@ -63,6 +64,10 @@ async function request<T>(
       message = data.message ?? data.detail ?? message
     } catch {}
     throw new ApiError(res.status, message)
+  }
+
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T
   }
 
   return res.json() as Promise<T>
@@ -115,7 +120,16 @@ export const api = {
     create: (token: string, projectId: string, chapterId: string, title: string, sortOrder: number) =>
       request<Scene>('POST', `/projects/${projectId}/chapters/${chapterId}/scenes`, { title, sort_order: sortOrder }, token),
 
-    update: (token: string, projectId: string, chapterId: string, sceneId: string, data: { content?: string; title?: string }) =>
+    update: (token: string, projectId: string, chapterId: string, sceneId: string, data: {
+      content?: string
+      title?: string
+      pov?: string
+      tense?: string
+      tags?: string[]
+      summary?: string
+      summary_stale?: boolean
+      sort_order?: number
+    }) =>
       request<Scene>('PATCH', `/projects/${projectId}/chapters/${chapterId}/scenes/${sceneId}`, data, token),
   },
 
@@ -229,5 +243,19 @@ export const api = {
 
     deleteTimelineEvent: (token: string, projectId: string, eventId: string) =>
       request<void>('DELETE', `/projects/${projectId}/wiki/timeline/${eventId}`, undefined, token),
+
+    autolink: (token: string, projectId: string, text: string) =>
+      request<AutolinkMatch[]>('GET', `/projects/${projectId}/wiki/autolink?text=${encodeURIComponent(text)}`, undefined, token),
+  },
+
+  apiKeys: {
+    list: (token: string) =>
+      request<APIKeyResponse[]>('GET', '/users/me/api-keys', undefined, token),
+
+    upsert: (token: string, provider: string, key: string) =>
+      request<APIKeyResponse>('POST', '/users/me/api-keys', { provider, key }, token),
+
+    delete: (token: string, provider: string) =>
+      request<void>('DELETE', `/users/me/api-keys/${encodeURIComponent(provider)}`, undefined, token),
   },
 }

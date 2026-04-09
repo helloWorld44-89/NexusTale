@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
 import { useProjectStore } from '@/app/store/projectStore'
 import { ApiError } from '@/services/api'
@@ -33,6 +33,9 @@ export default function Dashboard() {
           {user && (
             <span className="text-brand-muted text-sm">{user.display_name}</span>
           )}
+          <Link to="/settings" className="text-sm text-brand-muted hover:text-brand-text transition-colors">
+            Settings
+          </Link>
           <button onClick={handleLogout} className="text-sm text-brand-muted hover:text-brand-text transition-colors">
             Sign out
           </button>

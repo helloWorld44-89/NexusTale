@@ -48,6 +48,17 @@ jobs:
           npm run gen:api
           git diff --exit-code src/services/api-types.ts
 
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Check sqlc output is up to date
+        working-directory: backend
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+          sqlc generate
+          git diff --exit-code pkg/db/sqlcgen/
+
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
