@@ -40,6 +40,16 @@ jobs:
           docker push ghcr.io/helloworld44-89/nexustale/api:dev
           docker push ghcr.io/helloworld44-89/nexustale/api:${{ github.sha }}
 
+      - name: Build and push frontend image
+        run: |
+          docker build \
+            -f infra/docker/Dockerfile.frontend \
+            -t ghcr.io/helloworld44-89/nexustale/frontend:dev \
+            -t ghcr.io/helloworld44-89/nexustale/frontend:${{ github.sha }} \
+            .
+          docker push ghcr.io/helloworld44-89/nexustale/frontend:dev
+          docker push ghcr.io/helloworld44-89/nexustale/frontend:${{ github.sha }}
+
   # ── Job 2: Deploy via Ansible ───────────────────────────────────────────────
   deploy:
     name: Deploy to Dev VM

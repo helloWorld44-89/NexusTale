@@ -1,0 +1,47 @@
+meta {
+  name: list-timeline-events-resolved
+  type: http
+  seq: 21
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/wiki/timeline
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("anchored event has resolved year", function() {
+    const anchoredId = bru.getEnvVar("anchoredEventId");
+    const anchored = res.body.find(function(e) { return e.id === anchoredId; });
+    expect(anchored).to.not.be.undefined;
+    // anchor base is year 2342 (after update-timeline-event-date), offset +50 = 2392
+    expect(anchored.year).to.equal(2392);
+  });
+
+  test("anchored event has resolved month", function() {
+    const anchoredId = bru.getEnvVar("anchoredEventId");
+    const anchored = res.body.find(function(e) { return e.id === anchoredId; });
+    // anchor base month is 11, offset +2 = 13
+    expect(anchored.month).to.equal(13);
+  });
+
+  test("anchored event exposes anchor metadata", function() {
+    const anchoredId = bru.getEnvVar("anchoredEventId");
+    const timelineEventId = bru.getEnvVar("timelineEventId");
+    const anchored = res.body.find(function(e) { return e.id === anchoredId; });
+    expect(anchored.anchor_event_id).to.equal(timelineEventId);
+  });
+}
