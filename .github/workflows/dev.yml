@@ -34,11 +34,11 @@ jobs:
         run: |
           docker build \
             -f infra/docker/Dockerfile.api \
-            -t ghcr.io/helloWorld44-89/nexustale/api:dev \
-            -t ghcr.io/helloWorld44-89/nexustale/api:${{ github.sha }} \
+            -t ghcr.io/helloworld44-89/nexustale/api:dev \
+            -t ghcr.io/helloworld44-89/nexustale/api:${{ github.sha }} \
             .
-          docker push ghcr.io/helloWorld44-89/nexustale/api:dev
-          docker push ghcr.io/helloWorld44-89/nexustale/api:${{ github.sha }}
+          docker push ghcr.io/helloworld44-89/nexustale/api:dev
+          docker push ghcr.io/helloworld44-89/nexustale/api:${{ github.sha }}
 
   # ── Job 2: Deploy via Ansible ───────────────────────────────────────────────
   deploy:
