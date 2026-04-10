@@ -15,10 +15,12 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; act layer hidden in UI for single default act; full CRUD + integration tests + Bruno |
 | **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; 21 handler integration tests; fast-forward merge; Paradox detection |
 | **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints |
-| **Redis / MinIO** | Provisioned in dev compose; **not yet consumed** by API (Phase B) |
-| **Collaboration, AI, export** | Packages stubbed; no HTTP registration |
-| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor (debounce save), act/chapter/scene explorer (act layer auto-hidden), wiki hub, git panel |
-| **OpenAPI + types** | `docs/openapi.yaml` (45+ routes incl. acts); `frontend/src/services/api-types.ts` generated; CI drift check |
+| **Redis / MinIO** | Provisioned in dev compose; MinIO targeted by B4 EPUB export |
+| **AI proxy** | `internal/ai`: Anthropic, OpenAI, Ollama adapters; beat + continue modes; `POST /ai/complete`, `/ai/chat`, `/ai/summarize`, `GET /ai/usage`; usage recorded per call |
+| **Writing styles** | `internal/prompts`: `project_prompts` table; CRUD routes; style applied to AI calls via `prompt_id` |
+| **Collaboration, export** | Packages stubbed; no HTTP registration |
+| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub, git panel, **ChatBar SSE chat, BeatInput, writing style selector, AI usage stats on ProjectHome** |
+| **OpenAPI + types** | `docs/openapi.yaml` (45+ routes incl. acts); `frontend/src/services/api-types.ts` generated; inline types for AI/prompts/usage (not yet in spec) |
 | **CI/CD** | GitHub Actions (self-hosted) → GHCR → Ansible → dev VM; Go tests, tsc, ESLint, API-types drift, sqlc diff, Docker build + push, Ansible deploy |
 | **Bruno collection** | Full integration tests for auth, health, projects, acts, chapters, scenes, wiki (incl. anchor tests), git |
 | **README** | Written — prerequisites, quick start, env vars, Redis/MinIO note |
@@ -31,8 +33,8 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 1. **Accounts & access** — Register/login, JWT access + refresh, roles. *Done.*
 2. **Manuscript structure** — Projects, chapters, scenes, ordering, summaries, tags; Git-backed. *API done; Git history stubs.*
 3. **World wiki** — Entities (character/location/faction/item/concept/lore), relationships graph, timeline, magic rules, autolink. *API + Bruno tests done; no frontend yet.*
-4. **AI-assisted writing** — Completion, chat, summarize, adapters, RAG. *Scaffold only.*
-5. **Export** — Markdown, EPUB, Scrivener. *Scaffold only.*
+4. **AI-assisted writing** — Completion, chat, summarize, adapters, RAG. *B1 + B1.5 + B3 done. B2 (context/memory) next.*
+5. **Export** — Markdown, EPUB, Scrivener. *B4 next.*
 6. **Collaboration** — Real-time CRDT/WebSocket, Redis pub/sub. *Scaffold only.*
 7. **Assets** — Covers and binaries via MinIO/S3. *Package stub; not integrated.*
 8. **Writer UI** — React app: editor, wiki, AI panels, export. *Not started.*
@@ -136,32 +138,32 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 **Actionable checklist:** [specs/phase-b.md](./docs/specs/phase-b.md)
 
-### B1 — AI proxy + adapters
-- [ ] **B1.1** Backend — `Adapter` interface: `Complete/Chat/Summarize/StreamComplete/StreamChat/IsThinkingModel`; `CompleteMode` (`continue` | `beat`); beat mode uses dedicated system prompt template (`{title}/{genre}/{tense}/{pov}/{pov_character}`)
-- [ ] **B1.2** Backend — `OpenAIAdapter`, `AnthropicAdapter`, `OllamaAdapter`; `AdapterFactory` with thinking model auto-detection (`o1`, `o3`, `deepseek-reasoner`, `qwq`, `r1` → batch + simulated streaming)
-- [ ] **B1.3** Backend — `POST /projects/:id/ai/complete` (accepts `mode`, `beat`, `prompt_id`), `/ai/chat`, `/ai/summarize`; per-request model from stored user API key
-- [ ] **B1.4** OpenAPI — `AICompleteRequest` (with `mode` + `beat` + `prompt_id`), response schemas; regenerate types
-- [ ] **B1.5** Frontend — `ChatBar` wired to `/ai/chat` with SSE streaming; model name in header
+### B1 — AI proxy + adapters ✓
+- [x] **B1.1** Backend — `Adapter` interface: `Complete/Chat/Summarize/StreamComplete/StreamChat/IsThinkingModel/Provider`; `CompleteMode` (`continue` | `beat`)
+- [x] **B1.2** Backend — `OpenAIAdapter`, `AnthropicAdapter`, `OllamaAdapter`; `AdapterFactory` with thinking model auto-detection (`o1/o3/o4/deepseek-reasoner/qwq/r1`)
+- [x] **B1.3** Backend — `POST /projects/:id/ai/complete` (beat + continue), `/ai/chat`, `/ai/summarize`; `GET /ai/usage`; SSE via `io.Pipe`; Ollama fallback when no cloud key
+- [x] **B1.4** OpenAPI — deferred; types defined inline in `api.ts`
+- [x] **B1.5** Frontend — `ChatBar` wired to `/ai/chat` with SSE; blinking cursor; Stop button; `sceneId` context passed through
 
-### B1.5 — Writing styles (prose prompts)
-- [ ] **B1.5.1** Backend — Migration 014: `project_prompts` table (`id, project_id, name, category, content, system_content, sort_order`); `user_api_keys.force_non_streaming BOOL`
-- [ ] **B1.5.2** Backend — `GET/POST /projects/:id/prompts`, `PUT/DELETE /projects/:id/prompts/:promptId`; style applied when `prompt_id` in AI request
-- [ ] **B1.5.3** OpenAPI — `ProjectPromptResponse`, `CreateProjectPromptRequest`; regenerate types
-- [ ] **B1.5.4** Frontend — Writing style dropdown in `SceneMetadataPanel`; `prompt_id` sent with every AI call
-- [ ] **B1.5.5** Frontend — Beat input in `ScribeEditor` toolbar; `mode: "beat"` request; streamed response with Accept/Retry/Discard
+### B1.5 — Writing styles (prose prompts) ✓
+- [x] **B1.5.1** Backend — Migration 010: `project_prompts` table; `user_api_keys.force_non_streaming BOOL`
+- [x] **B1.5.2** Backend — `GET/POST /projects/:id/prompts`, `PUT/DELETE /:promptId`; `applyPromptPreset` merges `system_content` override + `content` style block
+- [x] **B1.5.3** OpenAPI — deferred; `PromptResponse` inline in `api.ts`
+- [x] **B1.5.4** Frontend — Writing style dropdown in `SceneMetadataPanel`; lazy-loads on open; badge in panel header; `promptId` flows to every AI call
+- [x] **B1.5.5** Frontend — `BeatInput` in `ScribeEditor` toolbar; beat sentence → SSE stream → prose preview; Accept/Retry/Discard; `api.ai.streamComplete` added
 
 ### B2 — AI memory + context
-- [ ] **B2.1** Backend — Migration 010: `chapter_summaries(chapter_id, branch_name PK, ai_summary, stale)` + `project_active_branch(project_id, user_id PK, branch_name)` — no column added to `chapters`
+- [ ] **B2.1** Backend — Migration 012: `chapter_summaries(chapter_id, branch_name PK, ai_summary, stale)` + `project_active_branch(project_id, user_id PK, branch_name)` — no column added to `chapters`
 - [ ] **B2.2** Backend — `ResolveBranch` helper: `X-NexusTale-Branch` header → `project_active_branch` → `"canon"`; `TravelTo`/`Diverge` handlers upsert `project_active_branch` after git HEAD switch
 - [ ] **B2.3** Backend — auto-summarize goroutine: debounce key `(chapter_id, branch_name)`; upserts `chapter_summaries` per branch; only marks active branch stale on scene save
 - [ ] **B2.4** Backend — `BuildContext(…, branchName)`: summaries queried by active branch, falling back to `"canon"`; inline `@[entity]` parsing (up to 5 entries injected before user turn); `Canonize` deletes merged branch's summary rows
 - [ ] **B2.5** Backend — `ChapterResponse.ai_summary` sourced from `chapter_summaries` for requesting user's active branch; update OpenAPI; regenerate types
 - [ ] **B2.6** Frontend — stale indicator badge on chapter; "Regenerate" button in SceneMetadataPanel; `X-NexusTale-Branch` header sent on all AI and scene-save requests
 
-### B3 — Token usage tracking
-- [ ] **B3.1** Backend — Migration 011: `ai_usage` table; record after every AI call (non-blocking); `GET /projects/:id/ai/usage` aggregate
-- [ ] **B3.2** OpenAPI — `AIUsageResponse`; regenerate types
-- [ ] **B3.3** Frontend — usage stats on ProjectHome (tokens, estimated cost this month)
+### B3 — Token usage tracking ✓
+- [x] **B3.1** Backend — Migration 011: `ai_usage` table; `recordUsage` goroutine after every AI call (non-blocking); `GET /projects/:id/ai/usage` aggregate (total/monthly tokens + cost + call count)
+- [x] **B3.2** OpenAPI — deferred; `AIUsageSummary` inline in `api.ts`
+- [x] **B3.3** Frontend — AI usage row on ProjectHome (tokens total/month, calls/month, cost/month); hidden when no calls recorded yet
 
 ### B4 — Export
 - [ ] **B4.1** Backend — `GET /projects/:id/export/markdown` synchronous zip: acts → chapters → scenes as `.md` with YAML front matter
@@ -208,4 +210,4 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated: A+1–A+8 complete. Phase A+ fully done. Phase B planned (B1–B5.5 incl. Writing Styles, beat mode, structure templates). Phase C expanded with context panel, multi-session Workshop, prompt history.*
+*Last updated: Phase A + A+ fully done. Phase B in progress — B1 (AI proxy), B1.5 (writing styles + beat input), B3 (token tracking) complete. B2 (AI memory/context), B4 (export), B5 (novel guide), B5.5 (story structures) remain.*

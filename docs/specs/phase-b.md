@@ -43,14 +43,14 @@ B4 can run in parallel with B1–B3. B1.5 can start immediately after B1. B5 dep
 
 ## Migrations needed
 
-| # | Table | Purpose |
-|---|-------|---------|
-| 010 | `chapter_summaries (chapter_id, branch_name, …)`, `project_active_branch` | Branch-isolated chapter summaries; active branch tracking per user |
-| 011 | `ai_usage` | Per-call token + cost tracking |
-| 012 | `export_jobs` | Async export job state + MinIO key |
-| 013 | `guide_steps` | Novel guide wizard progress per project |
-| 014 | `project_prompts`, `user_api_keys.force_non_streaming` | Writing style presets per project; non-streaming override per key |
-| 015 | `novel_structures` (seeded), `projects.structure_id`, `projects.structure_custom` | Optional story structure templates; nullable — freeform is always valid |
+| # | Table | Purpose | Status |
+|---|-------|---------|--------|
+| 010 | `project_prompts`, `user_api_keys.force_non_streaming` | Writing style presets per project; non-streaming override per key | ✓ done |
+| 011 | `ai_usage` | Per-call token + cost tracking | ✓ done |
+| 012 | `chapter_summaries (chapter_id, branch_name, …)`, `project_active_branch` | Branch-isolated chapter summaries; active branch tracking per user | B2 |
+| 013 | `export_jobs` | Async export job state + MinIO key | B4 |
+| 014 | `guide_steps` | Novel guide wizard progress per project | B5 |
+| 015 | `novel_structures` (seeded), `projects.structure_id`, `projects.structure_custom` | Optional story structure templates; nullable — freeform is always valid | B5.5 |
 
 ---
 
@@ -113,7 +113,7 @@ Each completed step writes real data so the guide isn't throwaway:
 - [x] **B1.5.7** Frontend: `BeatInput` in `ScribeEditor`; beat → sentence → streams 2–3 paragraphs; Accept/Retry/Discard actions; `api.ai.streamComplete` added
 
 ### B2 — AI memory + context
-- [ ] **B2.1** Migration 010: create `chapter_summaries (chapter_id, branch_name, ai_summary, stale, updated_at)` with PK `(chapter_id, branch_name)`; create `project_active_branch (project_id, user_id, branch_name, updated_at)` with PK `(project_id, user_id)` — **no column added to `chapters`**
+- [ ] **B2.1** Migration 012: create `chapter_summaries (chapter_id, branch_name, ai_summary, stale, updated_at)` with PK `(chapter_id, branch_name)`; create `project_active_branch (project_id, user_id, branch_name, updated_at)` with PK `(project_id, user_id)` — **no column added to `chapters`**
 - [ ] **B2.2** sqlc: `UpsertChapterSummary`, `GetChapterSummary(chapterID, branchName)`, `MarkChapterSummaryStale`, `DeleteBranchSummaries(projectID, branchName)`, `UpsertProjectActiveBranch`, `GetProjectActiveBranch`, `ClearActiveBranch`; regenerate
 - [ ] **B2.3** Branch resolution helper: `ResolveBranch(ctx, projectID, userID, headerBranch)` → checks header → `project_active_branch` → defaults `"canon"`
 - [ ] **B2.4** `TravelTo` and `Diverge` handlers: upsert `project_active_branch` after git HEAD switch
@@ -133,7 +133,7 @@ Each completed step writes real data so the guide isn't throwaway:
 - [x] **B3.6** Frontend: AI usage row on ProjectHome (tokens total/month, calls/month, cost/month); hidden when no AI calls made yet
 
 ### B4 — Export
-- [ ] **B4.1** Migration 012: `export_jobs` table (id, project_id, user_id, format, status, minio_key, download_url, error, created_at, expires_at)
+- [ ] **B4.1** Migration 013: `export_jobs` table (id, project_id, user_id, format, status, minio_key, download_url, error, created_at, expires_at)
 - [ ] **B4.2** `GET /projects/:id/export/markdown` — walk acts→chapters→scenes; build zip in memory; stream as `application/zip`
 - [ ] **B4.3** `POST /projects/:id/export/epub` — create `export_jobs` row; enqueue to goroutine pool; return `{job_id}`
 - [ ] **B4.4** EPUB goroutine: `internal/export` epub builder; upload to MinIO; update job row with signed URL
@@ -142,7 +142,7 @@ Each completed step writes real data so the guide isn't throwaway:
 - [ ] **B4.7** Frontend: Export card on ProjectHome; Markdown download (direct link); EPUB "Generate" button → poll → download
 
 ### B5 — Novel guide
-- [ ] **B5.1** Migration 013: `guide_steps` table (id, project_id, step_key TEXT, data JSONB, completed_at)
+- [ ] **B5.1** Migration 014: `guide_steps` table (id, project_id, step_key TEXT, data JSONB, completed_at)
 - [ ] **B5.2** sqlc: `UpsertGuideStep`, `ListGuideSteps`
 - [ ] **B5.3** `GET /projects/:id/guide` — returns all step states (key, data, completed)
 - [ ] **B5.4** `POST /projects/:id/guide/:stepKey` — saves step data; triggers side effects (create entities, chapters, etc.)
@@ -154,7 +154,7 @@ Each completed step writes real data so the guide isn't throwaway:
 > Structure is never required. Freeform is always a valid first-class choice.
 > See full spec: [phase-b-structures.md](./phase-b-structures.md)
 
-- [ ] **B5.5.1** Migration 015: `novel_structures` table seeded with 12 templates; `projects.structure_id UUID NULL REFERENCES novel_structures`; `projects.structure_custom JSONB NULL`
+- [ ] **B5.5.1** Migration 015: `novel_structures` table seeded with 12 templates from `docs/NOVEL_STRUCTURES.md`; `projects.structure_id UUID NULL REFERENCES novel_structures`; `projects.structure_custom JSONB NULL`
 - [ ] **B5.5.2** sqlc: `ListNovelStructures`, `GetProjectStructure`, `UpdateProjectStructure`; regenerate
 - [ ] **B5.5.3** Scoring function: `internal/guide/score.go` — deterministic weighted matrix; returns empty slice when no structure clears threshold (→ freeform recommended)
 - [ ] **B5.5.4** Routes: `GET /novel-structures` (no auth), `POST /projects/:id/guide/structure/score` (pure calculation, no persistence), `GET/PUT /projects/:id/structure`
