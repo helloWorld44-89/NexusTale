@@ -137,41 +137,51 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 **Actionable checklist:** [specs/phase-b.md](./docs/specs/phase-b.md)
 
 ### B1 — AI proxy + adapters
-- [ ] **B1.1** Backend — wire `internal/ai` adapter interface; implement OpenAI + Anthropic adapters; Ollama adapter for local dev
-- [ ] **B1.2** Backend — `POST /projects/:id/ai/complete` (scene continuation), `POST /projects/:id/ai/chat` (freeform), `POST /projects/:id/ai/summarize` (scene → summary)
-- [ ] **B1.3** Backend — per-request model selection from stored user API key; fallback chain config
-- [ ] **B1.4** OpenAPI — document all AI endpoints + request/response schemas; regenerate types
-- [ ] **B1.5** Frontend — AI chat panel wired to real `/ai/chat` endpoint; streaming response display
+- [ ] **B1.1** Backend — `Adapter` interface: `Complete/Chat/Summarize/StreamComplete/StreamChat/IsThinkingModel`; `CompleteMode` (`continue` | `beat`); beat mode uses dedicated system prompt template (`{title}/{genre}/{tense}/{pov}/{pov_character}`)
+- [ ] **B1.2** Backend — `OpenAIAdapter`, `AnthropicAdapter`, `OllamaAdapter`; `AdapterFactory` with thinking model auto-detection (`o1`, `o3`, `deepseek-reasoner`, `qwq`, `r1` → batch + simulated streaming)
+- [ ] **B1.3** Backend — `POST /projects/:id/ai/complete` (accepts `mode`, `beat`, `prompt_id`), `/ai/chat`, `/ai/summarize`; per-request model from stored user API key
+- [ ] **B1.4** OpenAPI — `AICompleteRequest` (with `mode` + `beat` + `prompt_id`), response schemas; regenerate types
+- [ ] **B1.5** Frontend — `ChatBar` wired to `/ai/chat` with SSE streaming; model name in header
+
+### B1.5 — Writing styles (prose prompts)
+- [ ] **B1.5.1** Backend — Migration 014: `project_prompts` table (`id, project_id, name, category, content, system_content, sort_order`); `user_api_keys.force_non_streaming BOOL`
+- [ ] **B1.5.2** Backend — `GET/POST /projects/:id/prompts`, `PUT/DELETE /projects/:id/prompts/:promptId`; style applied when `prompt_id` in AI request
+- [ ] **B1.5.3** OpenAPI — `ProjectPromptResponse`, `CreateProjectPromptRequest`; regenerate types
+- [ ] **B1.5.4** Frontend — Writing style dropdown in `SceneMetadataPanel`; `prompt_id` sent with every AI call
+- [ ] **B1.5.5** Frontend — Beat input in `ScribeEditor` toolbar; `mode: "beat"` request; streamed response with Accept/Retry/Discard
 
 ### B2 — AI memory + context
-- [ ] **B2.1** Backend — chapter summary auto-generation on save (async, debounced); store in `chapters.ai_summary`; migration 010
-- [ ] **B2.2** Backend — sliding context window builder: recent scenes + pinned anchors + wiki entity mentions
-- [ ] **B2.3** Backend — `POST /projects/:id/ai/complete` uses context window as system prompt prefix
-- [ ] **B2.4** Frontend — summary stale indicator in SceneMetadataPanel; "Regenerate summary" button
+- [ ] **B2.1** Backend — Migration 010: `chapters.ai_summary TEXT`, `chapters.ai_summary_stale BOOL`
+- [ ] **B2.2** Backend — auto-summarize goroutine (scene save → debounced 30s → `Summarize` → update chapter)
+- [ ] **B2.3** Backend — `BuildContext` with inline `@[entity]` parsing: up to 5 resolved wiki entries injected before user turn
+- [ ] **B2.4** Backend — wire context builder into `Complete` and `Chat` routes; expose `ai_summary` + `ai_summary_stale` in `ChapterResponse`
+- [ ] **B2.5** Frontend — stale indicator badge on chapter; "Regenerate" button in SceneMetadataPanel
 
 ### B3 — Token usage tracking
-- [ ] **B3.1** Backend — `ai_usage` table: user_id, project_id, model, prompt_tokens, completion_tokens, cost_usd, created_at; migration 011
-- [ ] **B3.2** Backend — record usage after every AI call; `GET /projects/:id/ai/usage` aggregate endpoint
-- [ ] **B3.3** Frontend — usage stats on ProjectHome (tokens used, estimated cost this month)
+- [ ] **B3.1** Backend — Migration 011: `ai_usage` table; record after every AI call (non-blocking); `GET /projects/:id/ai/usage` aggregate
+- [ ] **B3.2** OpenAPI — `AIUsageResponse`; regenerate types
+- [ ] **B3.3** Frontend — usage stats on ProjectHome (tokens, estimated cost this month)
 
 ### B4 — Export
-- [ ] **B4.1** Backend — `GET /projects/:id/export/markdown` synchronous zip: all scenes as `act/chapter/scene.md` with YAML front matter
-- [ ] **B4.2** Backend — `POST /projects/:id/export/epub` async job: queue entry, MinIO upload, time-limited download URL
-- [ ] **B4.3** Backend — `GET /projects/:id/export/jobs/:jobId` status polling endpoint
-- [ ] **B4.4** OpenAPI — document export endpoints; regenerate types
-- [ ] **B4.5** Frontend — Export panel (or ProjectHome section): Markdown download button; EPUB trigger + polling + download link
+- [ ] **B4.1** Backend — `GET /projects/:id/export/markdown` synchronous zip: acts → chapters → scenes as `.md` with YAML front matter
+- [ ] **B4.2** Backend — `POST /projects/:id/export/epub` async job (Migration 012: `export_jobs`); goroutine pool; MinIO upload; presigned URL (1h TTL)
+- [ ] **B4.3** Backend — `GET /projects/:id/export/jobs/:jobId` polling; OpenAPI schemas; regenerate types
+- [ ] **B4.4** Frontend — Export section on ProjectHome: Markdown download button; EPUB trigger + 3s poll + download link
 
 ### B5 — Novel guide
-- [ ] **B5.1** Backend — `novel_guide_steps` table: user_id, project_id, step_key, data JSONB, completed_at; migration 012
-- [ ] **B5.2** Backend — `GET/POST /projects/:id/guide` — fetch current step state, submit step answers
-- [ ] **B5.3** Frontend — `/projects/:id/guide` wizard: 5-step happy path (premise → characters → world → outline → first scene); each step pre-fills wiki/scene data
+- [ ] **B5.1** Backend — Migration 013: `guide_steps` table; `GET /projects/:id/guide`; `POST /projects/:id/guide/:stepKey` with step side effects
+- [ ] **B5.2** Backend — step handlers: Premise → update project description; Characters → create wiki entities; World → entities + magic rule; Outline → chapters; First scene → scene + optional AI opening
+- [ ] **B5.3** OpenAPI — guide endpoints + `GuideStepResponse`; regenerate types
+- [ ] **B5.4** Frontend — `/projects/:id/guide` linear wizard; step sidebar with ✓ / current / muted states; skip allowed; "Finish guide" → ProjectHome
 
 ## Phase C — Collaboration + depth
 
 - WebSocket + CRDT for scene editing; roles and project invites
-- Relationship graph visualization; plot arc view
-- DOCX export; wiki image upload
-- Per-project model selection; fallback model config
+- DOCX export; wiki image upload for entity portraits
+- **Explicit AI context panel** — writer-curated context: pin specific wiki entries by ID or tag, include scenes as full text or summary-only, per-chapter granularity (power-user alternative to the automatic context window)
+- **Multi-session Workshop** — promote `ChatBar` to tabbed named sessions per project; each session persists `[{role, content, timestamp}]`; separate `category: "workshop"` system prompt; export session to Markdown
+- **Prompt history browser** — store first 500 chars of assembled prompt + the user's beat/instruction in `ai_usage`; UI panel to browse and re-apply previous beats
+- **Import/export writing styles** — download project styles as JSON; import from file or another project
 
 ## Phase D — Premium / advanced
 
@@ -186,4 +196,4 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated: A+1–A+8 complete. Phase A+ fully done. Phase B next.*
+*Last updated: A+1–A+8 complete. Phase A+ fully done. Phase B planned (incl. B1.5 Writing Styles from Writingway2 analysis). Phase C expanded with context panel, multi-session Workshop, prompt history.*

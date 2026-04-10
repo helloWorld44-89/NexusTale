@@ -62,7 +62,7 @@ export default function RelationshipGraph({ token, projectId, onSelectEntity }: 
   useEffect(() => {
     if (!token || !projectId) return
     setLoading(true)
-    api.wiki.graph(token, projectId)
+    api.wiki.getGraph(token, projectId)
       .then(setGraph)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load graph'))
       .finally(() => setLoading(false))
