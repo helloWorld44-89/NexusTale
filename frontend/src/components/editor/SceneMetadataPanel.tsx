@@ -5,18 +5,16 @@ import { api } from '@/services/api'
 import type { Scene } from '@/services/api'
 
 interface SceneMetadataPanelProps {
-  token: string
-  projectId: string
+  token:     string
   chapterId: string
-  scene: Scene
-  onUpdate: (updated: Scene) => void
+  scene:     Scene
+  onUpdate:  (updated: Scene) => void
 }
 
 const SAVE_DELAY_MS = 800
 
 export default function SceneMetadataPanel({
   token,
-  projectId,
   chapterId,
   scene,
   onUpdate,
@@ -36,11 +34,11 @@ export default function SceneMetadataPanel({
     setSummary(scene.summary ?? '')
   }, [scene.id])
 
-  const scheduleSave = (patch: Parameters<typeof api.scenes.update>[4]) => {
+  const scheduleSave = (patch: Parameters<typeof api.scenes.update>[3]) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       try {
-        const updated = await api.scenes.update(token, projectId, chapterId, scene.id, patch)
+        const updated = await api.scenes.update(token, chapterId, scene.id, patch)
         onUpdate(updated)
       } catch {}
     }, SAVE_DELAY_MS)

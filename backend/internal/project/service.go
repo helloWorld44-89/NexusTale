@@ -53,6 +53,18 @@ func (s *Service) CreateProject(ctx context.Context, ownerID uuid.UUID, req Crea
 		return nil, apperror.Internal(fmt.Sprintf("create project: %v", err))
 	}
 
+	// Every project starts with a default act. Writers who don't care about
+	// acts will never see it; the frontend hides the act layer when only one
+	// act exists with the default title.
+	if _, err := s.queries.CreateAct(ctx, sqlcgen.CreateActParams{
+		ProjectID: p.ID,
+		Title:     "Act 1",
+		Summary:   "",
+		SortOrder: 0,
+	}); err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("create default act: %v", err))
+	}
+
 	return toProjectResponse(p), nil
 }
 
@@ -106,16 +118,88 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// Chapters
+// Acts
 
-func (s *Service) CreateChapter(ctx context.Context, projectID uuid.UUID, req CreateChapterRequest) (*ChapterResponse, error) {
-	// Verify project exists
+func (s *Service) CreateAct(ctx context.Context, projectID uuid.UUID, req CreateActRequest) (*ActResponse, error) {
 	if _, err := s.queries.GetProject(ctx, projectID); errors.Is(err, pgx.ErrNoRows) {
 		return nil, apperror.NotFound("project", projectID.String())
 	}
 
-	ch, err := s.queries.CreateChapter(ctx, sqlcgen.CreateChapterParams{
+	act, err := s.queries.CreateAct(ctx, sqlcgen.CreateActParams{
 		ProjectID: projectID,
+		Title:     req.Title,
+		Summary:   req.Summary,
+		SortOrder: req.SortOrder,
+	})
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("create act: %v", err))
+	}
+	return toActResponse(act), nil
+}
+
+func (s *Service) GetAct(ctx context.Context, id uuid.UUID) (*ActResponse, error) {
+	act, err := s.queries.GetAct(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperror.NotFound("act", id.String())
+	}
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("get act: %v", err))
+	}
+	return toActResponse(act), nil
+}
+
+func (s *Service) ListActs(ctx context.Context, projectID uuid.UUID) ([]ActResponse, error) {
+	acts, err := s.queries.ListActsByProject(ctx, projectID)
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("list acts: %v", err))
+	}
+	result := make([]ActResponse, len(acts))
+	for i, act := range acts {
+		result[i] = *toActResponse(act)
+	}
+	return result, nil
+}
+
+func (s *Service) UpdateAct(ctx context.Context, id uuid.UUID, req UpdateActRequest) (*ActResponse, error) {
+	params := sqlcgen.UpdateActParams{ID: id}
+	if req.Title != nil {
+		params.Title = pgtype.Text{String: *req.Title, Valid: true}
+	}
+	if req.Summary != nil {
+		params.Summary = pgtype.Text{String: *req.Summary, Valid: true}
+	}
+	if req.SortOrder != nil {
+		params.SortOrder = pgtype.Int4{Int32: *req.SortOrder, Valid: true}
+	}
+
+	act, err := s.queries.UpdateAct(ctx, params)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperror.NotFound("act", id.String())
+	}
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("update act: %v", err))
+	}
+	return toActResponse(act), nil
+}
+
+func (s *Service) DeleteAct(ctx context.Context, id uuid.UUID) error {
+	return s.queries.DeleteAct(ctx, id)
+}
+
+// Chapters
+
+func (s *Service) CreateChapter(ctx context.Context, actID uuid.UUID, req CreateChapterRequest) (*ChapterResponse, error) {
+	act, err := s.queries.GetAct(ctx, actID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperror.NotFound("act", actID.String())
+	}
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("get act: %v", err))
+	}
+
+	ch, err := s.queries.CreateChapter(ctx, sqlcgen.CreateChapterParams{
+		ProjectID: act.ProjectID,
+		ActID:     actID,
 		Title:     req.Title,
 		Summary:   req.Summary,
 		SortOrder: req.SortOrder,
@@ -135,6 +219,18 @@ func (s *Service) GetChapter(ctx context.Context, id uuid.UUID) (*ChapterRespons
 		return nil, apperror.Internal(fmt.Sprintf("get chapter: %v", err))
 	}
 	return toChapterResponse(ch), nil
+}
+
+func (s *Service) ListChaptersByAct(ctx context.Context, actID uuid.UUID) ([]ChapterResponse, error) {
+	chapters, err := s.queries.ListChaptersByAct(ctx, actID)
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("list chapters: %v", err))
+	}
+	result := make([]ChapterResponse, len(chapters))
+	for i, ch := range chapters {
+		result[i] = *toChapterResponse(ch)
+	}
+	return result, nil
 }
 
 func (s *Service) ListChapters(ctx context.Context, projectID uuid.UUID) ([]ChapterResponse, error) {
@@ -439,6 +535,18 @@ func (s *Service) Canonize(ctx context.Context, projectID uuid.UUID, timelineNam
 
 // Converters
 
+func toActResponse(a sqlcgen.Act) *ActResponse {
+	return &ActResponse{
+		ID:        a.ID,
+		ProjectID: a.ProjectID,
+		Title:     a.Title,
+		Summary:   a.Summary,
+		SortOrder: a.SortOrder,
+		CreatedAt: a.CreatedAt.Time,
+		UpdatedAt: a.UpdatedAt.Time,
+	}
+}
+
 func toProjectResponse(p sqlcgen.Project) *ProjectResponse {
 	return &ProjectResponse{
 		ID:          p.ID,
@@ -456,6 +564,7 @@ func toChapterResponse(ch sqlcgen.Chapter) *ChapterResponse {
 	return &ChapterResponse{
 		ID:        ch.ID,
 		ProjectID: ch.ProjectID,
+		ActID:     ch.ActID,
 		Title:     ch.Title,
 		Summary:   ch.Summary,
 		SortOrder: ch.SortOrder,

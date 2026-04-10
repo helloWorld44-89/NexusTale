@@ -58,6 +58,18 @@ type EchoResponse struct {
 
 // Request DTOs
 
+type CreateActRequest struct {
+	Title     string `json:"title" binding:"required,min=1,max=200"`
+	Summary   string `json:"summary"`
+	SortOrder int32  `json:"sort_order"`
+}
+
+type UpdateActRequest struct {
+	Title     *string `json:"title"`
+	Summary   *string `json:"summary"`
+	SortOrder *int32  `json:"sort_order"`
+}
+
 type CreateProjectRequest struct {
 	Title       string   `json:"title" binding:"required,min=1,max=200"`
 	Description string   `json:"description"`
@@ -73,6 +85,7 @@ type CreateChapterRequest struct {
 	Title     string `json:"title" binding:"required,min=1,max=200"`
 	Summary   string `json:"summary"`
 	SortOrder int32  `json:"sort_order"`
+	ActID     string `json:"-"` // populated from URL param, not request body
 }
 
 type UpdateChapterRequest struct {
@@ -115,9 +128,20 @@ type ProjectResponse struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type ActResponse struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	Title     string    `json:"title"`
+	Summary   string    `json:"summary"`
+	SortOrder int32     `json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type ChapterResponse struct {
 	ID        uuid.UUID `json:"id"`
 	ProjectID uuid.UUID `json:"project_id"`
+	ActID     uuid.UUID `json:"act_id"`
 	Title     string    `json:"title"`
 	Summary   string    `json:"summary"`
 	SortOrder int32     `json:"sort_order"`

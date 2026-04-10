@@ -3,6 +3,7 @@ package project_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -49,6 +50,45 @@ func authRequest(method, url, token string, body interface{}) *http.Request {
 	return req
 }
 
+// createProject creates a project and returns the response. Also verifies a
+// default act is automatically created alongside it.
+func createProject(t *testing.T, router *gin.Engine, token, title string) project.ProjectResponse {
+	t.Helper()
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authRequest("POST", "/api/v1/projects", token, map[string]interface{}{
+		"title":       title,
+		"description": "",
+	}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create project: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var p project.ProjectResponse
+	json.Unmarshal(w.Body.Bytes(), &p)
+	return p
+}
+
+// defaultActID fetches the list of acts for a project and returns the first
+// one's ID. Every project starts with a default "Act 1".
+func defaultActID(t *testing.T, router *gin.Engine, token, projectID string) string {
+	t.Helper()
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authRequest("GET", "/api/v1/projects/"+projectID+"/acts", token, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("list acts: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var acts []project.ActResponse
+	json.Unmarshal(w.Body.Bytes(), &acts)
+	if len(acts) == 0 {
+		t.Fatal("expected at least one default act after project creation")
+	}
+	return acts[0].ID.String()
+}
+
+// actChapterURL builds the chapter collection URL under an act.
+func actChapterURL(projectID, actID string) string {
+	return fmt.Sprintf("/api/v1/projects/%s/acts/%s/chapters", projectID, actID)
+}
+
 func TestProjectCRUD(t *testing.T) {
 	router, _, _ := testutil.SetupRouter(t)
 	token := registerAndGetToken(t, router, "projcrud@example.com")
@@ -71,6 +111,12 @@ func TestProjectCRUD(t *testing.T) {
 
 	if created.Title != "My Novel" {
 		t.Errorf("expected title 'My Novel', got '%s'", created.Title)
+	}
+
+	// Verify default act is created alongside the project.
+	actID := defaultActID(t, router, token, created.ID.String())
+	if actID == "" {
+		t.Error("expected non-empty default act ID")
 	}
 
 	// Get project
@@ -123,13 +169,9 @@ func TestChapterCRUD(t *testing.T) {
 	router, _, _ := testutil.SetupRouter(t)
 	token := registerAndGetToken(t, router, "chaptercrud@example.com")
 
-	// Create project first
-	projBody := map[string]interface{}{"title": "Chapter Test Project", "description": ""}
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, authRequest("POST", "/api/v1/projects", token, projBody))
-	var proj project.ProjectResponse
-	json.Unmarshal(w.Body.Bytes(), &proj)
-	projectURL := "/api/v1/projects/" + proj.ID.String()
+	proj := createProject(t, router, token, "Chapter Test Project")
+	actID := defaultActID(t, router, token, proj.ID.String())
+	chaptersURL := actChapterURL(proj.ID.String(), actID)
 
 	// Create chapter
 	chBody := map[string]interface{}{
@@ -138,7 +180,7 @@ func TestChapterCRUD(t *testing.T) {
 		"sort_order": 1,
 	}
 	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, authRequest("POST", projectURL+"/chapters", token, chBody))
+	router.ServeHTTP(w2, authRequest("POST", chaptersURL, token, chBody))
 
 	if w2.Code != http.StatusCreated {
 		t.Fatalf("create chapter: expected 201, got %d: %s", w2.Code, w2.Body.String())
@@ -150,17 +192,20 @@ func TestChapterCRUD(t *testing.T) {
 	if chapter.Title != "Chapter One" {
 		t.Errorf("expected 'Chapter One', got '%s'", chapter.Title)
 	}
+	if chapter.ActID.String() != actID {
+		t.Errorf("expected act_id %s, got %s", actID, chapter.ActID.String())
+	}
 
 	// List chapters
 	w3 := httptest.NewRecorder()
-	router.ServeHTTP(w3, authRequest("GET", projectURL+"/chapters", token, nil))
+	router.ServeHTTP(w3, authRequest("GET", chaptersURL, token, nil))
 
 	if w3.Code != http.StatusOK {
 		t.Fatalf("list chapters: expected 200, got %d", w3.Code)
 	}
 
 	// Get chapter
-	chapterURL := projectURL + "/chapters/" + chapter.ID.String()
+	chapterURL := chaptersURL + "/" + chapter.ID.String()
 	w4 := httptest.NewRecorder()
 	router.ServeHTTP(w4, authRequest("GET", chapterURL, token, nil))
 
@@ -190,20 +235,18 @@ func TestSceneCRUD(t *testing.T) {
 	router, _, _ := testutil.SetupRouter(t)
 	token := registerAndGetToken(t, router, "scenecrud@example.com")
 
-	// Create project
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, authRequest("POST", "/api/v1/projects", token, map[string]interface{}{"title": "Scene Test", "description": ""}))
-	var proj project.ProjectResponse
-	json.Unmarshal(w.Body.Bytes(), &proj)
+	proj := createProject(t, router, token, "Scene Test")
+	actID := defaultActID(t, router, token, proj.ID.String())
 
-	// Create chapter
+	// Create chapter under default act
 	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, authRequest("POST", "/api/v1/projects/"+proj.ID.String()+"/chapters", token,
+	router.ServeHTTP(w2, authRequest("POST", actChapterURL(proj.ID.String(), actID), token,
 		map[string]interface{}{"title": "Ch1", "sort_order": 1}))
 	var ch project.ChapterResponse
 	json.Unmarshal(w2.Body.Bytes(), &ch)
 
-	chapterURL := "/api/v1/projects/" + proj.ID.String() + "/chapters/" + ch.ID.String()
+	// Scenes are now at /api/v1/chapters/:cid/scenes
+	scenesURL := "/api/v1/chapters/" + ch.ID.String() + "/scenes"
 
 	// Create scene
 	sceneBody := map[string]interface{}{
@@ -215,7 +258,7 @@ func TestSceneCRUD(t *testing.T) {
 		"sort_order": 1,
 	}
 	w3 := httptest.NewRecorder()
-	router.ServeHTTP(w3, authRequest("POST", chapterURL+"/scenes", token, sceneBody))
+	router.ServeHTTP(w3, authRequest("POST", scenesURL, token, sceneBody))
 
 	if w3.Code != http.StatusCreated {
 		t.Fatalf("create scene: expected 201, got %d: %s", w3.Code, w3.Body.String())
@@ -231,7 +274,7 @@ func TestSceneCRUD(t *testing.T) {
 		t.Errorf("unexpected content: %s", scene.Content)
 	}
 
-	sceneURL := chapterURL + "/scenes/" + scene.ID.String()
+	sceneURL := scenesURL + "/" + scene.ID.String()
 
 	// Get scene
 	w4 := httptest.NewRecorder()
@@ -243,7 +286,7 @@ func TestSceneCRUD(t *testing.T) {
 
 	// List scenes
 	w5 := httptest.NewRecorder()
-	router.ServeHTTP(w5, authRequest("GET", chapterURL+"/scenes", token, nil))
+	router.ServeHTTP(w5, authRequest("GET", scenesURL, token, nil))
 
 	if w5.Code != http.StatusOK {
 		t.Fatalf("list scenes: expected 200, got %d", w5.Code)

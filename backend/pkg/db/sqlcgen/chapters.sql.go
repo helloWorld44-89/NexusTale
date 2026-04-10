@@ -13,13 +13,14 @@ import (
 )
 
 const createChapter = `-- name: CreateChapter :one
-INSERT INTO chapters (project_id, title, summary, sort_order)
-VALUES ($1, $2, $3, $4)
-RETURNING id, project_id, title, summary, sort_order, created_at, updated_at
+INSERT INTO chapters (project_id, act_id, title, summary, sort_order)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, title, summary, sort_order, created_at, updated_at, act_id
 `
 
 type CreateChapterParams struct {
 	ProjectID uuid.UUID `json:"project_id"`
+	ActID     uuid.UUID `json:"act_id"`
 	Title     string    `json:"title"`
 	Summary   string    `json:"summary"`
 	SortOrder int32     `json:"sort_order"`
@@ -28,6 +29,7 @@ type CreateChapterParams struct {
 func (q *Queries) CreateChapter(ctx context.Context, arg CreateChapterParams) (Chapter, error) {
 	row := q.db.QueryRow(ctx, createChapter,
 		arg.ProjectID,
+		arg.ActID,
 		arg.Title,
 		arg.Summary,
 		arg.SortOrder,
@@ -41,6 +43,7 @@ func (q *Queries) CreateChapter(ctx context.Context, arg CreateChapterParams) (C
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ActID,
 	)
 	return i, err
 }
@@ -55,7 +58,7 @@ func (q *Queries) DeleteChapter(ctx context.Context, id uuid.UUID) error {
 }
 
 const getChapter = `-- name: GetChapter :one
-SELECT id, project_id, title, summary, sort_order, created_at, updated_at
+SELECT id, project_id, title, summary, sort_order, created_at, updated_at, act_id
 FROM chapters
 WHERE id = $1
 `
@@ -71,12 +74,49 @@ func (q *Queries) GetChapter(ctx context.Context, id uuid.UUID) (Chapter, error)
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ActID,
 	)
 	return i, err
 }
 
+const listChaptersByAct = `-- name: ListChaptersByAct :many
+SELECT id, project_id, title, summary, sort_order, created_at, updated_at, act_id
+FROM chapters
+WHERE act_id = $1
+ORDER BY sort_order ASC
+`
+
+func (q *Queries) ListChaptersByAct(ctx context.Context, actID uuid.UUID) ([]Chapter, error) {
+	rows, err := q.db.Query(ctx, listChaptersByAct, actID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Chapter{}
+	for rows.Next() {
+		var i Chapter
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Title,
+			&i.Summary,
+			&i.SortOrder,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ActID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChaptersByProject = `-- name: ListChaptersByProject :many
-SELECT id, project_id, title, summary, sort_order, created_at, updated_at
+SELECT id, project_id, title, summary, sort_order, created_at, updated_at, act_id
 FROM chapters
 WHERE project_id = $1
 ORDER BY sort_order ASC
@@ -99,6 +139,7 @@ func (q *Queries) ListChaptersByProject(ctx context.Context, projectID uuid.UUID
 			&i.SortOrder,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ActID,
 		); err != nil {
 			return nil, err
 		}
@@ -112,12 +153,12 @@ func (q *Queries) ListChaptersByProject(ctx context.Context, projectID uuid.UUID
 
 const updateChapter = `-- name: UpdateChapter :one
 UPDATE chapters
-SET title = COALESCE($2, title),
-    summary = COALESCE($3, summary),
+SET title      = COALESCE($2, title),
+    summary    = COALESCE($3, summary),
     sort_order = COALESCE($4, sort_order),
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, title, summary, sort_order, created_at, updated_at
+RETURNING id, project_id, title, summary, sort_order, created_at, updated_at, act_id
 `
 
 type UpdateChapterParams struct {
@@ -143,6 +184,7 @@ func (q *Queries) UpdateChapter(ctx context.Context, arg UpdateChapterParams) (C
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ActID,
 	)
 	return i, err
 }

@@ -20,24 +20,34 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
+func (h *Handler) RegisterRoutes(rg *gin.RouterGroup, chapterGroup *gin.RouterGroup) {
+	// Projects
 	rg.GET("", h.ListProjects)
 	rg.POST("", h.CreateProject)
 	rg.GET("/:id", h.GetProject)
 	rg.PATCH("/:id", h.UpdateProject)
 	rg.DELETE("/:id", h.DeleteProject)
 
-	rg.POST("/:id/chapters", h.CreateChapter)
-	rg.GET("/:id/chapters", h.ListChapters)
-	rg.GET("/:id/chapters/:cid", h.GetChapter)
-	rg.PATCH("/:id/chapters/:cid", h.UpdateChapter)
-	rg.DELETE("/:id/chapters/:cid", h.DeleteChapter)
+	// Acts — nested under projects
+	rg.POST("/:id/acts", h.CreateAct)
+	rg.GET("/:id/acts", h.ListActs)
+	rg.GET("/:id/acts/:aid", h.GetAct)
+	rg.PATCH("/:id/acts/:aid", h.UpdateAct)
+	rg.DELETE("/:id/acts/:aid", h.DeleteAct)
 
-	rg.POST("/:id/chapters/:cid/scenes", h.CreateScene)
-	rg.GET("/:id/chapters/:cid/scenes", h.ListScenes)
-	rg.GET("/:id/chapters/:cid/scenes/:sid", h.GetScene)
-	rg.PATCH("/:id/chapters/:cid/scenes/:sid", h.UpdateScene)
-	rg.DELETE("/:id/chapters/:cid/scenes/:sid", h.DeleteScene)
+	// Chapters — nested under acts
+	rg.POST("/:id/acts/:aid/chapters", h.CreateChapter)
+	rg.GET("/:id/acts/:aid/chapters", h.ListChapters)
+	rg.GET("/:id/acts/:aid/chapters/:cid", h.GetChapter)
+	rg.PATCH("/:id/acts/:aid/chapters/:cid", h.UpdateChapter)
+	rg.DELETE("/:id/acts/:aid/chapters/:cid", h.DeleteChapter)
+
+	// Scenes — scoped to chapter only (avoids deeply nested project/act/chapter/scene paths)
+	chapterGroup.POST("/:cid/scenes", h.CreateScene)
+	chapterGroup.GET("/:cid/scenes", h.ListScenes)
+	chapterGroup.GET("/:cid/scenes/:sid", h.GetScene)
+	chapterGroup.PATCH("/:cid/scenes/:sid", h.UpdateScene)
+	chapterGroup.DELETE("/:cid/scenes/:sid", h.DeleteScene)
 
 	// Git / Chronicle routes — all scoped to a specific project.
 	rg.GET("/:id/git/status", h.GitStatus)
@@ -130,10 +140,93 @@ func (h *Handler) DeleteProject(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "project deleted"})
 }
 
+// Acts
+
+func (h *Handler) CreateAct(c *gin.Context) {
+	projectID, err := parseUUID(c, "id")
+	if err != nil {
+		return
+	}
+
+	var req CreateActRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "validation error", "detail": err.Error()})
+		return
+	}
+
+	resp, err := h.svc.CreateAct(c.Request.Context(), projectID, req)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, resp)
+}
+
+func (h *Handler) GetAct(c *gin.Context) {
+	actID, err := parseUUID(c, "aid")
+	if err != nil {
+		return
+	}
+
+	resp, err := h.svc.GetAct(c.Request.Context(), actID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) ListActs(c *gin.Context) {
+	projectID, err := parseUUID(c, "id")
+	if err != nil {
+		return
+	}
+
+	resp, err := h.svc.ListActs(c.Request.Context(), projectID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) UpdateAct(c *gin.Context) {
+	actID, err := parseUUID(c, "aid")
+	if err != nil {
+		return
+	}
+
+	var req UpdateActRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "validation error", "detail": err.Error()})
+		return
+	}
+
+	resp, err := h.svc.UpdateAct(c.Request.Context(), actID, req)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) DeleteAct(c *gin.Context) {
+	actID, err := parseUUID(c, "aid")
+	if err != nil {
+		return
+	}
+
+	if err := h.svc.DeleteAct(c.Request.Context(), actID); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "act deleted"})
+}
+
 // Chapters
 
 func (h *Handler) CreateChapter(c *gin.Context) {
-	projectID, err := parseUUID(c, "id")
+	actID, err := parseUUID(c, "aid")
 	if err != nil {
 		return
 	}
@@ -144,7 +237,7 @@ func (h *Handler) CreateChapter(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.CreateChapter(c.Request.Context(), projectID, req)
+	resp, err := h.svc.CreateChapter(c.Request.Context(), actID, req)
 	if err != nil {
 		handleError(c, err)
 		return
@@ -169,12 +262,12 @@ func (h *Handler) GetChapter(c *gin.Context) {
 }
 
 func (h *Handler) ListChapters(c *gin.Context) {
-	projectID, err := parseUUID(c, "id")
+	actID, err := parseUUID(c, "aid")
 	if err != nil {
 		return
 	}
 
-	resp, err := h.svc.ListChapters(c.Request.Context(), projectID)
+	resp, err := h.svc.ListChaptersByAct(c.Request.Context(), actID)
 	if err != nil {
 		handleError(c, err)
 		return

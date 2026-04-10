@@ -3,16 +3,18 @@ import type { LeftPanel } from '@/pages/Editor'
 
 interface TopBarProps {
   projectTitle: string
+  actTitle:     string   // empty when act layer is hidden (single default act)
   chapterTitle: string
-  sceneTitle: string
-  leftPanel: LeftPanel
+  sceneTitle:   string
+  leftPanel:    LeftPanel
   explorerOpen: boolean
-  onToggleChat: () => void
+  onToggleChat:     () => void
   onToggleExplorer: () => void
 }
 
 export default function TopBar({
   projectTitle,
+  actTitle,
   chapterTitle,
   sceneTitle,
   leftPanel,
@@ -29,19 +31,25 @@ export default function TopBar({
         <span className="text-brand-cyan text-sm font-semibold tracking-wide">NexusTale</span>
       </div>
 
-      {/* Center: breadcrumb */}
+      {/* Center: breadcrumb — project [> act] [> chapter] [> scene] */}
       <div className="flex items-center gap-1.5 text-sm text-brand-muted overflow-hidden">
-        <span className="truncate max-w-[160px]">{projectTitle}</span>
+        <span className="truncate max-w-[140px]">{projectTitle}</span>
+        {actTitle && (
+          <>
+            <ChevronIcon />
+            <span className="truncate max-w-[120px] text-brand-purple/70">{actTitle}</span>
+          </>
+        )}
         {chapterTitle && (
           <>
             <ChevronIcon />
-            <span className="truncate max-w-[160px]">{chapterTitle}</span>
+            <span className="truncate max-w-[140px]">{chapterTitle}</span>
           </>
         )}
         {sceneTitle && (
           <>
             <ChevronIcon />
-            <span className="text-brand-text truncate max-w-[160px]">{sceneTitle}</span>
+            <span className="text-brand-text truncate max-w-[140px]">{sceneTitle}</span>
           </>
         )}
       </div>
