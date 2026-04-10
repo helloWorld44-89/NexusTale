@@ -3,6 +3,7 @@ import { useAuthStore } from './store/authStore'
 import Login from '@/pages/Auth/Login'
 import Register from '@/pages/Auth/Register'
 import Dashboard from '@/pages/Dashboard'
+import ProjectHome from '@/pages/ProjectHome'
 import Editor from '@/pages/Editor'
 import WikiHub from '@/pages/WikiHub'
 import Settings from '@/pages/Settings'
@@ -29,6 +30,15 @@ export function AppRouter() {
 
       <Route
         path="/projects/:id"
+        element={
+          <ProtectedRoute>
+            <ProjectHome />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/projects/:id/editor"
         element={
           <ProtectedRoute>
             <Editor />

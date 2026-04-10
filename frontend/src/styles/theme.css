@@ -2,11 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Dark theme (default) ────────────────────────────────────────────────── */
+:root {
+  --brand-cyan:       0 240 255;
+  --brand-purple:     159 75 255;
+  --brand-gold:       244 201 93;
+  --brand-bg:         15 15 26;
+  --brand-bg-2:       18 18 26;
+  --brand-bg-card:    26 26 46;
+  --brand-bg-input:   13 13 31;
+  --brand-text:       224 224 255;
+  --brand-muted:      123 123 158;
+  --brand-text-muted: 160 160 200;
+  --brand-border:     42 42 74;
+}
+
+/* ── Light theme ─────────────────────────────────────────────────────────── */
+.light {
+  --brand-bg:         245 245 250;
+  --brand-bg-2:       237 237 244;
+  --brand-bg-card:    255 255 255;
+  --brand-bg-input:   238 238 248;
+  --brand-text:       20 20 46;
+  --brand-muted:      100 100 140;
+  --brand-text-muted: 80 80 120;
+  --brand-border:     210 210 230;
+  /* Accent colors (cyan, purple, gold) intentionally unchanged in light mode */
+}
+
+/* ── System fallback — respect prefers-color-scheme when no class set ────── */
+@media (prefers-color-scheme: light) {
+  :root:not(.dark):not(.light) {
+    --brand-bg:         245 245 250;
+    --brand-bg-2:       237 237 244;
+    --brand-bg-card:    255 255 255;
+    --brand-bg-input:   238 238 248;
+    --brand-text:       20 20 46;
+    --brand-muted:      100 100 140;
+    --brand-text-muted: 80 80 120;
+    --brand-border:     210 210 230;
+  }
+}
+
 @layer base {
   * { box-sizing: border-box; }
   body {
-    background-color: #0F0F1A;
-    color: #E0E0FF;
+    background-color: rgb(var(--brand-bg));
+    color: rgb(var(--brand-text));
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
@@ -21,7 +63,7 @@
   }
 
   .btn-primary {
-    @apply w-full py-3 px-6 rounded-lg font-semibold text-sm text-brand-bg
+    @apply w-full py-3 px-6 rounded-lg font-semibold text-sm text-white
            bg-brand-gradient transition-all duration-200
            hover:opacity-90 hover:shadow-cyan-glow
            active:scale-[0.98]

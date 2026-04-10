@@ -101,27 +101,27 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 - [x] **A+3.2** Frontend — matched entity names shown as clickable cyan badges ("In this scene" section); clicking opens entity detail
 
 ### A+4 — Focus / distraction-free mode
-- [ ] **A+4.1** Frontend — keyboard shortcut (e.g. `F11` or toolbar button) toggles focus mode: hides ActivityBar, left panel, ProjectExplorer, TopBar, StatusBar
-- [ ] **A+4.2** Frontend — full-width `ScribeEditor` with minimal chrome; `Esc` or button exits focus mode
+- [x] **A+4.1** Frontend — `F11` toggles focus mode: hides ActivityBar, left panel, ProjectExplorer, TopBar, StatusBar
+- [x] **A+4.2** Frontend — full-width `ScribeEditor`; floating `Esc` button (near-invisible until hovered); focus icon in TopBar for mouse users
 
 ### A+5 — Project home / stats page
-- [ ] **A+5.1** Backend — `GET /projects/:id/stats` endpoint: total word count, scene count, chapter count, last updated; aggregate via SQL
-- [ ] **A+5.2** OpenAPI — document `ProjectStats` schema; regenerate types
-- [ ] **A+5.3** Frontend — `/projects/:id` becomes a project home page (before entering editor); shows stats, recent scenes, quick-open links, wiki snapshot
+- [x] **A+5.1** Backend — `GET /projects/:id/stats` endpoint: total word count, scene count, chapter count, last updated; SQL aggregate via JOIN across acts/chapters/scenes
+- [x] **A+5.2** OpenAPI — `ProjectStats` schema added; `api-types.ts` regenerated; `api.projects.stats()` added to api.ts
+- [x] **A+5.3** Frontend — `/projects/:id` is now `ProjectHome` (stat cards + quick-open editor/wiki actions); editor moved to `/projects/:id/editor`
 
 ### A+6 — User account deletion
-- [ ] **A+6.1** Backend — `DELETE /users/me` endpoint; cascades via FK to all owned projects, chapters, scenes, wiki, git repos on disk, API keys, refresh tokens
-- [ ] **A+6.2** OpenAPI — document endpoint; regenerate types
-- [ ] **A+6.3** Frontend — "Danger zone" section in `/settings`; confirm dialog requiring the user to type their email before deletion; redirect to `/login` on success
+- [x] **A+6.1** Backend — `DELETE /users/me`; `DeleteUser` + `ListProjectGitPaths` sqlc queries; git repos cleaned from disk after DB cascade; `GET /users/me` added
+- [x] **A+6.2** OpenAPI — `GET /users/me` + `DELETE /users/me` documented; `api-types.ts` regenerated; `api.users.me` + `api.users.deleteMe` added to api.ts
+- [x] **A+6.3** Frontend — Danger Zone section in `/settings`; confirm dialog requires user to type exact email; redirects to `/login` on success
 
 ### A+7 — Light theme
-- [ ] **A+7.1** Frontend — define light-mode CSS variable overrides in `tailwind.config.js` / `index.css`; `prefers-color-scheme` media query fallback
-- [ ] **A+7.2** Frontend — theme toggle button in `/settings` (stored in `localStorage`); apply `dark` / `light` class to `<html>`
+- [x] **A+7.1** Frontend — brand colors switched to CSS variables (`rgb(var(--brand-*) / <alpha-value>)`) in `tailwind.config.ts`; `:root` dark defaults + `.light` overrides in `theme.css`; `prefers-color-scheme` media query fallback; added missing `brand-text-muted` token
+- [x] **A+7.2** Frontend — `themeStore.ts` (Zustand, localStorage); `App.tsx` initializes theme on mount; Appearance section in `/settings` with sun/moon toggle
 
 ### A+8 — Relationship graph visualization
-- [ ] **A+8.1** Frontend — install `d3` (or `@visx/network`); `RelationshipGraph` component consuming existing `GET /wiki/graph` endpoint
-- [ ] **A+8.2** Frontend — force-directed layout; nodes colored by entity type; edges labeled with relationship type; click node → entity detail
-- [ ] **A+8.3** Frontend — embed in `WikiHub` as a third "Graph" tab alongside Entities and Timeline
+- [x] **A+8.1** Frontend — `d3` installed; `RelationshipGraph.tsx` consuming `GET /wiki/graph`; 200-tick synchronous force layout snapshotted to React SVG state
+- [x] **A+8.2** Frontend — nodes colored by entity type; directional arrow edges labeled with relationship type; halo on selected node; pan/zoom via d3-zoom; reset view button; entity type legend
+- [x] **A+8.3** Frontend — "Graph" tab in `WikiHub` alongside Entities and Timeline; clicking a node switches to Entities tab and auto-opens entity detail
 
 **Deferred to Phase B+ (AI or infra dependent):**
 
@@ -160,4 +160,4 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated: A+1–A+3 complete; A+4–A+8 laid out and ready to implement.*
+*Last updated: A+1–A+8 complete. Phase A+ fully done. Phase B next.*

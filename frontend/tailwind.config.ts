@@ -6,23 +6,27 @@ export default {
     extend: {
       colors: {
         brand: {
-          cyan:       '#00F0FF',
-          purple:     '#9F4BFF',
-          gold:       '#F4C95D',
-          bg:         '#0F0F1A',
-          'bg-2':     '#12121A',
-          'bg-card':  '#1A1A2E',
-          'bg-input': '#0D0D1F',
-          text:       '#E0E0FF',
-          muted:      '#7B7B9E',
-          border:     '#2A2A4A',
+          // All colors defined as RGB channels so Tailwind opacity modifiers
+          // (e.g. bg-brand-cyan/20) work correctly with CSS variables.
+          cyan:         'rgb(var(--brand-cyan) / <alpha-value>)',
+          purple:       'rgb(var(--brand-purple) / <alpha-value>)',
+          gold:         'rgb(var(--brand-gold) / <alpha-value>)',
+          bg:           'rgb(var(--brand-bg) / <alpha-value>)',
+          'bg-2':       'rgb(var(--brand-bg-2) / <alpha-value>)',
+          'bg-card':    'rgb(var(--brand-bg-card) / <alpha-value>)',
+          'bg-input':   'rgb(var(--brand-bg-input) / <alpha-value>)',
+          text:         'rgb(var(--brand-text) / <alpha-value>)',
+          muted:        'rgb(var(--brand-muted) / <alpha-value>)',
+          'text-muted': 'rgb(var(--brand-text-muted) / <alpha-value>)',
+          border:       'rgb(var(--brand-border) / <alpha-value>)',
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans:  ['Inter', 'system-ui', 'sans-serif'],
+        serif: ['Georgia', 'serif'],
       },
       backgroundImage: {
-        'brand-gradient': 'linear-gradient(135deg, #00F0FF 0%, #9F4BFF 100%)',
+        'brand-gradient':      'linear-gradient(135deg, #00F0FF 0%, #9F4BFF 100%)',
         'brand-gradient-gold': 'linear-gradient(135deg, #9F4BFF 0%, #F4C95D 100%)',
       },
       boxShadow: {
@@ -32,7 +36,7 @@ export default {
       },
       animation: {
         'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'float': 'float 6s ease-in-out infinite',
+        'float':      'float 6s ease-in-out infinite',
       },
       keyframes: {
         float: {

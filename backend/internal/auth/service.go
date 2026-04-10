@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -143,6 +144,48 @@ func (s *Service) Refresh(ctx context.Context, req RefreshRequest) (*TokenPair, 
 func (s *Service) Logout(ctx context.Context, req LogoutRequest) error {
 	tokenHash := hashToken(req.RefreshToken)
 	return s.queries.DeleteRefreshToken(ctx, tokenHash)
+}
+
+func toUserResponse(u sqlcgen.User) *UserResponse {
+	return &UserResponse{
+		ID:          u.ID,
+		Email:       u.Email,
+		DisplayName: u.DisplayName,
+		Role:        Role(u.Role),
+		CreatedAt:   u.CreatedAt.Time,
+	}
+}
+
+func (s *Service) GetMe(ctx context.Context, userID uuid.UUID) (*UserResponse, error) {
+	u, err := s.queries.GetUserByID(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperror.NotFound("user", "not found")
+	}
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("get user: %v", err))
+	}
+	return toUserResponse(u), nil
+}
+
+// DeleteMe removes the user and all owned data. Git repos on disk are deleted
+// after the DB row is removed (FK cascades handle everything else).
+func (s *Service) DeleteMe(ctx context.Context, userID uuid.UUID) error {
+	// Collect git repo paths before the cascade wipes project rows.
+	repoPaths, err := s.queries.ListProjectGitPaths(ctx, userID)
+	if err != nil {
+		return apperror.Internal(fmt.Sprintf("list git repos: %v", err))
+	}
+
+	if err := s.queries.DeleteUser(ctx, userID); err != nil {
+		return apperror.Internal(fmt.Sprintf("delete user: %v", err))
+	}
+
+	// Best-effort: clean up git repos on disk after DB row is gone.
+	for _, path := range repoPaths {
+		_ = os.RemoveAll(path)
+	}
+
+	return nil
 }
 
 func (s *Service) ValidateAccessToken(tokenStr string) (*Claims, error) {

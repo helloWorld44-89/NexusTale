@@ -44,8 +44,24 @@ export default function Editor() {
   const [loading,           setLoading]           = useState(true)
   const [leftPanel,         setLeftPanel]         = useState<LeftPanel>('chat')
   const [explorerOpen,      setExplorerOpen]      = useState(true)
+  const [focusMode,         setFocusMode]         = useState(false)
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Focus mode keyboard shortcuts ──────────────────────────────────────────
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault()
+        setFocusMode((v) => !v)
+      }
+      if (e.key === 'Escape') {
+        setFocusMode(false)
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [])
 
   // ── Load project data ───────────────────────────────────────────────────────
 
@@ -226,32 +242,49 @@ export default function Editor() {
 
   return (
     <div className="h-screen flex flex-col bg-brand-bg overflow-hidden font-sans">
-      <TopBar
-        projectTitle={projectTitle}
-        actTitle={actTitle}
-        chapterTitle={activeChapter?.title ?? ''}
-        sceneTitle={activeScene?.title ?? ''}
-        leftPanel={leftPanel}
-        explorerOpen={explorerOpen}
-        onToggleChat={() => toggleLeftPanel('chat')}
-        onToggleExplorer={() => setExplorerOpen((v) => !v)}
-      />
+      {!focusMode && (
+        <TopBar
+          projectTitle={projectTitle}
+          actTitle={actTitle}
+          chapterTitle={activeChapter?.title ?? ''}
+          sceneTitle={activeScene?.title ?? ''}
+          leftPanel={leftPanel}
+          explorerOpen={explorerOpen}
+          focusMode={focusMode}
+          onToggleChat={() => toggleLeftPanel('chat')}
+          onToggleExplorer={() => setExplorerOpen((v) => !v)}
+          onToggleFocus={() => setFocusMode((v) => !v)}
+        />
+      )}
 
       <div className="flex flex-1 overflow-hidden">
-        <ActivityBar
-          activePanel={leftPanel}
-          onToggleChat={() => toggleLeftPanel('chat')}
-          onToggleGit={() => toggleLeftPanel('git')}
-          onToggleWiki={() => toggleLeftPanel('wiki')}
-        />
-        {leftPanel === 'chat' && <ChatBar />}
-        {leftPanel === 'git' && projectId && accessToken && (
+        {!focusMode && (
+          <ActivityBar
+            activePanel={leftPanel}
+            onToggleChat={() => toggleLeftPanel('chat')}
+            onToggleGit={() => toggleLeftPanel('git')}
+            onToggleWiki={() => toggleLeftPanel('wiki')}
+          />
+        )}
+        {!focusMode && leftPanel === 'chat' && <ChatBar />}
+        {!focusMode && leftPanel === 'git' && projectId && accessToken && (
           <GitPanel token={accessToken} projectId={projectId} />
         )}
-        {leftPanel === 'wiki' && projectId && accessToken && (
+        {!focusMode && leftPanel === 'wiki' && projectId && accessToken && (
           <WikiPanel token={accessToken} projectId={projectId} currentContent={content} />
         )}
-        <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex flex-col flex-1 overflow-hidden relative">
+          {/* Floating exit button — only in focus mode */}
+          {focusMode && (
+            <button
+              onClick={() => setFocusMode(false)}
+              title="Exit focus mode (Esc)"
+              className="absolute top-3 right-4 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-brand-text-muted hover:text-brand-text bg-brand-bg-card/60 hover:bg-brand-bg-card border border-brand-border/40 transition-all opacity-20 hover:opacity-100"
+            >
+              <ExitFocusIcon />
+              Esc
+            </button>
+          )}
           <ScribeEditor
             sceneTitle={activeScene?.title ?? 'Select a scene'}
             content={content}
@@ -267,7 +300,7 @@ export default function Editor() {
             />
           )}
         </div>
-        {explorerOpen && (
+        {!focusMode && explorerOpen && (
           <ProjectExplorer
             projectTitle={projectTitle}
             acts={explorerActs}
@@ -281,11 +314,21 @@ export default function Editor() {
         )}
       </div>
 
-      <StatusBar
-        wordCount={wordCount}
-        chapterTitle={activeChapter?.title ?? ''}
-        sceneTitle={activeScene?.title ?? ''}
-      />
+      {!focusMode && (
+        <StatusBar
+          wordCount={wordCount}
+          chapterTitle={activeChapter?.title ?? ''}
+          sceneTitle={activeScene?.title ?? ''}
+        />
+      )}
     </div>
+  )
+}
+
+function ExitFocusIcon() {
+  return (
+    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4" />
+    </svg>
   )
 }

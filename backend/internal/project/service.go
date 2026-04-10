@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -116,6 +117,32 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID) error {
 		return apperror.Internal(fmt.Sprintf("delete project: %v", err))
 	}
 	return nil
+}
+
+func (s *Service) GetProjectStats(ctx context.Context, id uuid.UUID) (*ProjectStatsResponse, error) {
+	row, err := s.queries.GetProjectStats(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperror.NotFound("project", "not found")
+	}
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("get project stats: %v", err))
+	}
+
+	// GREATEST returns interface{} — assert to time.Time (pgx returns pgtype.Timestamptz or time.Time).
+	var lastUpdated time.Time
+	switch v := row.LastUpdatedAt.(type) {
+	case time.Time:
+		lastUpdated = v
+	default:
+		lastUpdated = time.Now()
+	}
+
+	return &ProjectStatsResponse{
+		SceneCount:     row.SceneCount,
+		ChapterCount:   row.ChapterCount,
+		TotalWordCount: row.TotalWordCount,
+		LastUpdatedAt:  lastUpdated,
+	}, nil
 }
 
 // Acts
