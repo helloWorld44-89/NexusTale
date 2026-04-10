@@ -1,43 +1,94 @@
-// ChatBar — AI assistant sidebar.
-// Mock conversation for now; replace with real API in A4 (AI co-author).
-import { useState, useRef, useEffect } from 'react'
+// ChatBar — AI assistant sidebar wired to POST /projects/:id/ai/chat (SSE streaming).
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { api } from '@/services/api'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   text: string
+  streaming?: boolean
 }
 
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: 'm0',
-    role: 'assistant',
-    text: "I'm Scribe, your AI co-author. Ask me anything about your story — characters, plot, worldbuilding, or prose suggestions.",
-  },
-]
+interface ChatBarProps {
+  token: string
+  projectId: string
+  sceneId?: string
+}
 
-export default function ChatBar() {
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
-  const [input, setInput] = useState('')
-  const bottomRef = useRef<HTMLDivElement>(null)
+const GREETING: Message = {
+  id: 'm0',
+  role: 'assistant',
+  text: "I'm Scribe, your AI co-author. Ask me anything about your story — characters, plot, worldbuilding, or prose suggestions.",
+}
 
+export default function ChatBar({ token, projectId, sceneId }: ChatBarProps) {
+  const [messages, setMessages]   = useState<Message[]>([GREETING])
+  const [input, setInput]         = useState('')
+  const [streaming, setStreaming] = useState(false)
+  const bottomRef  = useRef<HTMLDivElement>(null)
+  const abortRef   = useRef<AbortController | null>(null)
+
+  // Scroll to bottom whenever messages change.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const send = () => {
+  const send = useCallback(async () => {
     const text = input.trim()
-    if (!text) return
+    if (!text || streaming) return
+
+    setInput('')
 
     const userMsg: Message = { id: `u-${Date.now()}`, role: 'user', text }
-    const assistantMsg: Message = {
-      id: `a-${Date.now()}`,
-      role: 'assistant',
-      text: 'AI responses coming soon — backend integration in A4.',
-    }
+    const assistantId = `a-${Date.now()}`
+    const assistantMsg: Message = { id: assistantId, role: 'assistant', text: '', streaming: true }
+
     setMessages((prev) => [...prev, userMsg, assistantMsg])
-    setInput('')
-  }
+    setStreaming(true)
+
+    // Build history for the API: all prior non-streaming messages.
+    const history = [...messages, userMsg].map((m) => ({
+      role: m.role as string,
+      content: m.text,
+    }))
+
+    abortRef.current = new AbortController()
+
+    try {
+      await api.ai.streamChat(
+        token,
+        projectId,
+        history,
+        sceneId,
+        (delta) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, text: m.text + delta } : m
+            )
+          )
+        },
+        abortRef.current.signal,
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong.'
+      // If aborted by user, don't show an error.
+      if ((err as Error).name !== 'AbortError') {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, text: m.text || msg, streaming: false }
+              : m
+          )
+        )
+      }
+    } finally {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m))
+      )
+      setStreaming(false)
+      abortRef.current = null
+    }
+  }, [input, streaming, messages, token, projectId, sceneId])
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -46,12 +97,25 @@ export default function ChatBar() {
     }
   }
 
+  const stopStreaming = () => {
+    abortRef.current?.abort()
+  }
+
   return (
     <div className="w-72 flex flex-col bg-brand-bg-card border-r border-brand-border shrink-0">
 
       {/* Header */}
-      <div className="px-4 py-3 border-b border-brand-border">
+      <div className="px-4 py-3 border-b border-brand-border flex items-center justify-between">
         <p className="text-xs font-semibold text-brand-cyan uppercase tracking-wider">Scribe AI</p>
+        {streaming && (
+          <button
+            onClick={stopStreaming}
+            title="Stop generation"
+            className="text-brand-muted text-xs hover:text-brand-text transition-colors"
+          >
+            Stop
+          </button>
+        )}
       </div>
 
       {/* Messages */}
@@ -74,13 +138,16 @@ export default function ChatBar() {
 
             {/* Bubble */}
             <div
-              className={`max-w-[200px] rounded-lg px-3 py-2 leading-relaxed ${
+              className={`max-w-[200px] rounded-lg px-3 py-2 leading-relaxed whitespace-pre-wrap ${
                 m.role === 'assistant'
                   ? 'bg-brand-bg text-brand-muted'
                   : 'bg-brand-purple/20 text-brand-text'
               }`}
             >
               {m.text}
+              {m.streaming && (
+                <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-brand-cyan/70 animate-pulse align-middle" />
+              )}
             </div>
           </div>
         ))}
@@ -96,11 +163,12 @@ export default function ChatBar() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
             placeholder="Ask Scribe…"
-            className="flex-1 resize-none bg-transparent text-brand-text text-sm placeholder:text-brand-muted focus:outline-none max-h-28 leading-relaxed"
+            disabled={streaming}
+            className="flex-1 resize-none bg-transparent text-brand-text text-sm placeholder:text-brand-muted focus:outline-none max-h-28 leading-relaxed disabled:opacity-50"
           />
           <button
             onClick={send}
-            disabled={!input.trim()}
+            disabled={!input.trim() || streaming}
             className="shrink-0 p-1 rounded text-brand-cyan disabled:opacity-30 hover:bg-brand-cyan/10 transition-colors"
             title="Send (Enter)"
           >

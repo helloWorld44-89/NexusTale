@@ -267,6 +267,65 @@ export const api = {
       request<AutolinkMatch[]>('GET', `/projects/${projectId}/wiki/autolink?text=${encodeURIComponent(text)}`, undefined, token),
   },
 
+  ai: {
+    /**
+     * Stream a chat response from POST /projects/:id/ai/chat.
+     * Calls onDelta for each text chunk; resolves when [DONE] is received.
+     * Rejects on network error or if the server returns a non-2xx status.
+     */
+    streamChat: async (
+      token: string,
+      projectId: string,
+      messages: { role: string; content: string }[],
+      sceneId: string | undefined,
+      onDelta: (text: string) => void,
+      signal?: AbortSignal,
+    ): Promise<void> => {
+      const res = await fetch(`${BASE}/projects/${projectId}/ai/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ messages, scene_id: sceneId ?? '' }),
+        signal,
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { message?: string }).message ?? `AI error ${res.status}`)
+      }
+
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let buf = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const payload = line.slice(6)
+          if (payload === '[DONE]') return
+          try {
+            const evt = JSON.parse(payload) as { delta?: string; error?: string }
+            if (evt.error) throw new Error(evt.error)
+            if (evt.delta) onDelta(evt.delta)
+          } catch {
+            // skip malformed chunks
+          }
+        }
+      }
+    },
+  },
+
   users: {
     me: (token: string) =>
       request<User>('GET', '/users/me', undefined, token),
