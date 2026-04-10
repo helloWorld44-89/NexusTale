@@ -40,6 +40,7 @@ type completeRequest struct {
 	Instruction string `json:"instruction"` // optional hint for continue
 	Provider    string `json:"provider"`    // optional
 	MaxTokens   int    `json:"max_tokens"`  // optional
+	PromptID    string `json:"prompt_id"`   // optional writing style preset
 }
 
 type chatRequest struct {
@@ -94,6 +95,13 @@ func (h *Handler) Complete(c *gin.Context) {
 		sceneID = id
 	}
 
+	var promptID uuid.UUID
+	if req.PromptID != "" {
+		if id, err := uuid.Parse(req.PromptID); err == nil {
+			promptID = id
+		}
+	}
+
 	svcReq := CompleteRequest{
 		ProjectID:   projectID,
 		SceneID:     sceneID,
@@ -102,6 +110,7 @@ func (h *Handler) Complete(c *gin.Context) {
 		Instruction: req.Instruction,
 		Provider:    req.Provider,
 		MaxTokens:   req.MaxTokens,
+		PromptID:    promptID,
 	}
 
 	setSSeHeaders(c)

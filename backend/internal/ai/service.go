@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jconder44/nexustale/internal/ai/adapters"
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
@@ -153,6 +154,7 @@ type CompleteRequest struct {
 	Instruction string                // optional hint for continue mode
 	Provider    string                // optional — auto-selected if empty
 	MaxTokens   int                   // 0 = use config default
+	PromptID    uuid.UUID             // optional writing style preset
 }
 
 // ChatRequest is the public request type for chat operations.
@@ -204,6 +206,11 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 		adapterReq.Content = content
 	}
 
+	// Apply writing style preset if provided.
+	if req.PromptID != uuid.Nil {
+		s.applyPromptPreset(ctx, req.PromptID, &adapterReq)
+	}
+
 	return adapter.StreamComplete(ctx, adapterReq, w)
 }
 
@@ -246,6 +253,28 @@ type resolvedScene struct {
 	Content string
 	Tense   string
 	Pov     string
+}
+
+// applyPromptPreset modifies adapterReq in place according to the stored preset:
+//   - system_content (non-empty) replaces the generated system prompt
+//   - content (non-empty) is appended to the user turn as a style guidance block
+//
+// Errors are non-fatal: if the preset cannot be loaded we continue with the
+// default prompts and log a warning.
+func (s *Service) applyPromptPreset(ctx context.Context, promptID uuid.UUID, req *adapters.CompleteRequest) {
+	p, err := s.queries.GetProjectPrompt(ctx, promptID)
+	if err != nil {
+		if err != pgx.ErrNoRows {
+			slog.Warn("ai: could not load prompt preset", "prompt_id", promptID, "error", err)
+		}
+		return
+	}
+	if p.SystemContent != "" {
+		req.SystemPrompt = p.SystemContent
+	}
+	if p.Content != "" {
+		req.Content += "\n\n---\nStyle guidance: " + p.Content
+	}
 }
 
 func (s *Service) resolveContext(ctx context.Context, projectID, sceneID uuid.UUID) (resolvedContext, resolvedScene, error) {

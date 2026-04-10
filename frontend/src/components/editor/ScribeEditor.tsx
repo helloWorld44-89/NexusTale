@@ -1,10 +1,16 @@
-// ScribeEditor — centered writing area.
-// Plain textarea for now; rich editor (ProseMirror / Lexical) comes in A3.
+// ScribeEditor — centered writing area with Beat expansion toolbar.
+import BeatInput from './BeatInput'
+
 interface ScribeEditorProps {
-  sceneTitle: string
-  content: string
+  sceneTitle:  string
+  content:     string
   sceneSelected: boolean
-  onChange: (value: string) => void
+  onChange:    (value: string) => void
+  // Beat/AI props — only provided when a scene is active
+  token?:      string
+  projectId?:  string
+  sceneId?:    string
+  promptId?:   string | null
 }
 
 export default function ScribeEditor({
@@ -12,7 +18,15 @@ export default function ScribeEditor({
   content,
   sceneSelected,
   onChange,
+  token,
+  projectId,
+  sceneId,
+  promptId,
 }: ScribeEditorProps) {
+  const handleBeatAccept = (text: string) => {
+    onChange(content + text)
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-brand-bg">
 
@@ -24,7 +38,7 @@ export default function ScribeEditor({
       </div>
 
       {/* Writing surface */}
-      <div className="flex-1 overflow-y-auto px-8 pb-16">
+      <div className="flex-1 overflow-y-auto px-8 pb-4">
         <div className="max-w-3xl mx-auto h-full">
           {sceneSelected ? (
             <textarea
@@ -41,6 +55,17 @@ export default function ScribeEditor({
           )}
         </div>
       </div>
+
+      {/* Beat expansion toolbar — only when scene is active and AI props provided */}
+      {sceneSelected && token && projectId && sceneId && (
+        <BeatInput
+          token={token}
+          projectId={projectId}
+          sceneId={sceneId}
+          promptId={promptId ?? null}
+          onAccept={handleBeatAccept}
+        />
+      )}
     </div>
   )
 }

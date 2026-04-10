@@ -105,6 +105,18 @@ type ProjectCollaborator struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type ProjectPrompt struct {
+	ID            uuid.UUID          `json:"id"`
+	ProjectID     uuid.UUID          `json:"project_id"`
+	Name          string             `json:"name"`
+	Category      string             `json:"category"`
+	Content       string             `json:"content"`
+	SystemContent string             `json:"system_content"`
+	SortOrder     int32              `json:"sort_order"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RefreshToken struct {
 	ID        uuid.UUID          `json:"id"`
 	UserID    uuid.UUID          `json:"user_id"`
@@ -140,13 +152,14 @@ type User struct {
 }
 
 type UserApiKey struct {
-	ID           uuid.UUID          `json:"id"`
-	UserID       uuid.UUID          `json:"user_id"`
-	Provider     string             `json:"provider"`
-	EncryptedKey []byte             `json:"encrypted_key"`
-	KeyHint      string             `json:"key_hint"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID                uuid.UUID          `json:"id"`
+	UserID            uuid.UUID          `json:"user_id"`
+	Provider          string             `json:"provider"`
+	EncryptedKey      []byte             `json:"encrypted_key"`
+	KeyHint           string             `json:"key_hint"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	ForceNonStreaming bool               `json:"force_non_streaming"`
 }
 
 type WikiEntity struct {
