@@ -1,0 +1,28 @@
+meta {
+  name: setup-get-act
+  type: http
+  seq: 0
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/acts
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.length > 0) {
+    bru.setEnvVar("actId", res.body[0].id);
+  }
+}
+
+tests {
+  test("fetched default act for chapter tests", function() {
+    expect(res.status).to.equal(200);
+    expect(res.body.length).to.be.greaterThan(0);
+  });
+}

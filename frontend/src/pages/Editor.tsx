@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
 import { api } from '@/services/api'
-import type { Chapter, Scene } from '@/services/api'
+import type { Act, Chapter, Scene } from '@/services/api'
 import TopBar from '@/components/layout/TopBar'
 import StatusBar from '@/components/layout/StatusBar'
 import ChatBar from '@/components/ai/ChatBar'
@@ -12,6 +12,7 @@ import WikiPanel from '@/components/wiki/WikiPanel'
 import ScribeEditor from '@/components/editor/ScribeEditor'
 import SceneMetadataPanel from '@/components/editor/SceneMetadataPanel'
 import ProjectExplorer from '@/components/project/ProjectExplorer'
+import type { ActItem } from '@/components/project/ProjectExplorer'
 import ActivityBar from '@/components/layout/ActivityBar'
 
 export type LeftPanel = 'chat' | 'git' | 'wiki' | 'none'
@@ -21,6 +22,11 @@ interface ChapterWithScenes extends Chapter {
   scenes: Scene[]
 }
 
+// Act augmented with its chapters (each holding scenes).
+interface ActWithChapters extends Act {
+  chapters: ChapterWithScenes[]
+}
+
 const AUTOSAVE_MS = 1500
 
 export default function Editor() {
@@ -28,16 +34,16 @@ export default function Editor() {
   const navigate = useNavigate()
   const accessToken = useAuthStore((s) => s.accessToken)
 
-  const [projectTitle,       setProjectTitle]       = useState('')
-  const [chapters,           setChapters]           = useState<ChapterWithScenes[]>([])
-  const [selectedChapterId,  setSelectedChapterId]  = useState<string | null>(null)
-  const [selectedSceneId,    setSelectedSceneId]    = useState<string | null>(null)
-  const [sceneContents,      setSceneContents]      = useState<Record<string, string>>({})
-  const [sceneData,          setSceneData]          = useState<Record<string, Scene>>({})
-  const [sceneToChapter,     setSceneToChapter]     = useState<Record<string, string>>({})
-  const [loading,            setLoading]            = useState(true)
-  const [leftPanel,          setLeftPanel]          = useState<LeftPanel>('chat')
-  const [explorerOpen,       setExplorerOpen]       = useState(true)
+  const [projectTitle,      setProjectTitle]      = useState('')
+  const [acts,              setActs]              = useState<ActWithChapters[]>([])
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
+  const [selectedSceneId,   setSelectedSceneId]   = useState<string | null>(null)
+  const [sceneContents,     setSceneContents]     = useState<Record<string, string>>({})
+  const [sceneData,         setSceneData]         = useState<Record<string, Scene>>({})
+  const [sceneToChapter,    setSceneToChapter]    = useState<Record<string, string>>({})
+  const [loading,           setLoading]           = useState(true)
+  const [leftPanel,         setLeftPanel]         = useState<LeftPanel>('chat')
+  const [explorerOpen,      setExplorerOpen]      = useState(true)
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -50,43 +56,59 @@ export default function Editor() {
 
     const load = async () => {
       try {
-        // Load project + chapters in parallel.
-        const [project, rawChapters] = await Promise.all([
+        const [project, rawActs] = await Promise.all([
           api.projects.get(accessToken, projectId),
-          api.chapters.list(accessToken, projectId),
+          api.acts.list(accessToken, projectId),
         ])
 
         if (cancelled) return
 
-        // Sort chapters by sort_order, then load all their scenes in parallel.
-        const sorted = [...rawChapters].sort((a, b) => a.sort_order - b.sort_order)
-        const sceneLists = await Promise.all(
-          sorted.map((ch) => api.scenes.list(accessToken, projectId, ch.id))
+        const sortedActs = [...rawActs].sort((a, b) => a.sort_order - b.sort_order)
+
+        // For each act, fetch its chapters in parallel.
+        const chapterLists = await Promise.all(
+          sortedActs.map((act) => api.chapters.list(accessToken, projectId, act.id))
         )
 
         if (cancelled) return
 
-        const contents: Record<string, string> = {}
-        const data: Record<string, Scene>      = {}
-        const toChapter: Record<string, string> = {}
-        const withScenes: ChapterWithScenes[] = sorted.map((ch, i) => {
-          const scenes = [...(sceneLists[i] ?? [])].sort((a, b) => a.sort_order - b.sort_order)
-          for (const sc of scenes) {
-            contents[sc.id]  = sc.content
-            data[sc.id]      = sc
-            toChapter[sc.id] = ch.id
-          }
-          return { ...ch, scenes }
+        // For each chapter, fetch its scenes in parallel (all chapters at once).
+        const allChapters = chapterLists.flat()
+        const sceneLists  = await Promise.all(
+          allChapters.map((ch) => api.scenes.list(accessToken, ch.id))
+        )
+
+        if (cancelled) return
+
+        const contents:   Record<string, string>  = {}
+        const data:       Record<string, Scene>   = {}
+        const toChapter:  Record<string, string>  = {}
+
+        // Map scene lists back to chapters.
+        let sceneIdx = 0
+        const actsWithChapters: ActWithChapters[] = sortedActs.map((act, ai) => {
+          const rawChapters = chapterLists[ai] ?? []
+          const sorted = [...rawChapters].sort((a, b) => a.sort_order - b.sort_order)
+          const chapters: ChapterWithScenes[] = sorted.map((ch) => {
+            const scenes = [...(sceneLists[sceneIdx++] ?? [])].sort((a, b) => a.sort_order - b.sort_order)
+            for (const sc of scenes) {
+              contents[sc.id]  = sc.content
+              data[sc.id]      = sc
+              toChapter[sc.id] = ch.id
+            }
+            return { ...ch, scenes }
+          })
+          return { ...act, chapters }
         })
 
         setProjectTitle(project.title)
-        setChapters(withScenes)
+        setActs(actsWithChapters)
         setSceneContents(contents)
         setSceneData(data)
         setSceneToChapter(toChapter)
 
-        // Default selection: first chapter's first scene.
-        const firstCh = withScenes[0]
+        // Default selection: first act → first chapter → first scene.
+        const firstCh = actsWithChapters[0]?.chapters[0]
         const firstSc = firstCh?.scenes[0]
         if (firstCh) setSelectedChapterId(firstCh.id)
         if (firstSc) setSelectedSceneId(firstSc.id)
@@ -109,42 +131,57 @@ export default function Editor() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
       const chapterId = sceneToChapter[sceneId]
-      if (!chapterId || !projectId || !accessToken) return
-      api.scenes.update(accessToken, projectId, chapterId, sceneId, { content: value })
-        .catch(() => {}) // silent — user will retry on next keystroke
+      if (!chapterId || !accessToken) return
+      api.scenes.update(accessToken, chapterId, sceneId, { content: value })
+        .catch(() => {})
     }, AUTOSAVE_MS)
-  }, [accessToken, projectId, sceneToChapter])
+  }, [accessToken, sceneToChapter])
 
   const handleSelectScene = useCallback((chapterId: string, sceneId: string) => {
     setSelectedChapterId(chapterId)
     setSelectedSceneId(sceneId)
   }, [])
 
-  const handleCreateChapter = useCallback(async (title: string) => {
+  const handleCreateAct = useCallback(async (title: string) => {
     if (!projectId || !accessToken) return
-    const sortOrder = chapters.length + 1
-    const chapter = await api.chapters.create(accessToken, projectId, title, sortOrder)
+    const sortOrder = acts.length
+    const act = await api.acts.create(accessToken, projectId, title, '', sortOrder)
+    const newAct: ActWithChapters = { ...act, chapters: [] }
+    setActs((prev) => [...prev, newAct])
+  }, [projectId, accessToken, acts.length])
+
+  const handleCreateChapter = useCallback(async (actId: string, title: string) => {
+    if (!projectId || !accessToken) return
+    const act = acts.find((a) => a.id === actId)
+    const sortOrder = (act?.chapters.length ?? 0) + 1
+    const chapter = await api.chapters.create(accessToken, projectId, actId, title, sortOrder)
     const newChapter: ChapterWithScenes = { ...chapter, scenes: [] }
-    setChapters((prev) => [...prev, newChapter])
+    setActs((prev) =>
+      prev.map((a) => a.id === actId ? { ...a, chapters: [...a.chapters, newChapter] } : a)
+    )
     setSelectedChapterId(chapter.id)
     setSelectedSceneId(null)
-    // Expand the new chapter in the explorer (handled via default-open in explorer).
-  }, [projectId, accessToken, chapters.length])
+  }, [projectId, accessToken, acts])
 
   const handleCreateScene = useCallback(async (chapterId: string, title: string) => {
-    if (!projectId || !accessToken) return
-    const chapter = chapters.find((c) => c.id === chapterId)
+    if (!accessToken) return
+    const chapter = acts.flatMap((a) => a.chapters).find((c) => c.id === chapterId)
     const sortOrder = (chapter?.scenes.length ?? 0) + 1
-    const scene = await api.scenes.create(accessToken, projectId, chapterId, title, sortOrder)
+    const scene = await api.scenes.create(accessToken, chapterId, title, sortOrder)
     setSceneContents((prev) => ({ ...prev, [scene.id]: '' }))
     setSceneData((prev) => ({ ...prev, [scene.id]: scene }))
     setSceneToChapter((prev) => ({ ...prev, [scene.id]: chapterId }))
-    setChapters((prev) =>
-      prev.map((c) => c.id === chapterId ? { ...c, scenes: [...c.scenes, scene] } : c)
+    setActs((prev) =>
+      prev.map((a) => ({
+        ...a,
+        chapters: a.chapters.map((c) =>
+          c.id === chapterId ? { ...c, scenes: [...c.scenes, scene] } : c
+        ),
+      }))
     )
     setSelectedChapterId(chapterId)
     setSelectedSceneId(scene.id)
-  }, [projectId, accessToken, chapters])
+  }, [accessToken, acts])
 
   const toggleLeftPanel = useCallback((panel: LeftPanel) => {
     setLeftPanel((prev) => (prev === panel ? 'none' : panel))
@@ -152,10 +189,27 @@ export default function Editor() {
 
   // ── Derived display values ──────────────────────────────────────────────────
 
-  const activeChapter = chapters.find((c) => c.id === selectedChapterId)
+  const activeAct     = acts.find((a) => a.chapters.some((c) => c.id === selectedChapterId))
+  const activeChapter = activeAct?.chapters.find((c) => c.id === selectedChapterId)
   const activeScene   = activeChapter?.scenes.find((s) => s.id === selectedSceneId)
   const content       = activeScene ? (sceneContents[activeScene.id] ?? '') : ''
   const wordCount     = content.trim() === '' ? 0 : content.trim().split(/\s+/).length
+
+  // Only show the act in the breadcrumb when the act layer is visible
+  // (i.e. more than one act, or a custom-named act).
+  const actsAreHidden = acts.length === 1 && acts[0]?.title === 'Act 1'
+  const actTitle      = actsAreHidden ? '' : (activeAct?.title ?? '')
+
+  // Map acts to the shape ProjectExplorer expects.
+  const explorerActs: ActItem[] = acts.map((a) => ({
+    id:       a.id,
+    title:    a.title,
+    chapters: a.chapters.map((c) => ({
+      id:     c.id,
+      title:  c.title,
+      scenes: c.scenes.map((s) => ({ id: s.id, title: s.title })),
+    })),
+  }))
 
   // ── Loading state ───────────────────────────────────────────────────────────
 
@@ -174,6 +228,7 @@ export default function Editor() {
     <div className="h-screen flex flex-col bg-brand-bg overflow-hidden font-sans">
       <TopBar
         projectTitle={projectTitle}
+        actTitle={actTitle}
         chapterTitle={activeChapter?.title ?? ''}
         sceneTitle={activeScene?.title ?? ''}
         leftPanel={leftPanel}
@@ -203,10 +258,9 @@ export default function Editor() {
             sceneSelected={!!activeScene}
             onChange={(val) => activeScene && handleContentChange(activeScene.id, val)}
           />
-          {activeScene && accessToken && projectId && selectedChapterId && sceneData[activeScene.id] && (
+          {activeScene && accessToken && selectedChapterId && sceneData[activeScene.id] && (
             <SceneMetadataPanel
               token={accessToken}
-              projectId={projectId}
               chapterId={selectedChapterId}
               scene={sceneData[activeScene.id]}
               onUpdate={(updated) => setSceneData((prev) => ({ ...prev, [updated.id]: updated }))}
@@ -216,10 +270,11 @@ export default function Editor() {
         {explorerOpen && (
           <ProjectExplorer
             projectTitle={projectTitle}
-            chapters={chapters}
+            acts={explorerActs}
             selectedChapterId={selectedChapterId ?? ''}
             selectedSceneId={selectedSceneId ?? ''}
             onSelectScene={handleSelectScene}
+            onCreateAct={handleCreateAct}
             onCreateChapter={handleCreateChapter}
             onCreateScene={handleCreateScene}
           />

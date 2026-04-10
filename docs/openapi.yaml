@@ -138,6 +138,34 @@ components:
         created_at:  { type: string, format: date-time }
         updated_at:  { type: string, format: date-time }
 
+    # ── Acts ──────────────────────────────────────────────────────────────────
+    CreateActRequest:
+      type: object
+      required: [title]
+      properties:
+        title:      { type: string, minLength: 1, maxLength: 200 }
+        summary:    { type: string }
+        sort_order: { type: integer }
+
+    UpdateActRequest:
+      type: object
+      properties:
+        title:      { type: string, minLength: 1, maxLength: 200 }
+        summary:    { type: string }
+        sort_order: { type: integer }
+
+    ActResponse:
+      type: object
+      required: [id, project_id, title, summary, sort_order, created_at, updated_at]
+      properties:
+        id:         { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        title:      { type: string }
+        summary:    { type: string }
+        sort_order: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
     # ── Chapters ──────────────────────────────────────────────────────────────
     CreateChapterRequest:
       type: object
@@ -156,10 +184,11 @@ components:
 
     ChapterResponse:
       type: object
-      required: [id, project_id, title, summary, sort_order, created_at, updated_at]
+      required: [id, project_id, act_id, title, summary, sort_order, created_at, updated_at]
       properties:
         id:         { type: string, format: uuid }
         project_id: { type: string, format: uuid }
+        act_id:     { type: string, format: uuid }
         title:      { type: string }
         summary:    { type: string }
         sort_order: { type: integer }
@@ -619,17 +648,119 @@ paths:
         "401": { $ref: '#/components/responses/Unauthorized' }
         "404": { $ref: '#/components/responses/NotFound' }
 
-  # ── Chapters ─────────────────────────────────────────────────────────────────
+  # ── Acts ─────────────────────────────────────────────────────────────────────
 
-  /projects/{projectId}/chapters:
+  /projects/{projectId}/acts:
     parameters:
       - name: projectId
         in: path
         required: true
         schema: { type: string, format: uuid }
     get:
+      operationId: listActs
+      summary: List all acts in a project
+      tags: [acts]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of acts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ActResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createAct
+      summary: Create a new act
+      tags: [acts]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateActRequest' }
+      responses:
+        "201":
+          description: Act created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/acts/{actId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: actId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAct
+      summary: Get a single act
+      tags: [acts]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Act details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateAct
+      summary: Update an act
+      tags: [acts]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateActRequest' }
+      responses:
+        "200":
+          description: Updated act.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteAct
+      summary: Delete an act and all its chapters and scenes
+      tags: [acts]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Act deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Chapters ─────────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/acts/{actId}/chapters:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: actId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
       operationId: listChapters
-      summary: List all chapters in a project
+      summary: List all chapters in an act
       tags: [chapters]
       security: [{ bearerAuth: [] }]
       responses:
@@ -644,7 +775,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
     post:
       operationId: createChapter
-      summary: Create a new chapter
+      summary: Create a new chapter in an act
       tags: [chapters]
       security: [{ bearerAuth: [] }]
       requestBody:
@@ -661,9 +792,13 @@ paths:
         "400": { $ref: '#/components/responses/BadRequest' }
         "401": { $ref: '#/components/responses/Unauthorized' }
 
-  /projects/{projectId}/chapters/{chapterId}:
+  /projects/{projectId}/acts/{actId}/chapters/{chapterId}:
     parameters:
       - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: actId
         in: path
         required: true
         schema: { type: string, format: uuid }
@@ -719,12 +854,8 @@ paths:
 
   # ── Scenes ────────────────────────────────────────────────────────────────────
 
-  /projects/{projectId}/chapters/{chapterId}/scenes:
+  /chapters/{chapterId}/scenes:
     parameters:
-      - name: projectId
-        in: path
-        required: true
-        schema: { type: string, format: uuid }
       - name: chapterId
         in: path
         required: true
@@ -763,12 +894,8 @@ paths:
         "400": { $ref: '#/components/responses/BadRequest' }
         "401": { $ref: '#/components/responses/Unauthorized' }
 
-  /projects/{projectId}/chapters/{chapterId}/scenes/{sceneId}:
+  /chapters/{chapterId}/scenes/{sceneId}:
     parameters:
-      - name: projectId
-        in: path
-        required: true
-        schema: { type: string, format: uuid }
       - name: chapterId
         in: path
         required: true

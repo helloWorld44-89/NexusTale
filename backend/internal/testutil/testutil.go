@@ -118,7 +118,8 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 		authHandler.RegisterRoutes(authGroup)
 
 		projectsGroup := v1.Group("/projects", auth.RequireAuth(authService))
-		projectHandler.RegisterRoutes(projectsGroup)
+		chaptersGroup := v1.Group("/chapters", auth.RequireAuth(authService))
+		projectHandler.RegisterRoutes(projectsGroup, chaptersGroup)
 
 		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService))
 		wikiHandler.RegisterRoutes(wikiGroup)

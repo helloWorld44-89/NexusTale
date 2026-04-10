@@ -111,7 +111,7 @@ export interface paths {
         patch: operations["updateProject"];
         trace?: never;
     };
-    "/projects/{projectId}/chapters": {
+    "/projects/{projectId}/acts": {
         parameters: {
             query?: never;
             header?: never;
@@ -120,10 +120,53 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List all chapters in a project */
+        /** List all acts in a project */
+        get: operations["listActs"];
+        put?: never;
+        /** Create a new act */
+        post: operations["createAct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/acts/{actId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                actId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a single act */
+        get: operations["getAct"];
+        put?: never;
+        post?: never;
+        /** Delete an act and all its chapters and scenes */
+        delete: operations["deleteAct"];
+        options?: never;
+        head?: never;
+        /** Update an act */
+        patch: operations["updateAct"];
+        trace?: never;
+    };
+    "/projects/{projectId}/acts/{actId}/chapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                actId: string;
+            };
+            cookie?: never;
+        };
+        /** List all chapters in an act */
         get: operations["listChapters"];
         put?: never;
-        /** Create a new chapter */
+        /** Create a new chapter in an act */
         post: operations["createChapter"];
         delete?: never;
         options?: never;
@@ -131,12 +174,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{projectId}/chapters/{chapterId}": {
+    "/projects/{projectId}/acts/{actId}/chapters/{chapterId}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 projectId: string;
+                actId: string;
                 chapterId: string;
             };
             cookie?: never;
@@ -153,12 +197,11 @@ export interface paths {
         patch: operations["updateChapter"];
         trace?: never;
     };
-    "/projects/{projectId}/chapters/{chapterId}/scenes": {
+    "/chapters/{chapterId}/scenes": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                projectId: string;
                 chapterId: string;
             };
             cookie?: never;
@@ -174,12 +217,11 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{projectId}/chapters/{chapterId}/scenes/{sceneId}": {
+    "/chapters/{chapterId}/scenes/{sceneId}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                projectId: string;
                 chapterId: string;
                 sceneId: string;
             };
@@ -672,6 +714,29 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        CreateActRequest: {
+            title: string;
+            summary?: string;
+            sort_order?: number;
+        };
+        UpdateActRequest: {
+            title?: string;
+            summary?: string;
+            sort_order?: number;
+        };
+        ActResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            title: string;
+            summary: string;
+            sort_order: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         CreateChapterRequest: {
             title: string;
             summary?: string;
@@ -687,6 +752,8 @@ export interface components {
             id: string;
             /** Format: uuid */
             project_id: string;
+            /** Format: uuid */
+            act_id: string;
             title: string;
             summary: string;
             sort_order: number;
@@ -1212,12 +1279,145 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listActs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of acts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createAct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateActRequest"];
+            };
+        };
+        responses: {
+            /** @description Act created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                actId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Act details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteAct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                actId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Act deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                actId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateActRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated act. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listChapters: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 projectId: string;
+                actId: string;
             };
             cookie?: never;
         };
@@ -1242,6 +1442,7 @@ export interface operations {
             header?: never;
             path: {
                 projectId: string;
+                actId: string;
             };
             cookie?: never;
         };
@@ -1270,6 +1471,7 @@ export interface operations {
             header?: never;
             path: {
                 projectId: string;
+                actId: string;
                 chapterId: string;
             };
             cookie?: never;
@@ -1295,6 +1497,7 @@ export interface operations {
             header?: never;
             path: {
                 projectId: string;
+                actId: string;
                 chapterId: string;
             };
             cookie?: never;
@@ -1320,6 +1523,7 @@ export interface operations {
             header?: never;
             path: {
                 projectId: string;
+                actId: string;
                 chapterId: string;
             };
             cookie?: never;
@@ -1349,7 +1553,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                projectId: string;
                 chapterId: string;
             };
             cookie?: never;
@@ -1374,7 +1577,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                projectId: string;
                 chapterId: string;
             };
             cookie?: never;
@@ -1403,7 +1605,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                projectId: string;
                 chapterId: string;
                 sceneId: string;
             };
@@ -1429,7 +1630,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                projectId: string;
                 chapterId: string;
                 sceneId: string;
             };
@@ -1455,7 +1655,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                projectId: string;
                 chapterId: string;
                 sceneId: string;
             };

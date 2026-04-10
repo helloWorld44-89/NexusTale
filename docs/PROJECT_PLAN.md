@@ -93,7 +93,7 @@ flowchart TB
 | `cmd/api` | Process entry: config, DB pool, migrations, router, graceful shutdown |
 | `internal/config` | Viper/env; validate required secrets in production |
 | `internal/auth` | Register/login, JWT access + refresh, middleware; later OAuth optional |
-| `internal/project` | Projects, chapters, scenes; orchestrates Git commits on meaningful saves |
+| `internal/project` | Projects, acts, chapters, scenes; orchestrates Git commits on meaningful saves |
 | `internal/wiki` | Entities, types (character, location, faction, magic…), relationships, timeline events, plot beats, attachments |
 | `internal/collaboration` | WebSocket hub, rooms per project/doc, CRDT/op sync; Redis fan-out |
 | `internal/ai` | Provider adapters (Ollama, OpenAI, Anthropic, OpenRouter…), prompt templates, RAG/embeddings, quotas |
@@ -236,7 +236,7 @@ frontend/
 | **Characters** | Bios, arcs, relationships | Relationship graph edges |
 | **Magic / systems** | Rules, costs, limits | Consistency checks via AI optional |
 | **Timeline** | Dated events, eras | Sort + filter; link entities |
-| **Plot** | Acts, beats, summaries | Connect to chapters/scenes (many-to-many) |
+| **Plot** | Acts, beats, summaries | Acts are first-class DB entities (project → act → chapter → scene); hidden in UI when only one default act exists |
 
 - **Data model**: generic `entities` + `entity_type` + JSON attributes vs normalized tables; start generic for speed, normalize hot paths later.
 - **Autolink**: scan scene text for `@Entity` or wiki links; backend index optional.
@@ -332,6 +332,37 @@ Summary: README + OpenAPI stub + infra honesty; Wiki v1 (sqlc + REST + tests); G
 - ✅ OpenAPI spec (`docs/openapi.yaml`, 40 routes); TypeScript codegen (`npm run gen:api`)
 - ✅ CI — frontend typecheck (`tsc --noEmit`), ESLint, API types drift check, `sqlc diff` check
 
+**Act Structure — Phase 1 complete (2026-04-10):**
+
+Hierarchy is now **Project → Act → Chapter → Scene**. Acts are required; a default "Act 1" is auto-created with every project and hidden in the UI when no additional acts exist.
+
+- ✅ Migration 000009 — `acts` table, backfill one act per existing project, `chapters.act_id NOT NULL` FK
+- ✅ sqlc — `acts.sql` (CRUD); `chapters.sql` updated (CreateChapter takes `act_id`, `ListChaptersByAct` added)
+- ✅ Service — `CreateAct/GetAct/ListActs/UpdateAct/DeleteAct`; `CreateProject` auto-creates "Act 1"; `CreateChapter` now takes `actID`
+- ✅ Handler routes — Act CRUD under `/projects/:id/acts`; chapters under `/projects/:id/acts/:aid/chapters`; scenes detached to `/chapters/:cid/scenes`
+- ✅ OpenAPI spec updated — `ActResponse`, `CreateActRequest`, `UpdateActRequest` schemas; all paths updated
+- ✅ TypeScript codegen — `npm run gen:api` regenerated `api-types.ts`
+
+✅ **Act Structure — Phase 2** (integration tests + Bruno — complete 2026-04-10):
+- Updated `handler_test.go` — chapter/scene tests use new routes; helpers `createProject`, `defaultActID`, `actChapterURL` added; `TestProjectCRUD` verifies default act creation
+- New `act_handler_test.go` — `TestActCRUD`, `TestActDefaultCreatedWithProject`, `TestActCascadeDeletesChaptersAndScenes`, `TestActValidation`, `TestGetActNotFound`
+- New `bruno/09-acts/` — list-acts (sets `actId` env var), create-act, get-act, update-act, delete-act
+- Updated `bruno/04-chapters/` — added `00-setup-get-act.bru`; all chapter URLs use `/acts/{{actId}}/chapters`
+- Updated `bruno/05-scenes/` — all scene URLs use `/chapters/{{chapterId}}/scenes`
+- Updated `bruno/08-teardown/` — delete-chapter and delete-scene use new paths
+
+✅ **Act Structure — Phase 3** (frontend — complete 2026-04-10):
+- `api.ts` — `Act` type exported; `api.acts` (list/create/update/delete); `api.chapters.list/create` take `actId`; `api.scenes.list/create/update` use `/chapters/:cid/scenes` (projectId removed)
+- `ProjectExplorer.tsx` — rewritten with `ActItem` interface; act layer shown/hidden based on `acts.length === 1 && title === 'Act 1'`; act-level collapse, per-act "new chapter" button, "new act" button in header; `ChapterRow` extracted as sub-component
+- `Editor.tsx` — `ActWithChapters` state; load flow: acts → chapters → scenes; `handleCreateAct`, updated `handleCreateChapter(actId)`, `handleCreateScene(chapterId)` (no projectId); autosave uses new `api.scenes.update(chapterId, sceneId)`; `actTitle` derived and passed to TopBar
+- `TopBar.tsx` — `actTitle` prop added; renders in breadcrumb between project and chapter, styled in `brand-purple`
+- `SceneMetadataPanel.tsx` — `projectId` prop removed; `api.scenes.update` call updated to new 3-arg signature
+
+✅ **Act Structure — Phase 3.5** (TypeScript build check + docs — complete 2026-04-10):
+- `npx tsc --noEmit` — clean (zero errors) after all Phase 3 changes
+- `PROJECT_PLAN.md` — all Act Structure phases documented with full bullet-point detail
+- `ROADMAP.md` — current state table updated: hierarchy now "Project → Act → Chapter → Scene", migration 009, 45+ routes, acts in Bruno collection
+
 ### Phase B — Guide + AI + export core
 
 - Novel guide backend + wizard UI (happy path only)
@@ -379,6 +410,9 @@ Summary: README + OpenAPI stub + infra honesty; Wiki v1 (sqlc + REST + tests); G
 - ✅ A+3 — Autolink wired in editor (debounced wiki entity match badges in WikiPanel)
 
 **In progress / next up** ([full spec](./specs/phase-aplus.md)):
+- ✅ **Act Phase 2** — Complete (see Phase A section above)
+- ✅ **Act Phase 3** — Complete (see Phase A section above)
+- ✅ **Act Phase 3.5** — Complete (TypeScript clean, PROJECT_PLAN + ROADMAP updated)
 - ⬜ A+4 — Focus/distraction-free mode (frontend only; `F11` toggle, full-width editor)
 - ⬜ A+5 — Project home/stats page (`GET /projects/:id/stats` + project overview before editor)
 - ⬜ A+6 — User account deletion (`DELETE /users/me` + danger zone in settings)

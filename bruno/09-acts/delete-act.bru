@@ -1,11 +1,11 @@
 meta {
-  name: delete-scene
+  name: delete-act
   type: http
-  seq: 4
+  seq: 5
 }
 
 delete {
-  url: {{baseUrl}}/api/v1/chapters/{{chapterId}}/scenes/{{sceneId}}
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/acts/{{actId2}}
   body: none
   auth: bearer
 }
@@ -19,7 +19,7 @@ tests {
     expect(res.status).to.equal(200);
   });
 
-  test("returns deleted message", function() {
-    expect(res.body.message).to.equal("scene deleted");
+  test("returns success message", function() {
+    expect(res.body).to.have.property("message");
   });
 }

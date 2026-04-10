@@ -10,16 +10,17 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 | Area | Status |
 |------|--------|
-| **API shell** | Go 1.23 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + chapters + scenes), JWT + refresh tokens |
-| **Database** | PostgreSQL migrations (006) + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
+| **API shell** | Go 1.23 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens |
+| **Database** | PostgreSQL migrations (009) + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
+| **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; act layer hidden in UI for single default act; full CRUD + integration tests + Bruno |
 | **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; 21 handler integration tests; fast-forward merge; Paradox detection |
 | **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints |
 | **Redis / MinIO** | Provisioned in dev compose; **not yet consumed** by API (Phase B) |
 | **Collaboration, AI, export** | Packages stubbed; no HTTP registration |
-| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor (debounce save), wiki hub (entities + timeline CRUD), git panel (chronicle/lore/echo/diverge/canonize) |
-| **OpenAPI + types** | `docs/openapi.yaml` (40 routes); `frontend/src/services/api-types.ts` generated; CI drift check |
+| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor (debounce save), act/chapter/scene explorer (act layer auto-hidden), wiki hub, git panel |
+| **OpenAPI + types** | `docs/openapi.yaml` (45+ routes incl. acts); `frontend/src/services/api-types.ts` generated; CI drift check |
 | **CI/CD** | GitHub Actions (self-hosted) → GHCR → Ansible → dev VM; Go tests, tsc, ESLint, API-types drift, sqlc diff, Docker build + push, Ansible deploy |
-| **Bruno collection** | Full integration tests for auth, health, projects, chapters, scenes, wiki (incl. anchor tests), git |
+| **Bruno collection** | Full integration tests for auth, health, projects, acts, chapters, scenes, wiki (incl. anchor tests), git |
 | **README** | Written — prerequisites, quick start, env vars, Redis/MinIO note |
 | **K8s / Helm** | Stubs — not yet used |
 

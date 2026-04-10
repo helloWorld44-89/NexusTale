@@ -1,11 +1,11 @@
 meta {
-  name: create-chapter
+  name: create-act
   type: http
-  seq: 1
+  seq: 2
 }
 
 post {
-  url: {{baseUrl}}/api/v1/projects/{{projectId}}/acts/{{actId}}/chapters
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/acts
   body: json
   auth: bearer
 }
@@ -16,15 +16,15 @@ auth:bearer {
 
 body:json {
   {
-    "title": "Chapter 1: The Departure",
-    "summary": "The crew boards the starship and leaves Earth behind.",
+    "title": "Act 2: The Reckoning",
+    "summary": "The crew faces the consequences of their choices beyond the heliopause.",
     "sort_order": 1
   }
 }
 
 script:post-response {
   if (res.status === 201) {
-    bru.setEnvVar("chapterId", res.body.id);
+    bru.setEnvVar("actId2", res.body.id);
   }
 }
 
@@ -33,12 +33,12 @@ tests {
     expect(res.status).to.equal(201);
   });
 
-  test("returns chapter with title", function() {
-    expect(res.body.title).to.equal("Chapter 1: The Departure");
+  test("returns act with title", function() {
+    expect(res.body.title).to.equal("Act 2: The Reckoning");
   });
 
-  test("returns chapter with summary", function() {
-    expect(res.body.summary).to.equal("The crew boards the starship and leaves Earth behind.");
+  test("returns act with summary", function() {
+    expect(res.body.summary).to.include("heliopause");
   });
 
   test("sort_order is set", function() {

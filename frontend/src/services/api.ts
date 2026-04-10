@@ -11,6 +11,7 @@ export type User                   = components['schemas']['UserResponse']
 export type TokenPair              = components['schemas']['TokenPair']
 export type AuthResponse           = components['schemas']['AuthResponse']
 export type Project                = components['schemas']['ProjectResponse']
+export type Act                    = components['schemas']['ActResponse']
 export type Chapter                = components['schemas']['ChapterResponse']
 export type Scene                  = components['schemas']['SceneResponse']
 export type ChronicleEntry         = components['schemas']['ChronicleEntry']
@@ -105,22 +106,36 @@ export const api = {
       request<Project>('POST', '/projects', { title, description, genres }, token),
   },
 
-  chapters: {
+  acts: {
     list: (token: string, projectId: string) =>
-      request<Chapter[]>('GET', `/projects/${projectId}/chapters`, undefined, token),
+      request<Act[]>('GET', `/projects/${projectId}/acts`, undefined, token),
 
-    create: (token: string, projectId: string, title: string, sortOrder: number) =>
-      request<Chapter>('POST', `/projects/${projectId}/chapters`, { title, sort_order: sortOrder }, token),
+    create: (token: string, projectId: string, title: string, summary = '', sortOrder = 0) =>
+      request<Act>('POST', `/projects/${projectId}/acts`, { title, summary, sort_order: sortOrder }, token),
+
+    update: (token: string, projectId: string, actId: string, data: { title?: string; summary?: string; sort_order?: number }) =>
+      request<Act>('PATCH', `/projects/${projectId}/acts/${actId}`, data, token),
+
+    delete: (token: string, projectId: string, actId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/acts/${actId}`, undefined, token),
+  },
+
+  chapters: {
+    list: (token: string, projectId: string, actId: string) =>
+      request<Chapter[]>('GET', `/projects/${projectId}/acts/${actId}/chapters`, undefined, token),
+
+    create: (token: string, projectId: string, actId: string, title: string, sortOrder: number) =>
+      request<Chapter>('POST', `/projects/${projectId}/acts/${actId}/chapters`, { title, sort_order: sortOrder }, token),
   },
 
   scenes: {
-    list: (token: string, projectId: string, chapterId: string) =>
-      request<Scene[]>('GET', `/projects/${projectId}/chapters/${chapterId}/scenes`, undefined, token),
+    list: (token: string, chapterId: string) =>
+      request<Scene[]>('GET', `/chapters/${chapterId}/scenes`, undefined, token),
 
-    create: (token: string, projectId: string, chapterId: string, title: string, sortOrder: number) =>
-      request<Scene>('POST', `/projects/${projectId}/chapters/${chapterId}/scenes`, { title, sort_order: sortOrder }, token),
+    create: (token: string, chapterId: string, title: string, sortOrder: number) =>
+      request<Scene>('POST', `/chapters/${chapterId}/scenes`, { title, sort_order: sortOrder }, token),
 
-    update: (token: string, projectId: string, chapterId: string, sceneId: string, data: {
+    update: (token: string, chapterId: string, sceneId: string, data: {
       content?: string
       title?: string
       pov?: string
@@ -130,7 +145,7 @@ export const api = {
       summary_stale?: boolean
       sort_order?: number
     }) =>
-      request<Scene>('PATCH', `/projects/${projectId}/chapters/${chapterId}/scenes/${sceneId}`, data, token),
+      request<Scene>('PATCH', `/chapters/${chapterId}/scenes/${sceneId}`, data, token),
   },
 
   git: {
