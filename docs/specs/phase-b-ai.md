@@ -184,9 +184,53 @@ data: [DONE]
 
 ---
 
+## Migration 010 (B2) — Branch-aware chapter summaries
+
+`chapters.ai_summary TEXT` is **not** added as a column. Because git branches cause scene
+content to diverge, a single column per chapter would let one branch's summary pollute another's
+context window. Instead, migration 010 creates two tables:
+
+```sql
+-- Per-branch chapter summaries.
+-- Primary key is (chapter_id, branch_name) — each branch keeps its own summary.
+CREATE TABLE chapter_summaries (
+    chapter_id   UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    branch_name  TEXT NOT NULL DEFAULT 'canon',
+    ai_summary   TEXT NOT NULL DEFAULT '',
+    stale        BOOL NOT NULL DEFAULT false,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (chapter_id, branch_name)
+);
+
+-- Tracks which git branch each user is currently working on per project.
+-- Upserted by TravelTo (branch switch) and Diverge (new branch auto-selects it).
+-- Defaults to 'canon' when no row exists.
+CREATE TABLE project_active_branch (
+    project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    branch_name TEXT NOT NULL DEFAULT 'canon',
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (project_id, user_id)
+);
+```
+
+### Branch resolution
+
+Every AI call, scene save, and summarize goroutine resolves the active branch via:
+```
+1. X-NexusTale-Branch request header (set by frontend from GET /projects/:id/git/status)
+2. project_active_branch table for (project_id, user_id)
+3. Default: "canon"
+```
+
+`TravelTo` and `Diverge` handlers upsert `project_active_branch` immediately after switching
+the git HEAD on disk.
+
+---
+
 ## Context window (B2)
 
-`internal/ai/context.go` — `BuildContext(ctx, db, projectID, sceneID, userText string) ([]Message, error)`
+`internal/ai/context.go` — `BuildContext(ctx, db, projectID, sceneID, branchName, userText string) ([]Message, error)`
 
 Assembly order (innermost = most recent = highest priority):
 
@@ -196,7 +240,10 @@ Assembly order (innermost = most recent = highest priority):
     World context: {wiki entity summaries, comma-joined, max 10 entities}
     Writing style: {tense} {POV}"
 
-2. Chapter summary messages (last 3 chapters, oldest first)
+2. Chapter summary messages (last 3 chapters before current, oldest first)
+   — query: chapter_summaries WHERE chapter_id = ? AND branch_name = <active>
+   — fallback: if no row for active branch, use branch_name = 'canon'
+   — if still missing or stale: omit that chapter (no error)
    role: "system", content: "Chapter '{title}' summary: {ai_summary}"
 
 3. Recent scene content (last 2 scenes before current, oldest first)
@@ -204,12 +251,26 @@ Assembly order (innermost = most recent = highest priority):
 
 4. Inline @[entity] mentions (resolved from userText or current scene content)
    role: "system", content: "Referenced entity '{name}' ({type}): {summary}"
-   — parsed before step 4; injected immediately before the user message
+   — parsed before step 5; injected immediately before the user message
 
 5. Current scene content (for /complete) or user message (for /chat)
 ```
 
 Token budget: 8000 tokens total. If over budget, truncate oldest chapter summaries first, then older scenes.
+
+### Branch fallback chain for chapter summaries
+
+```
+branch_summaries WHERE branch_name = <active_branch>   → use if found and not stale
+        ↓ (no row or stale)
+branch_summaries WHERE branch_name = 'canon'           → use as inherited baseline
+        ↓ (still nothing)
+omit chapter from context
+```
+
+A fresh `Diverge` inherits `canon` summaries automatically until the branch's own scenes
+diverge enough to trigger re-summarization. This is correct — context starts accurate and
+drifts only as the branch diverges.
 
 ### Inline `@[entity]` resolution
 
@@ -289,12 +350,57 @@ model. Useful for providers that nominally support SSE but behave unreliably.
 
 `internal/ai/summarizer.go`
 
-- Triggered by the scene update handler after a successful save
-- Uses a per-chapter debounce: 30s window, coalesces multiple rapid saves
-- Goroutine calls `Summarize(scene contents of chapter, joined)`
-- On success: `UPDATE chapters SET ai_summary = $1, ai_summary_stale = false WHERE id = $2`
-- On failure: logs error, leaves `ai_summary_stale = true`
-- Does not block the HTTP response path
+### Debounce key
+
+The debounce key is `(chapter_id, branch_name)` — not just `chapter_id`. A save on
+`alt-ending` debounces independently from a save on `canon`. Concurrent saves on different
+branches never coalesce into the wrong summary.
+
+```go
+type summarizeKey struct {
+    ChapterID  uuid.UUID
+    BranchName string
+}
+// debounce map: map[summarizeKey]*time.Timer  (guarded by sync.Mutex)
+```
+
+### Trigger flow
+
+```
+Scene save handler
+  → resolve active branch (header → project_active_branch → "canon")
+  → mark chapter_summaries stale: WHERE chapter_id=? AND branch_name=<active>
+       (INSERT ON CONFLICT DO UPDATE SET stale=true)
+  → enqueue summarizeKey{chapterID, branchName} with 30s debounce
+  → return HTTP response (goroutine runs in background)
+
+Goroutine fires after 30s idle:
+  → collect all scene content for chapter on this branch
+  → call Summarize(joined content)
+  → UPSERT chapter_summaries SET ai_summary=?, stale=false, updated_at=now()
+       WHERE chapter_id=? AND branch_name=?
+  → on failure: log error; leave stale=true
+```
+
+### Stale marking scope
+
+Only the active branch row is marked stale on a scene save — other branches' summaries
+remain accurate. When `canon` is edited, only `canon`'s summary row goes stale; `alt-ending`'s
+summary is unaffected.
+
+### Branch deletion (Canonize / merge)
+
+When a branch is merged (`Canonize`) or explicitly deleted:
+
+```go
+// Delete all summary rows for the merged branch across all chapters in the project
+queries.DeleteBranchSummaries(ctx, projectID, branchName)
+// Also remove from project_active_branch for any users still pointing at it
+queries.ClearActiveBranch(ctx, projectID, branchName)
+```
+
+After merge, the goroutine will regenerate `canon` summaries once the merged scenes are
+committed there and the next save triggers debounce.
 
 ---
 

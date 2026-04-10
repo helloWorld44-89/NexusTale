@@ -151,11 +151,12 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 - [ ] **B1.5.5** Frontend — Beat input in `ScribeEditor` toolbar; `mode: "beat"` request; streamed response with Accept/Retry/Discard
 
 ### B2 — AI memory + context
-- [ ] **B2.1** Backend — Migration 010: `chapters.ai_summary TEXT`, `chapters.ai_summary_stale BOOL`
-- [ ] **B2.2** Backend — auto-summarize goroutine (scene save → debounced 30s → `Summarize` → update chapter)
-- [ ] **B2.3** Backend — `BuildContext` with inline `@[entity]` parsing: up to 5 resolved wiki entries injected before user turn
-- [ ] **B2.4** Backend — wire context builder into `Complete` and `Chat` routes; expose `ai_summary` + `ai_summary_stale` in `ChapterResponse`
-- [ ] **B2.5** Frontend — stale indicator badge on chapter; "Regenerate" button in SceneMetadataPanel
+- [ ] **B2.1** Backend — Migration 010: `chapter_summaries(chapter_id, branch_name PK, ai_summary, stale)` + `project_active_branch(project_id, user_id PK, branch_name)` — no column added to `chapters`
+- [ ] **B2.2** Backend — `ResolveBranch` helper: `X-NexusTale-Branch` header → `project_active_branch` → `"canon"`; `TravelTo`/`Diverge` handlers upsert `project_active_branch` after git HEAD switch
+- [ ] **B2.3** Backend — auto-summarize goroutine: debounce key `(chapter_id, branch_name)`; upserts `chapter_summaries` per branch; only marks active branch stale on scene save
+- [ ] **B2.4** Backend — `BuildContext(…, branchName)`: summaries queried by active branch, falling back to `"canon"`; inline `@[entity]` parsing (up to 5 entries injected before user turn); `Canonize` deletes merged branch's summary rows
+- [ ] **B2.5** Backend — `ChapterResponse.ai_summary` sourced from `chapter_summaries` for requesting user's active branch; update OpenAPI; regenerate types
+- [ ] **B2.6** Frontend — stale indicator badge on chapter; "Regenerate" button in SceneMetadataPanel; `X-NexusTale-Branch` header sent on all AI and scene-save requests
 
 ### B3 — Token usage tracking
 - [ ] **B3.1** Backend — Migration 011: `ai_usage` table; record after every AI call (non-blocking); `GET /projects/:id/ai/usage` aggregate
@@ -173,6 +174,17 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 - [ ] **B5.2** Backend — step handlers: Premise → update project description; Characters → create wiki entities; World → entities + magic rule; Outline → chapters; First scene → scene + optional AI opening
 - [ ] **B5.3** OpenAPI — guide endpoints + `GuideStepResponse`; regenerate types
 - [ ] **B5.4** Frontend — `/projects/:id/guide` linear wizard; step sidebar with ✓ / current / muted states; skip allowed; "Finish guide" → ProjectHome
+
+### B5.5 — Story structure (optional templates)
+> Structure is a tool, not a requirement — freeform is a first-class choice at every step.
+
+- [ ] **B5.5.1** Backend — Migration 015: `novel_structures` table (seeded with 12 templates from `NOVEL_STRUCTURES.md`); `projects.structure_id UUID NULL`; `projects.structure_custom JSONB NULL`
+- [ ] **B5.5.2** Backend — `internal/guide/score.go`: deterministic scoring matrix from `STRUCTURESELCTION.md`; returns empty when no structure clears threshold (freeform recommended)
+- [ ] **B5.5.3** Backend — `GET /novel-structures` (no auth), `POST /projects/:id/guide/structure/score` (score-only, no side effects), `GET/PUT /projects/:id/structure`
+- [ ] **B5.5.4** OpenAPI — structure schemas; regenerate types
+- [ ] **B5.5.5** Frontend — Guide Step 3.5: 4-path chooser (questionnaire / browse / freeform / skip); "Continue without structure" always visible; questionnaire → score → result card with "Use / Choose different / Continue without"
+- [ ] **B5.5.6** Frontend — Structure badge on ProjectHome (only shown when a structure is selected); `BuildContext` injects phase context only when present
+- [ ] **B5.5.7** Frontend — Timeline tab in WikiHub: when a structure is selected, phase banners (muted, italic) appear above each act's events using index-based mapping; renders identically to today when no structure set; client-side join, no new backend route
 
 ## Phase C — Collaboration + depth
 
@@ -196,4 +208,4 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated: A+1–A+8 complete. Phase A+ fully done. Phase B planned (incl. B1.5 Writing Styles from Writingway2 analysis). Phase C expanded with context panel, multi-session Workshop, prompt history.*
+*Last updated: A+1–A+8 complete. Phase A+ fully done. Phase B planned (B1–B5.5 incl. Writing Styles, beat mode, structure templates). Phase C expanded with context panel, multi-session Workshop, prompt history.*

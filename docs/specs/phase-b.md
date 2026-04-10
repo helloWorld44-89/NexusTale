@@ -19,6 +19,7 @@
 - [phase-b-ai.md](./phase-b-ai.md) — adapters, routes, context window, token tracking
 - [phase-b-export.md](./phase-b-export.md) — Markdown zip, EPUB async job, MinIO
 - [phase-b-guide.md](./phase-b-guide.md) — novel guide wizard
+- [phase-b-structures.md](./phase-b-structures.md) — optional story structure templates + recommendation wizard
 
 **Companion docs:** [ROADMAP.md](../../ROADMAP.md) · [PROJECT_PLAN.md](../PROJECT_PLAN.md)
 
@@ -34,8 +35,9 @@
 | B3 — Token tracking | `ai_usage` table; ProjectHome usage stats | B1 |
 | B4 — Export | Markdown zip; EPUB async + MinIO | Nothing (independent) |
 | B5 — Novel guide | 5-step wizard; scaffolds wiki + scenes | B1 (uses AI for suggestions, optional) |
+| B5.5 — Story structure | Optional template library + recommendation wizard; guide Step 3.5 | B5 |
 
-B4 can run in parallel with B1–B3. B1.5 can start immediately after B1. B5 depends on B1 being done.
+B4 can run in parallel with B1–B3. B1.5 can start immediately after B1. B5 depends on B1 being done. B5.5 is additive — skipping it never breaks anything.
 
 ---
 
@@ -43,11 +45,12 @@ B4 can run in parallel with B1–B3. B1.5 can start immediately after B1. B5 dep
 
 | # | Table | Purpose |
 |---|-------|---------|
-| 010 | `chapters.ai_summary`, `chapters.ai_summary_stale` | Store auto-generated chapter summaries |
+| 010 | `chapter_summaries (chapter_id, branch_name, …)`, `project_active_branch` | Branch-isolated chapter summaries; active branch tracking per user |
 | 011 | `ai_usage` | Per-call token + cost tracking |
 | 012 | `export_jobs` | Async export job state + MinIO key |
 | 013 | `guide_steps` | Novel guide wizard progress per project |
 | 014 | `project_prompts`, `user_api_keys.force_non_streaming` | Writing style presets per project; non-streaming override per key |
+| 015 | `novel_structures` (seeded), `projects.structure_id`, `projects.structure_custom` | Optional story structure templates; nullable — freeform is always valid |
 
 ---
 
@@ -110,14 +113,16 @@ Each completed step writes real data so the guide isn't throwaway:
 - [ ] **B1.5.7** Frontend: Beat input field in `ScribeEditor` toolbar; send with `mode: "beat"`; streamed response appended with highlight + Accept/Retry/Discard actions
 
 ### B2 — AI memory + context
-- [ ] **B2.1** Migration 010: `ALTER TABLE chapters ADD COLUMN ai_summary TEXT NOT NULL DEFAULT '', ADD COLUMN ai_summary_stale BOOL NOT NULL DEFAULT false`
-- [ ] **B2.2** sqlc: `UpdateChapterAISummary` query; regenerate
-- [ ] **B2.3** Auto-summarize goroutine: triggered on scene save; debounced 30s per chapter; calls `Summarize`; sets `ai_summary_stale = false`
-- [ ] **B2.4** Mark `ai_summary_stale = true` on any scene update in a chapter
-- [ ] **B2.5** Context window builder: `BuildContext(ctx, projectID, sceneID, userText)` → structured prompt prefix; inline `@[entity]` parsing of `userText` (up to 5 additional wiki entries injected before user turn)
-- [ ] **B2.6** Wire context builder into `Complete` and `Chat` routes
-- [ ] **B2.7** Expose `ai_summary` and `ai_summary_stale` in `ChapterResponse`; update OpenAPI
-- [ ] **B2.8** Frontend: stale indicator badge on chapter in ProjectExplorer; "Regenerate" button in SceneMetadataPanel
+- [ ] **B2.1** Migration 010: create `chapter_summaries (chapter_id, branch_name, ai_summary, stale, updated_at)` with PK `(chapter_id, branch_name)`; create `project_active_branch (project_id, user_id, branch_name, updated_at)` with PK `(project_id, user_id)` — **no column added to `chapters`**
+- [ ] **B2.2** sqlc: `UpsertChapterSummary`, `GetChapterSummary(chapterID, branchName)`, `MarkChapterSummaryStale`, `DeleteBranchSummaries(projectID, branchName)`, `UpsertProjectActiveBranch`, `GetProjectActiveBranch`, `ClearActiveBranch`; regenerate
+- [ ] **B2.3** Branch resolution helper: `ResolveBranch(ctx, projectID, userID, headerBranch)` → checks header → `project_active_branch` → defaults `"canon"`
+- [ ] **B2.4** `TravelTo` and `Diverge` handlers: upsert `project_active_branch` after git HEAD switch
+- [ ] **B2.5** Auto-summarize goroutine: debounce key is `(chapter_id, branch_name)`; on fire, upsert `chapter_summaries` for that branch; on scene save, mark only active branch row stale
+- [ ] **B2.6** `BuildContext(ctx, db, projectID, sceneID, branchName, userText)`: chapter summaries queried by active branch, falling back to `"canon"` if no branch-specific row; inline `@[entity]` parsing (up to 5 additional wiki entries injected before user turn)
+- [ ] **B2.7** Wire context builder into `Complete` and `Chat` routes; pass `X-NexusTale-Branch` header through to `ResolveBranch`
+- [ ] **B2.8** `ChapterResponse` gains `ai_summary` and `ai_summary_stale` sourced from `chapter_summaries` for the requesting user's active branch; update OpenAPI; regenerate types
+- [ ] **B2.9** `Canonize` handler: call `DeleteBranchSummaries` + `ClearActiveBranch` for merged branch after merge completes
+- [ ] **B2.10** Frontend: stale indicator badge on chapter in ProjectExplorer; "Regenerate" button in SceneMetadataPanel; send `X-NexusTale-Branch` header on all AI and scene-save requests
 
 ### B3 — Token usage tracking
 - [ ] **B3.1** Migration 011: `ai_usage` table (id, user_id, project_id, model, prompt_tokens, completion_tokens, cost_usd, created_at)
@@ -144,3 +149,16 @@ Each completed step writes real data so the guide isn't throwaway:
 - [ ] **B5.5** Step side-effect handlers: Premise → update project; Characters → create entities; World → create entities; Outline → create chapters; First scene → create scene + optional AI opening
 - [ ] **B5.6** OpenAPI: guide endpoints + `GuideStepResponse`; regenerate types
 - [ ] **B5.7** Frontend: `/projects/:id/guide` — linear wizard with step sidebar; progress indicator; each step has a form + preview of what will be created; "Skip" allowed; "Finish guide" exits to ProjectHome
+
+### B5.5 — Story structure (optional templates)
+> Structure is never required. Freeform is always a valid first-class choice.
+> See full spec: [phase-b-structures.md](./phase-b-structures.md)
+
+- [ ] **B5.5.1** Migration 015: `novel_structures` table seeded with 12 templates; `projects.structure_id UUID NULL REFERENCES novel_structures`; `projects.structure_custom JSONB NULL`
+- [ ] **B5.5.2** sqlc: `ListNovelStructures`, `GetProjectStructure`, `UpdateProjectStructure`; regenerate
+- [ ] **B5.5.3** Scoring function: `internal/guide/score.go` — deterministic weighted matrix; returns empty slice when no structure clears threshold (→ freeform recommended)
+- [ ] **B5.5.4** Routes: `GET /novel-structures` (no auth), `POST /projects/:id/guide/structure/score` (pure calculation, no persistence), `GET/PUT /projects/:id/structure`
+- [ ] **B5.5.5** Guide Step 3.5 frontend — 4-path chooser: questionnaire / browse templates / freeform custom rules / skip; all paths clearly labeled as optional; "Continue without structure" always visible
+- [ ] **B5.5.6** `BuildContext` extension (B2): inject structure phase context only when set; silently omit when absent or phase match fails
+- [ ] **B5.5.7** OpenAPI: `NovelStructureResponse`, `StructureScoreRequest/Response`, `ProjectStructureResponse`; regenerate types
+- [ ] **B5.5.8** Frontend: structure badge on ProjectHome shown only when a structure is selected; clicking reopens the selection step
