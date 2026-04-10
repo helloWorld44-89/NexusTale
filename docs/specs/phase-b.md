@@ -28,13 +28,14 @@
 
 | Step | What ships | Depends on |
 |------|-----------|------------|
-| B1 — AI proxy | `/ai/complete`, `/ai/chat`, `/ai/summarize` routes; ChatBar live | User API keys (done) |
-| B2 — AI memory | Auto-summarize; context window; stale indicator | B1 |
+| B1 — AI proxy | `/ai/complete` (continue + beat modes), `/ai/chat`, `/ai/summarize`; ChatBar live; thinking model detection | User API keys (done) |
+| B1.5 — Writing styles | `project_prompts` table; CRUD routes; style selector in SceneMetadataPanel; beat UI in editor | B1 |
+| B2 — AI memory | Auto-summarize; context window with `@[entity]` resolution; stale indicator | B1 |
 | B3 — Token tracking | `ai_usage` table; ProjectHome usage stats | B1 |
 | B4 — Export | Markdown zip; EPUB async + MinIO | Nothing (independent) |
 | B5 — Novel guide | 5-step wizard; scaffolds wiki + scenes | B1 (uses AI for suggestions, optional) |
 
-B4 can run in parallel with B1–B3. B5 depends on B1 being done (AI suggestions are optional but expected).
+B4 can run in parallel with B1–B3. B1.5 can start immediately after B1. B5 depends on B1 being done.
 
 ---
 
@@ -46,6 +47,7 @@ B4 can run in parallel with B1–B3. B5 depends on B1 being done (AI suggestions
 | 011 | `ai_usage` | Per-call token + cost tracking |
 | 012 | `export_jobs` | Async export job state + MinIO key |
 | 013 | `guide_steps` | Novel guide wizard progress per project |
+| 014 | `project_prompts`, `user_api_keys.force_non_streaming` | Writing style presets per project; non-streaming override per key |
 
 ---
 
@@ -88,22 +90,31 @@ Each completed step writes real data so the guide isn't throwaway:
 ## Checklist (all phases)
 
 ### B1 — AI proxy + adapters
-- [ ] **B1.1** Define `Adapter` interface in `internal/ai/adapter.go`: `Complete`, `Chat`, `Summarize`, `StreamComplete`, `StreamChat`
-- [ ] **B1.2** Implement `OpenAIAdapter` (gpt-4o default); reads key from `DecryptAPIKey`
-- [ ] **B1.3** Implement `AnthropicAdapter` (claude-3-5-haiku default)
+- [ ] **B1.1** Define `Adapter` interface in `internal/ai/adapter.go`: `Complete`, `Chat`, `Summarize`, `StreamComplete`, `StreamChat`, `IsThinkingModel`; add `CompleteMode` type (`continue` | `beat`)
+- [ ] **B1.2** Implement `OpenAIAdapter` (gpt-4o-mini default); reads key from `DecryptAPIKey`
+- [ ] **B1.3** Implement `AnthropicAdapter` (claude-haiku-4-5 default)
 - [ ] **B1.4** Implement `OllamaAdapter` (local HTTP; model from config; no key needed)
-- [ ] **B1.5** `AdapterFactory` — selects adapter by provider name from stored key; falls back to Ollama if no key
-- [ ] **B1.6** AI service: `Complete(ctx, projectID, userID, content)`, `Chat(ctx, projectID, userID, messages)`, `Summarize(ctx, text)`
-- [ ] **B1.7** HTTP routes: `POST /projects/:id/ai/complete`, `POST /projects/:id/ai/chat`, `POST /projects/:id/ai/summarize`; all behind `RequireAuth`
-- [ ] **B1.8** OpenAPI: `AICompleteRequest`, `AIChatRequest`, `AIChatMessage`, `AICompleteResponse`, `AISummarizeResponse`; regenerate types
+- [ ] **B1.5** `AdapterFactory` — selects adapter by provider + model; thinking model detection (`isThinkingModel`); falls back to Ollama if no key
+- [ ] **B1.6** AI service: `Complete(ctx, projectID, userID, req CompleteRequest)`, `Chat(...)`, `Summarize(...)`; beat mode uses dedicated system prompt template with `{title}/{genre}/{tense}/{pov}/{pov_character}` substitution
+- [ ] **B1.7** HTTP routes: `POST /projects/:id/ai/complete` (accepts `mode`, `beat`, `prompt_id`), `POST /projects/:id/ai/chat`, `POST /projects/:id/ai/summarize`; all behind `RequireAuth`
+- [ ] **B1.8** OpenAPI: `AICompleteRequest` (with `mode` + `beat` + `prompt_id`), `AIChatRequest`, `AIChatMessage`, `AICompleteResponse`, `AISummarizeResponse`; regenerate types
 - [ ] **B1.9** Frontend: wire `ChatBar` to `POST /ai/chat`; display streaming response with SSE; show model name in header
+
+### B1.5 — Writing styles (prose prompts)
+- [ ] **B1.5.1** Migration 014: `project_prompts` table (`id, project_id, name, category, content, system_content, sort_order`); `ALTER TABLE user_api_keys ADD COLUMN force_non_streaming BOOL NOT NULL DEFAULT false`
+- [ ] **B1.5.2** sqlc: `ListProjectPrompts`, `CreateProjectPrompt`, `UpdateProjectPrompt`, `DeleteProjectPrompt`; regenerate
+- [ ] **B1.5.3** HTTP routes: `GET/POST /projects/:id/prompts`, `PUT/DELETE /projects/:id/prompts/:promptId`; behind `RequireAuth`
+- [ ] **B1.5.4** AI service: `ApplyPromptPreset(req CompleteRequest, preset ProjectPrompt)` — merges `system_content` into system prompt, appends `content` as style block to user turn
+- [ ] **B1.5.5** OpenAPI: `ProjectPromptResponse`, `CreateProjectPromptRequest`, `UpdateProjectPromptRequest`; regenerate types
+- [ ] **B1.5.6** Frontend: writing style dropdown in `SceneMetadataPanel`; "Manage styles" link; selected `prompt_id` sent with every AI call
+- [ ] **B1.5.7** Frontend: Beat input field in `ScribeEditor` toolbar; send with `mode: "beat"`; streamed response appended with highlight + Accept/Retry/Discard actions
 
 ### B2 — AI memory + context
 - [ ] **B2.1** Migration 010: `ALTER TABLE chapters ADD COLUMN ai_summary TEXT NOT NULL DEFAULT '', ADD COLUMN ai_summary_stale BOOL NOT NULL DEFAULT false`
 - [ ] **B2.2** sqlc: `UpdateChapterAISummary` query; regenerate
 - [ ] **B2.3** Auto-summarize goroutine: triggered on scene save; debounced 30s per chapter; calls `Summarize`; sets `ai_summary_stale = false`
 - [ ] **B2.4** Mark `ai_summary_stale = true` on any scene update in a chapter
-- [ ] **B2.5** Context window builder: `BuildContext(ctx, projectID, sceneID)` → structured prompt prefix
+- [ ] **B2.5** Context window builder: `BuildContext(ctx, projectID, sceneID, userText)` → structured prompt prefix; inline `@[entity]` parsing of `userText` (up to 5 additional wiki entries injected before user turn)
 - [ ] **B2.6** Wire context builder into `Complete` and `Chat` routes
 - [ ] **B2.7** Expose `ai_summary` and `ai_summary_stale` in `ChapterResponse`; update OpenAPI
 - [ ] **B2.8** Frontend: stale indicator badge on chapter in ProjectExplorer; "Regenerate" button in SceneMetadataPanel

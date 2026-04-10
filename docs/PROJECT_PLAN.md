@@ -371,18 +371,30 @@ Hierarchy is now **Project → Act → Chapter → Scene**. Acts are required; a
 #### B1 — AI proxy + adapters
 Wire the existing `internal/ai` package to HTTP routes. Adapters must implement a common interface so model providers are interchangeable.
 
-- Adapter interface: `Complete(ctx, req) → stream`, `Chat(ctx, msgs) → stream`, `Summarize(ctx, text) → string`
-- Providers: OpenAI (gpt-4o), Anthropic (claude-3-5-haiku), Ollama (local, any model)
+- Adapter interface: `Complete`, `Chat`, `Summarize`, `StreamComplete`, `StreamChat`, `IsThinkingModel`
+- `CompleteMode`: `continue` (append to scene) or `beat` (expand 1-sentence intent → 2–3 paragraphs of prose)
+- Beat mode uses a system prompt template with `{title}/{genre}/{tense}/{pov}/{pov_character}` substitutions drawn from scene metadata
+- Providers: OpenAI (gpt-4o-mini default), Anthropic (claude-haiku-4-5), Ollama (local, any model)
+- Thinking model auto-detection (`o1`, `o3`, `deepseek-reasoner`, `qwq`, `r1`) → skip system prompt, fall back to batch + simulated streaming
 - Route to provider via stored user API key (`internal/auth.DecryptAPIKey`)
-- Routes: `POST /projects/:id/ai/complete`, `/ai/chat`, `/ai/summarize`
-- Frontend: ChatBar wired to `/ai/chat` with streaming (SSE or chunked JSON)
+- Routes: `POST /projects/:id/ai/complete` (with `mode`, `beat`, `prompt_id`), `/ai/chat`, `/ai/summarize`
+- Frontend: ChatBar wired to `/ai/chat` with SSE streaming
+
+#### B1.5 — Writing styles (prose prompts)
+Named AI style presets stored per project. Writers can switch between "gritty noir" and "epic fantasy voice" without changing any settings.
+
+- Migration 014: `project_prompts` table (`id, project_id, name, category, content, system_content, sort_order`); `user_api_keys.force_non_streaming BOOL`
+- `category`: `prose` (for complete/beat) or `workshop` (for chat)
+- `system_content` overrides the system prompt (template placeholders still substituted); `content` appended as style guidance to user turn
+- Routes: `GET/POST /projects/:id/prompts`, `PUT/DELETE /projects/:id/prompts/:promptId`
+- Frontend: writing style dropdown in SceneMetadataPanel; beat input field in ScribeEditor toolbar (send with `mode: "beat"`); streamed result appended with Accept/Retry/Discard actions
 
 #### B2 — AI memory + context
 Build the context window that feeds every AI call — recent scenes, chapter summaries, pinned wiki entities.
 
 - Migration 010: `chapters.ai_summary TEXT`, `chapters.ai_summary_stale BOOL`
 - Auto-summarize on scene save (debounced 30s, async goroutine)
-- Context builder: last N scenes + chapter summaries + wiki entities from autolink
+- Context builder: last 3 chapter summaries + last 2 scenes + up to 10 wiki entities from autolink + up to 5 inline `@[Entity Name]` mentions parsed from the user's beat/message
 - Frontend: stale indicator + "Regenerate" button in SceneMetadataPanel
 
 #### B3 — Token usage tracking
@@ -411,9 +423,12 @@ A 5-step onboarding wizard that scaffolds a project from premise to first scene,
 
 ### Phase C — Collaboration + depth
 
-- WebSocket + CRDT for scene editing; roles and invites
-- Timeline + plot wiki views; graph visualization
-- DOCX export; image upload for wiki
+- WebSocket + CRDT for scene editing; roles and project invites
+- DOCX export; wiki image upload for entity portraits
+- **Explicit AI context panel** — writer-curated context window: pin wiki entries by ID or tag, include chapters/scenes as full text or summary-only; power-user complement to the automatic context window
+- **Multi-session Workshop** — tabbed named chat sessions per project; each session stores `[{role, content, timestamp}]`; `category: "workshop"` system prompt; export session to Markdown
+- **Prompt history browser** — first 500 chars of assembled prompt + user beat stored in `ai_usage`; UI panel to browse and re-apply previous beats
+- **Import/export writing styles** — download project styles as JSON; import into another project
 
 ### Phase D — Premium / advanced
 
@@ -463,17 +478,20 @@ A 5-step onboarding wizard that scaffolds a project from premise to first scene,
 
 See [specs/phase-b.md](./specs/phase-b.md) for full breakdown. Suggested order:
 
-1. **B1** — AI proxy: adapter interface → OpenAI → Anthropic → Ollama → HTTP routes → ChatBar wired
-2. **B2** — AI memory: migration 010, auto-summarize, context window builder
-3. **B3** — Token tracking: migration 011, usage table, ProjectHome stats
-4. **B4** — Export: Markdown zip (sync) → EPUB async job (MinIO + polling)
-5. **B5** — Novel guide wizard: migrations 012–013, 5-step wizard UI
-8. **Novel guide** — step wizard backend + happy-path UI.
+1. **B1** — AI proxy: adapter interface (with `CompleteMode` + `IsThinkingModel`) → OpenAI → Anthropic → Ollama → HTTP routes → ChatBar wired
+2. **B1.5** — Writing styles: migration 014, `project_prompts` CRUD, style selector + beat input UI
+3. **B2** — AI memory: migration 010, auto-summarize, context window builder with `@[entity]` resolution
+4. **B3** — Token tracking: migration 011, usage table, ProjectHome stats
+5. **B4** — Export: Markdown zip (sync) → EPUB async job (MinIO + polling) *(can run in parallel with B1.5–B3)*
+6. **B5** — Novel guide wizard: migrations 012–013, 5-step wizard backend + UI
 
 ### Phase C
 7. **Collaboration** — WebSocket hub (`/api/v1/projects/:id/collab`), CRDT sync, presence via Redis.
-8. **Timeline + plot wiki views** — frontend graph visualization, timeline browser.
-9. **DOCX export + wiki image upload**.
+8. **DOCX export + wiki image upload**.
+9. **Explicit AI context panel** — writer-curated context window (pin entities by ID/tag, chapter/scene full-text vs summary).
+10. **Multi-session Workshop** — tabbed named chat sessions; `category: "workshop"` prompt variant; Markdown export.
+11. **Prompt history browser** — store beat + prompt preview in `ai_usage`; browse and re-apply previous beats.
+12. **Import/export writing styles** — JSON round-trip for prose prompt presets across projects.
 
 ### Infrastructure
 10. **Staging/prod pipelines** — clone dev Ansible playbook; parameterize environment; add prod secrets to vault.
