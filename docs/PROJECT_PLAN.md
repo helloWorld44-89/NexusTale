@@ -363,11 +363,51 @@ Hierarchy is now **Project → Act → Chapter → Scene**. Acts are required; a
 - `PROJECT_PLAN.md` — all Act Structure phases documented with full bullet-point detail
 - `ROADMAP.md` — current state table updated: hierarchy now "Project → Act → Chapter → Scene", migration 009, 45+ routes, acts in Bruno collection
 
-### Phase B — Guide + AI + export core
+### Phase B — AI + export core
 
-- Novel guide backend + wizard UI (happy path only)
-- AI proxy: one cloud + Ollama; chat + summarize
-- Export: Markdown zip + EPUB (async job + download)
+**Full spec:** [specs/phase-b.md](./specs/phase-b.md)  
+**Sub-specs:** [specs/phase-b-ai.md](./specs/phase-b-ai.md) · [specs/phase-b-export.md](./specs/phase-b-export.md) · [specs/phase-b-guide.md](./specs/phase-b-guide.md)
+
+#### B1 — AI proxy + adapters
+Wire the existing `internal/ai` package to HTTP routes. Adapters must implement a common interface so model providers are interchangeable.
+
+- Adapter interface: `Complete(ctx, req) → stream`, `Chat(ctx, msgs) → stream`, `Summarize(ctx, text) → string`
+- Providers: OpenAI (gpt-4o), Anthropic (claude-3-5-haiku), Ollama (local, any model)
+- Route to provider via stored user API key (`internal/auth.DecryptAPIKey`)
+- Routes: `POST /projects/:id/ai/complete`, `/ai/chat`, `/ai/summarize`
+- Frontend: ChatBar wired to `/ai/chat` with streaming (SSE or chunked JSON)
+
+#### B2 — AI memory + context
+Build the context window that feeds every AI call — recent scenes, chapter summaries, pinned wiki entities.
+
+- Migration 010: `chapters.ai_summary TEXT`, `chapters.ai_summary_stale BOOL`
+- Auto-summarize on scene save (debounced 30s, async goroutine)
+- Context builder: last N scenes + chapter summaries + wiki entities from autolink
+- Frontend: stale indicator + "Regenerate" button in SceneMetadataPanel
+
+#### B3 — Token usage tracking
+Track cost per project so writers understand AI spend before it becomes a surprise.
+
+- Migration 011: `ai_usage` table (user, project, model, tokens, cost_usd)
+- Record after every AI call (best-effort, non-blocking)
+- `GET /projects/:id/ai/usage` → aggregate (total tokens, estimated cost this month)
+- Frontend: usage summary on ProjectHome stat cards
+
+#### B4 — Export
+Two export modes: fast synchronous Markdown for quick backup; async EPUB for finished drafts.
+
+- Markdown: walk acts → chapters → scenes, render `.md` with YAML front matter, zip and stream
+- EPUB: async job queued to a goroutine pool; result uploaded to MinIO; polling endpoint returns signed URL
+- Migration 012: `export_jobs` table (id, project_id, format, status, minio_key, expires_at)
+- Frontend: Export section on ProjectHome; Markdown download button; EPUB "Generate" → polling → download
+
+#### B5 — Novel guide
+A 5-step onboarding wizard that scaffolds a project from premise to first scene, pre-filling wiki and manuscript data.
+
+- Steps: Premise → Core Characters → World Basics → Chapter Outline → First Scene
+- Migration 013: `guide_steps` table (project_id, step_key, data JSONB, completed_at)
+- Each completed step writes real data (creates wiki entities, creates first chapter/scene)
+- Frontend: `/projects/:id/guide` — linear wizard with progress bar; skippable; resumes from last incomplete step
 
 ### Phase C — Collaboration + depth
 
@@ -420,9 +460,14 @@ Hierarchy is now **Project → Act → Chapter → Scene**. Acts are required; a
 - ✅ A+8 — Relationship graph visualization (d3 force-directed; nodes by entity type; edge labels; pan/zoom; click → entity detail; WikiHub "Graph" tab)
 
 ### Phase B (next major milestone)
-5. **AI integration** — wire `internal/ai` adapters to routes; Ollama for local dev, Anthropic/OpenAI for cloud; chat + scene continuation + summarize endpoints.
-6. **AI memory** — chapter summaries as context anchors; sliding window; pgvector for RAG.
-7. **Export** — wire `internal/export`; Markdown zip (sync) + EPUB (async job + MinIO download URL).
+
+See [specs/phase-b.md](./specs/phase-b.md) for full breakdown. Suggested order:
+
+1. **B1** — AI proxy: adapter interface → OpenAI → Anthropic → Ollama → HTTP routes → ChatBar wired
+2. **B2** — AI memory: migration 010, auto-summarize, context window builder
+3. **B3** — Token tracking: migration 011, usage table, ProjectHome stats
+4. **B4** — Export: Markdown zip (sync) → EPUB async job (MinIO + polling)
+5. **B5** — Novel guide wizard: migrations 012–013, 5-step wizard UI
 8. **Novel guide** — step wizard backend + happy-path UI.
 
 ### Phase C
