@@ -90,6 +90,43 @@ func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error)
 	return i, err
 }
 
+const getProjectStats = `-- name: GetProjectStats :one
+SELECT
+    COUNT(DISTINCT s.id)::INT         AS scene_count,
+    COUNT(DISTINCT c.id)::INT         AS chapter_count,
+    COALESCE(SUM(s.word_count), 0)::INT AS total_word_count,
+    GREATEST(
+        p.updated_at,
+        MAX(c.updated_at),
+        MAX(s.updated_at)
+    )                                  AS last_updated_at
+FROM projects p
+LEFT JOIN acts a    ON a.project_id = p.id
+LEFT JOIN chapters c ON c.act_id   = a.id
+LEFT JOIN scenes s   ON s.chapter_id = c.id
+WHERE p.id = $1
+GROUP BY p.id, p.updated_at
+`
+
+type GetProjectStatsRow struct {
+	SceneCount     int32       `json:"scene_count"`
+	ChapterCount   int32       `json:"chapter_count"`
+	TotalWordCount int32       `json:"total_word_count"`
+	LastUpdatedAt  interface{} `json:"last_updated_at"`
+}
+
+func (q *Queries) GetProjectStats(ctx context.Context, id uuid.UUID) (GetProjectStatsRow, error) {
+	row := q.db.QueryRow(ctx, getProjectStats, id)
+	var i GetProjectStatsRow
+	err := row.Scan(
+		&i.SceneCount,
+		&i.ChapterCount,
+		&i.TotalWordCount,
+		&i.LastUpdatedAt,
+	)
+	return i, err
+}
+
 const listProjectsByOwner = `-- name: ListProjectsByOwner :many
 SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at
 FROM projects

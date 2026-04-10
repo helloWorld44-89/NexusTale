@@ -413,11 +413,11 @@ Hierarchy is now **Project → Act → Chapter → Scene**. Acts are required; a
 - ✅ **Act Phase 2** — Complete (see Phase A section above)
 - ✅ **Act Phase 3** — Complete (see Phase A section above)
 - ✅ **Act Phase 3.5** — Complete (TypeScript clean, PROJECT_PLAN + ROADMAP updated)
-- ⬜ A+4 — Focus/distraction-free mode (frontend only; `F11` toggle, full-width editor)
-- ⬜ A+5 — Project home/stats page (`GET /projects/:id/stats` + project overview before editor)
-- ⬜ A+6 — User account deletion (`DELETE /users/me` + danger zone in settings)
-- ⬜ A+7 — Light theme (CSS variable swap, Zustand theme store, toggle in settings)
-- ⬜ A+8 — Relationship graph visualization (d3 force layout, WikiHub "Graph" tab)
+- ✅ A+4 — Focus/distraction-free mode (`F11` toggle; hides all chrome; floating `Esc` button; focus icon in TopBar)
+- ✅ A+5 — Project home/stats page (`GET /projects/:id/stats` SQL aggregate; `ProjectHome` page at `/projects/:id`; editor at `/projects/:id/editor`)
+- ✅ A+6 — User account deletion (`DELETE /users/me` + `GET /users/me`; git cleanup on disk; danger zone confirm dialog in settings)
+- ✅ A+7 — Light theme (CSS variables in tailwind config; `:root`/`.light` overrides; themeStore; toggle in settings; `prefers-color-scheme` fallback)
+- ✅ A+8 — Relationship graph visualization (d3 force-directed; nodes by entity type; edge labels; pan/zoom; click → entity detail; WikiHub "Graph" tab)
 
 ### Phase B (next major milestone)
 5. **AI integration** — wire `internal/ai` adapters to routes; Ollama for local dev, Anthropic/OpenAI for cloud; chat + scene continuation + summarize endpoints.

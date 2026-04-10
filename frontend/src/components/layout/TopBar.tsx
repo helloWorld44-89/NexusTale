@@ -8,8 +8,10 @@ interface TopBarProps {
   sceneTitle:   string
   leftPanel:    LeftPanel
   explorerOpen: boolean
+  focusMode:    boolean
   onToggleChat:     () => void
   onToggleExplorer: () => void
+  onToggleFocus:    () => void
 }
 
 export default function TopBar({
@@ -19,8 +21,10 @@ export default function TopBar({
   sceneTitle,
   leftPanel,
   explorerOpen,
+  focusMode,
   onToggleChat,
   onToggleExplorer,
+  onToggleFocus,
 }: TopBarProps) {
   return (
     <header className="h-11 flex items-center justify-between px-3 bg-brand-bg-card border-b border-brand-border shrink-0 select-none">
@@ -69,6 +73,13 @@ export default function TopBar({
           onClick={onToggleExplorer}
         >
           <ExplorerIcon />
+        </ToggleButton>
+        <ToggleButton
+          active={focusMode}
+          title="Focus mode (F11)"
+          onClick={onToggleFocus}
+        >
+          <FocusIcon />
         </ToggleButton>
       </div>
     </header>
@@ -121,6 +132,14 @@ function ExplorerIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
       <path d="M2 4a1 1 0 011-1h4l2 2h7a1 1 0 011 1v9a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" />
+    </svg>
+  )
+}
+
+function FocusIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 3H3v4M13 3h4v4M7 17H3v-4M13 17h4v-4" />
     </svg>
   )
 }

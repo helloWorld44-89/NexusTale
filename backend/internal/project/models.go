@@ -117,6 +117,13 @@ type UpdateSceneRequest struct {
 
 // Response DTOs
 
+type ProjectStatsResponse struct {
+	SceneCount     int32     `json:"scene_count"`
+	ChapterCount   int32     `json:"chapter_count"`
+	TotalWordCount int32     `json:"total_word_count"`
+	LastUpdatedAt  time.Time `json:"last_updated_at"`
+}
+
 type ProjectResponse struct {
 	ID          uuid.UUID `json:"id"`
 	OwnerID     uuid.UUID `json:"owner_id"`

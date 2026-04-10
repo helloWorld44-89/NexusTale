@@ -28,6 +28,7 @@ export type MagicRule              = components['schemas']['MagicRuleResponse']
 export type WikiTimelineEvent      = components['schemas']['TimelineEventResponse']
 export type AutolinkMatch          = components['schemas']['AutolinkMatch']
 export type APIKeyResponse         = components['schemas']['APIKeyResponse']
+export type ProjectStats           = components['schemas']['ProjectStats']
 
 // ── Error class ───────────────────────────────────────────────────────────────
 
@@ -104,6 +105,9 @@ export const api = {
 
     create: (token: string, title: string, description: string, genres: string[]) =>
       request<Project>('POST', '/projects', { title, description, genres }, token),
+
+    stats: (token: string, id: string) =>
+      request<ProjectStats>('GET', `/projects/${id}/stats`, undefined, token),
   },
 
   acts: {
@@ -261,6 +265,14 @@ export const api = {
 
     autolink: (token: string, projectId: string, text: string) =>
       request<AutolinkMatch[]>('GET', `/projects/${projectId}/wiki/autolink?text=${encodeURIComponent(text)}`, undefined, token),
+  },
+
+  users: {
+    me: (token: string) =>
+      request<User>('GET', '/users/me', undefined, token),
+
+    deleteMe: (token: string) =>
+      request<void>('DELETE', '/users/me', undefined, token),
   },
 
   apiKeys: {

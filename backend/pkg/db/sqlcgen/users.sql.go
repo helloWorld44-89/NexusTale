@@ -53,6 +53,15 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 	return i, err
 }
 
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUser, id)
+	return err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, display_name, password_hash, role, created_at, updated_at
 FROM users
@@ -93,6 +102,30 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listProjectGitPaths = `-- name: ListProjectGitPaths :many
+SELECT git_repo_path FROM projects WHERE owner_id = $1 AND git_repo_path != ''
+`
+
+func (q *Queries) ListProjectGitPaths(ctx context.Context, ownerID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listProjectGitPaths, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var git_repo_path string
+		if err := rows.Scan(&git_repo_path); err != nil {
+			return nil, err
+		}
+		items = append(items, git_repo_path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateUser = `-- name: UpdateUser :one

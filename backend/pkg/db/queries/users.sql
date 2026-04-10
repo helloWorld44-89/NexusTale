@@ -20,3 +20,9 @@ SET display_name = COALESCE(sqlc.narg('display_name'), display_name),
     updated_at = now()
 WHERE id = $1
 RETURNING id, email, display_name, role, created_at, updated_at;
+
+-- name: DeleteUser :exec
+DELETE FROM users WHERE id = $1;
+
+-- name: ListProjectGitPaths :many
+SELECT git_repo_path FROM projects WHERE owner_id = $1 AND git_repo_path != '';

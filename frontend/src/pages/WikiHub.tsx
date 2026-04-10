@@ -1,19 +1,21 @@
-// WikiHub — full-page wiki browser. Tabs: Entities | Timeline.
+// WikiHub — full-page wiki browser. Tabs: Entities | Timeline | Graph.
 // Accessible at /projects/:id/wiki
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '@/services/api'
 import type { WikiEntity, EntityType } from '@/services/api'
 import TimelineView from '@/components/wiki/TimelineView'
+import RelationshipGraph from '@/components/wiki/RelationshipGraph'
 import { useAuthStore } from '@/app/store/authStore'
 
-type Tab = 'entities' | 'timeline'
+type Tab = 'entities' | 'timeline' | 'graph'
 
 export default function WikiHub() {
   const { id: projectId } = useParams<{ id: string }>()
   const token = useAuthStore((s) => s.accessToken) ?? ''
   const [tab, setTab] = useState<Tab>('entities')
   const [projectTitle, setProjectTitle] = useState('')
+  const [graphEntityId, setGraphEntityId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!projectId || !token) return
@@ -53,12 +55,33 @@ export default function WikiHub() {
           <ClockIcon />
           Timeline
         </TabButton>
+        <TabButton active={tab === 'graph'} onClick={() => setTab('graph')}>
+          <GraphIcon />
+          Graph
+        </TabButton>
       </div>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto px-6 py-6 max-w-5xl w-full mx-auto">
-        {tab === 'entities' && <EntitiesTab token={token} projectId={projectId} />}
+      <main className={`flex-1 overflow-y-auto ${tab === 'graph' ? 'px-4 py-4' : 'px-6 py-6 max-w-5xl w-full mx-auto'}`}>
+        {tab === 'entities' && (
+          <EntitiesTab
+            token={token}
+            projectId={projectId}
+            initialSelectedId={graphEntityId}
+            onClearInitialSelected={() => setGraphEntityId(null)}
+          />
+        )}
         {tab === 'timeline' && <TimelineView token={token} projectId={projectId} />}
+        {tab === 'graph' && projectId && (
+          <RelationshipGraph
+            token={token}
+            projectId={projectId}
+            onSelectEntity={(id) => {
+              setGraphEntityId(id)
+              setTab('entities')
+            }}
+          />
+        )}
       </main>
     </div>
   )
@@ -77,7 +100,17 @@ const TYPE_COLORS: Record<EntityType, string> = {
   lore: 'text-rose-400 bg-rose-400/10 border-rose-400/20',
 }
 
-function EntitiesTab({ token, projectId }: { token: string; projectId: string }) {
+function EntitiesTab({
+  token,
+  projectId,
+  initialSelectedId,
+  onClearInitialSelected,
+}: {
+  token: string
+  projectId: string
+  initialSelectedId?: string | null
+  onClearInitialSelected?: () => void
+}) {
   const [entities, setEntities] = useState<WikiEntity[]>([])
   const [filter, setFilter] = useState<EntityType | 'all'>('all')
   const [loading, setLoading] = useState(true)
@@ -106,6 +139,16 @@ function EntitiesTab({ token, projectId }: { token: string; projectId: string })
       if (updated) setSelected(updated)
     }
   }, [entities])
+
+  // When navigating from the graph, auto-select the clicked entity
+  useEffect(() => {
+    if (!initialSelectedId || entities.length === 0) return
+    const entity = entities.find((e) => e.id === initialSelectedId)
+    if (entity) {
+      setSelected(entity)
+      onClearInitialSelected?.()
+    }
+  }, [initialSelectedId, entities])
 
   const handleCreated = (entity: WikiEntity) => {
     setEntities((prev) => [entity, ...prev])
@@ -568,6 +611,17 @@ function ClockIcon() {
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="10" cy="10" r="8" />
       <path d="M10 6v4l3 3" />
+    </svg>
+  )
+}
+
+function GraphIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="5"  cy="10" r="2.5" />
+      <circle cx="15" cy="5"  r="2.5" />
+      <circle cx="15" cy="15" r="2.5" />
+      <path d="M7.5 9L12.5 6.5M7.5 11L12.5 13.5" />
     </svg>
   )
 }

@@ -28,6 +28,9 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup, chapterGroup *gin.RouterGr
 	rg.PATCH("/:id", h.UpdateProject)
 	rg.DELETE("/:id", h.DeleteProject)
 
+	// Stats
+	rg.GET("/:id/stats", h.GetProjectStats)
+
 	// Acts — nested under projects
 	rg.POST("/:id/acts", h.CreateAct)
 	rg.GET("/:id/acts", h.ListActs)
@@ -138,6 +141,21 @@ func (h *Handler) DeleteProject(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "project deleted"})
+}
+
+func (h *Handler) GetProjectStats(c *gin.Context) {
+	id, err := parseUUID(c, "id")
+	if err != nil {
+		return
+	}
+
+	stats, err := h.svc.GetProjectStats(c.Request.Context(), id)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
 }
 
 // Acts
