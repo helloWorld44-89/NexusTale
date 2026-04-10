@@ -134,11 +134,37 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 ## Phase B — AI + export core
 
-- AI proxy: OpenAI / Anthropic / Ollama adapters wired to routes; scene continuation, summarize, chat
-- AI memory: chapter summaries as context anchors; sliding window; manual pinning
-- Token usage tracking and cost estimation per project
-- Export: Markdown zip (sync) + EPUB (async job + MinIO download)
-- Novel guide: step wizard backend + happy-path UI
+**Actionable checklist:** [specs/phase-b.md](./docs/specs/phase-b.md)
+
+### B1 — AI proxy + adapters
+- [ ] **B1.1** Backend — wire `internal/ai` adapter interface; implement OpenAI + Anthropic adapters; Ollama adapter for local dev
+- [ ] **B1.2** Backend — `POST /projects/:id/ai/complete` (scene continuation), `POST /projects/:id/ai/chat` (freeform), `POST /projects/:id/ai/summarize` (scene → summary)
+- [ ] **B1.3** Backend — per-request model selection from stored user API key; fallback chain config
+- [ ] **B1.4** OpenAPI — document all AI endpoints + request/response schemas; regenerate types
+- [ ] **B1.5** Frontend — AI chat panel wired to real `/ai/chat` endpoint; streaming response display
+
+### B2 — AI memory + context
+- [ ] **B2.1** Backend — chapter summary auto-generation on save (async, debounced); store in `chapters.ai_summary`; migration 010
+- [ ] **B2.2** Backend — sliding context window builder: recent scenes + pinned anchors + wiki entity mentions
+- [ ] **B2.3** Backend — `POST /projects/:id/ai/complete` uses context window as system prompt prefix
+- [ ] **B2.4** Frontend — summary stale indicator in SceneMetadataPanel; "Regenerate summary" button
+
+### B3 — Token usage tracking
+- [ ] **B3.1** Backend — `ai_usage` table: user_id, project_id, model, prompt_tokens, completion_tokens, cost_usd, created_at; migration 011
+- [ ] **B3.2** Backend — record usage after every AI call; `GET /projects/:id/ai/usage` aggregate endpoint
+- [ ] **B3.3** Frontend — usage stats on ProjectHome (tokens used, estimated cost this month)
+
+### B4 — Export
+- [ ] **B4.1** Backend — `GET /projects/:id/export/markdown` synchronous zip: all scenes as `act/chapter/scene.md` with YAML front matter
+- [ ] **B4.2** Backend — `POST /projects/:id/export/epub` async job: queue entry, MinIO upload, time-limited download URL
+- [ ] **B4.3** Backend — `GET /projects/:id/export/jobs/:jobId` status polling endpoint
+- [ ] **B4.4** OpenAPI — document export endpoints; regenerate types
+- [ ] **B4.5** Frontend — Export panel (or ProjectHome section): Markdown download button; EPUB trigger + polling + download link
+
+### B5 — Novel guide
+- [ ] **B5.1** Backend — `novel_guide_steps` table: user_id, project_id, step_key, data JSONB, completed_at; migration 012
+- [ ] **B5.2** Backend — `GET/POST /projects/:id/guide` — fetch current step state, submit step answers
+- [ ] **B5.3** Frontend — `/projects/:id/guide` wizard: 5-step happy path (premise → characters → world → outline → first scene); each step pre-fills wiki/scene data
 
 ## Phase C — Collaboration + depth
 
