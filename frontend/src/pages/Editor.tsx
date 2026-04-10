@@ -45,6 +45,7 @@ export default function Editor() {
   const [leftPanel,         setLeftPanel]         = useState<LeftPanel>('chat')
   const [explorerOpen,      setExplorerOpen]      = useState(true)
   const [focusMode,         setFocusMode]         = useState(false)
+  const [selectedPromptId,  setSelectedPromptId]  = useState<string | null>(null)
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -296,13 +297,20 @@ export default function Editor() {
             content={content}
             sceneSelected={!!activeScene}
             onChange={(val) => activeScene && handleContentChange(activeScene.id, val)}
+            token={accessToken ?? undefined}
+            projectId={projectId}
+            sceneId={activeScene?.id}
+            promptId={selectedPromptId}
           />
-          {activeScene && accessToken && selectedChapterId && sceneData[activeScene.id] && (
+          {activeScene && accessToken && selectedChapterId && projectId && sceneData[activeScene.id] && (
             <SceneMetadataPanel
               token={accessToken}
               chapterId={selectedChapterId}
+              projectId={projectId}
               scene={sceneData[activeScene.id]}
+              selectedPromptId={selectedPromptId}
               onUpdate={(updated) => setSceneData((prev) => ({ ...prev, [updated.id]: updated }))}
+              onPromptChange={setSelectedPromptId}
             />
           )}
         </div>

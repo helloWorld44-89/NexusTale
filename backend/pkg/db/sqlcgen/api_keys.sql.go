@@ -27,7 +27,7 @@ func (q *Queries) DeleteAPIKey(ctx context.Context, arg DeleteAPIKeyParams) erro
 }
 
 const getAPIKey = `-- name: GetAPIKey :one
-SELECT id, user_id, provider, encrypted_key, key_hint, created_at, updated_at
+SELECT id, user_id, provider, encrypted_key, key_hint, created_at, updated_at, force_non_streaming
 FROM user_api_keys
 WHERE user_id = $1 AND provider = $2
 `
@@ -48,12 +48,13 @@ func (q *Queries) GetAPIKey(ctx context.Context, arg GetAPIKeyParams) (UserApiKe
 		&i.KeyHint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ForceNonStreaming,
 	)
 	return i, err
 }
 
 const listAPIKeys = `-- name: ListAPIKeys :many
-SELECT id, user_id, provider, encrypted_key, key_hint, created_at, updated_at
+SELECT id, user_id, provider, encrypted_key, key_hint, created_at, updated_at, force_non_streaming
 FROM user_api_keys
 WHERE user_id = $1
 ORDER BY provider ASC
@@ -76,6 +77,7 @@ func (q *Queries) ListAPIKeys(ctx context.Context, userID uuid.UUID) ([]UserApiK
 			&i.KeyHint,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ForceNonStreaming,
 		); err != nil {
 			return nil, err
 		}
@@ -94,7 +96,7 @@ ON CONFLICT (user_id, provider) DO UPDATE
     SET encrypted_key = EXCLUDED.encrypted_key,
         key_hint      = EXCLUDED.key_hint,
         updated_at    = now()
-RETURNING id, user_id, provider, encrypted_key, key_hint, created_at, updated_at
+RETURNING id, user_id, provider, encrypted_key, key_hint, created_at, updated_at, force_non_streaming
 `
 
 type UpsertAPIKeyParams struct {
@@ -120,6 +122,7 @@ func (q *Queries) UpsertAPIKey(ctx context.Context, arg UpsertAPIKeyParams) (Use
 		&i.KeyHint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ForceNonStreaming,
 	)
 	return i, err
 }

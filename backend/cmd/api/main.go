@@ -15,6 +15,7 @@ import (
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/internal/config"
 	"github.com/jconder44/nexustale/internal/project"
+	"github.com/jconder44/nexustale/internal/prompts"
 	"github.com/jconder44/nexustale/internal/wiki"
 	"github.com/jconder44/nexustale/pkg/db"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
@@ -75,11 +76,14 @@ func main() {
 		BeatMaxTokens: cfg.AI.BeatMaxTokens,
 	})
 
+	promptsService := prompts.NewService(queries)
+
 	// Handlers
 	authHandler := auth.NewHandler(authService)
 	projectHandler := project.NewHandler(projectService)
 	wikiHandler := wiki.NewHandler(wikiService)
 	aiHandler := ai.NewHandler(aiService)
+	promptsHandler := prompts.NewHandler(promptsService)
 
 	// Router
 	gin.SetMode(cfg.Server.Mode)
@@ -105,6 +109,9 @@ func main() {
 
 		aiGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		aiHandler.RegisterRoutes(aiGroup)
+
+		promptsGroup := v1.Group("/projects/:id/prompts", auth.RequireAuth(authService))
+		promptsHandler.RegisterRoutes(promptsGroup)
 	}
 
 	// Server with graceful shutdown

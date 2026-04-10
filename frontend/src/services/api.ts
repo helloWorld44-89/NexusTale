@@ -30,6 +30,20 @@ export type AutolinkMatch          = components['schemas']['AutolinkMatch']
 export type APIKeyResponse         = components['schemas']['APIKeyResponse']
 export type ProjectStats           = components['schemas']['ProjectStats']
 
+// ── Inline types (not yet in OpenAPI spec) ────────────────────────────────────
+
+export interface PromptResponse {
+  id:             string
+  project_id:     string
+  name:           string
+  category:       string       // 'prose' | 'workshop'
+  content:        string       // style instruction appended to user turn
+  system_content: string       // replaces default system prompt when non-empty
+  sort_order:     number
+  created_at:     string
+  updated_at:     string
+}
+
 // ── Error class ───────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -267,7 +281,87 @@ export const api = {
       request<AutolinkMatch[]>('GET', `/projects/${projectId}/wiki/autolink?text=${encodeURIComponent(text)}`, undefined, token),
   },
 
+  prompts: {
+    list: (token: string, projectId: string) =>
+      request<PromptResponse[]>('GET', `/projects/${projectId}/prompts`, undefined, token),
+
+    create: (token: string, projectId: string, data: { name: string; category?: string; content?: string; system_content?: string; sort_order?: number }) =>
+      request<PromptResponse>('POST', `/projects/${projectId}/prompts`, data, token),
+
+    update: (token: string, projectId: string, promptId: string, data: { name?: string; category?: string; content?: string; system_content?: string; sort_order?: number }) =>
+      request<PromptResponse>('PUT', `/projects/${projectId}/prompts/${promptId}`, data, token),
+
+    delete: (token: string, projectId: string, promptId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/prompts/${promptId}`, undefined, token),
+  },
+
   ai: {
+    /**
+     * Stream a scene completion from POST /projects/:id/ai/complete.
+     * Supports "continue" and "beat" modes.
+     * Calls onDelta for each text chunk; resolves when [DONE] is received.
+     */
+    streamComplete: async (
+      token: string,
+      projectId: string,
+      params: {
+        sceneId?: string
+        mode: 'continue' | 'beat'
+        beat?: string
+        instruction?: string
+        promptId?: string
+      },
+      onDelta: (text: string) => void,
+      signal?: AbortSignal,
+    ): Promise<void> => {
+      const res = await fetch(`${BASE}/projects/${projectId}/ai/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          scene_id:    params.sceneId ?? '',
+          mode:        params.mode,
+          beat:        params.beat ?? '',
+          instruction: params.instruction ?? '',
+          prompt_id:   params.promptId ?? '',
+        }),
+        signal,
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { message?: string }).message ?? `AI error ${res.status}`)
+      }
+
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let buf = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const payload = line.slice(6)
+          if (payload === '[DONE]') return
+          try {
+            const evt = JSON.parse(payload) as { delta?: string; error?: string }
+            if (evt.error) throw new Error(evt.error)
+            if (evt.delta) onDelta(evt.delta)
+          } catch {
+            // skip malformed chunks
+          }
+        }
+      }
+    },
+
     /**
      * Stream a chat response from POST /projects/:id/ai/chat.
      * Calls onDelta for each text chunk; resolves when [DONE] is received.

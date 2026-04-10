@@ -104,13 +104,13 @@ Each completed step writes real data so the guide isn't throwaway:
 - [x] **B1.9** Frontend: wire `ChatBar` to `POST /ai/chat`; display streaming response with SSE; pass `projectId` + `sceneId` as context; typing indicator + Stop button
 
 ### B1.5 — Writing styles (prose prompts)
-- [ ] **B1.5.1** Migration 014: `project_prompts` table (`id, project_id, name, category, content, system_content, sort_order`); `ALTER TABLE user_api_keys ADD COLUMN force_non_streaming BOOL NOT NULL DEFAULT false`
-- [ ] **B1.5.2** sqlc: `ListProjectPrompts`, `CreateProjectPrompt`, `UpdateProjectPrompt`, `DeleteProjectPrompt`; regenerate
-- [ ] **B1.5.3** HTTP routes: `GET/POST /projects/:id/prompts`, `PUT/DELETE /projects/:id/prompts/:promptId`; behind `RequireAuth`
-- [ ] **B1.5.4** AI service: `ApplyPromptPreset(req CompleteRequest, preset ProjectPrompt)` — merges `system_content` into system prompt, appends `content` as style block to user turn
-- [ ] **B1.5.5** OpenAPI: `ProjectPromptResponse`, `CreateProjectPromptRequest`, `UpdateProjectPromptRequest`; regenerate types
-- [ ] **B1.5.6** Frontend: writing style dropdown in `SceneMetadataPanel`; "Manage styles" link; selected `prompt_id` sent with every AI call
-- [ ] **B1.5.7** Frontend: Beat input field in `ScribeEditor` toolbar; send with `mode: "beat"`; streamed response appended with highlight + Accept/Retry/Discard actions
+- [x] **B1.5.1** Migration 010: `project_prompts` table; `ALTER TABLE user_api_keys ADD COLUMN force_non_streaming`
+- [x] **B1.5.2** sqlc: `ListProjectPrompts`, `GetProjectPrompt`, `CreateProjectPrompt`, `UpdateProjectPrompt`, `DeleteProjectPrompt`; regenerated
+- [x] **B1.5.3** HTTP routes: `GET/POST /projects/:id/prompts`, `PUT/DELETE /projects/:id/prompts/:promptId`; `internal/prompts` package; behind `RequireAuth`
+- [x] **B1.5.4** AI service: `applyPromptPreset` — `system_content` replaces system prompt; `content` appended as style guidance block; applied non-fatally when `prompt_id` present
+- [x] **B1.5.5** OpenAPI: deferred; `PromptResponse` defined inline in `api.ts`; `api.prompts.*` methods added
+- [x] **B1.5.6** Frontend: writing style dropdown in `SceneMetadataPanel`; "Manage styles ↗" link; selected `promptId` held in `Editor` state; header badge shows active style name
+- [x] **B1.5.7** Frontend: `BeatInput` in `ScribeEditor`; beat → sentence → streams 2–3 paragraphs; Accept/Retry/Discard actions; `api.ai.streamComplete` added
 
 ### B2 — AI memory + context
 - [ ] **B2.1** Migration 010: create `chapter_summaries (chapter_id, branch_name, ai_summary, stale, updated_at)` with PK `(chapter_id, branch_name)`; create `project_active_branch (project_id, user_id, branch_name, updated_at)` with PK `(project_id, user_id)` — **no column added to `chapters`**

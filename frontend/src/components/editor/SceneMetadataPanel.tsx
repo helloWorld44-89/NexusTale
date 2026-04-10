@@ -1,14 +1,17 @@
-// SceneMetadataPanel — collapsible drawer showing POV, tense, tags, and summary
-// for the active scene. Edits are saved via debounced PATCH on blur/change.
+// SceneMetadataPanel — collapsible drawer showing POV, tense, tags, summary,
+// and writing style selector for the active scene.
 import { useState, useEffect, useRef } from 'react'
 import { api } from '@/services/api'
-import type { Scene } from '@/services/api'
+import type { Scene, PromptResponse } from '@/services/api'
 
 interface SceneMetadataPanelProps {
-  token:     string
-  chapterId: string
-  scene:     Scene
-  onUpdate:  (updated: Scene) => void
+  token:           string
+  chapterId:       string
+  projectId:       string
+  scene:           Scene
+  selectedPromptId: string | null
+  onUpdate:        (updated: Scene) => void
+  onPromptChange:  (promptId: string | null) => void
 }
 
 const SAVE_DELAY_MS = 800
@@ -16,23 +19,35 @@ const SAVE_DELAY_MS = 800
 export default function SceneMetadataPanel({
   token,
   chapterId,
+  projectId,
   scene,
+  selectedPromptId,
   onUpdate,
+  onPromptChange,
 }: SceneMetadataPanelProps) {
-  const [open, setOpen]       = useState(false)
-  const [pov, setPov]         = useState(scene.pov ?? '')
-  const [tense, setTense]     = useState(scene.tense ?? '')
-  const [tags, setTags]       = useState((scene.tags ?? []).join(', '))
-  const [summary, setSummary] = useState(scene.summary ?? '')
-  const saveTimer             = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [open, setOpen]         = useState(false)
+  const [pov, setPov]           = useState(scene.pov ?? '')
+  const [tense, setTense]       = useState(scene.tense ?? '')
+  const [tags, setTags]         = useState((scene.tags ?? []).join(', '))
+  const [summary, setSummary]   = useState(scene.summary ?? '')
+  const [prompts, setPrompts]   = useState<PromptResponse[]>([])
+  const saveTimer               = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Sync when the active scene changes.
+  // Sync fields when the active scene changes.
   useEffect(() => {
     setPov(scene.pov ?? '')
     setTense(scene.tense ?? '')
     setTags((scene.tags ?? []).join(', '))
     setSummary(scene.summary ?? '')
   }, [scene.id])
+
+  // Load writing style presets when the panel opens.
+  useEffect(() => {
+    if (!open) return
+    api.prompts.list(token, projectId)
+      .then(setPrompts)
+      .catch(() => {})
+  }, [open, token, projectId])
 
   const scheduleSave = (patch: Parameters<typeof api.scenes.update>[3]) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -79,6 +94,11 @@ export default function SceneMetadataPanel({
           )}
           {pov && <span className="text-brand-gold">POV: {pov}</span>}
           {tense && <span className="text-brand-purple">{tense}</span>}
+          {selectedPromptId && prompts.length > 0 && (
+            <span className="text-brand-green text-[10px] px-1.5 py-0.5 rounded border border-brand-green/40">
+              {prompts.find((p) => p.id === selectedPromptId)?.name ?? 'Style'}
+            </span>
+          )}
         </div>
         <ChevronIcon open={open} />
       </button>
@@ -111,6 +131,40 @@ export default function SceneMetadataPanel({
               <option value="present">Present</option>
               <option value="future">Future</option>
             </select>
+          </div>
+
+          {/* Writing style — full width */}
+          <div className="col-span-2 flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <label className="text-brand-text-muted uppercase tracking-wider">Writing Style</label>
+              <a
+                href={`/projects/${projectId}/prompts`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-brand-cyan/70 hover:text-brand-cyan transition-colors"
+              >
+                Manage styles ↗
+              </a>
+            </div>
+            <select
+              value={selectedPromptId ?? ''}
+              onChange={(e) => onPromptChange(e.target.value || null)}
+              className="bg-brand-bg border border-brand-border rounded px-2 py-1 text-brand-text focus:outline-none focus:border-brand-cyan"
+            >
+              <option value="">Default (NexusTale)</option>
+              {prompts.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            {prompts.length === 0 && (
+              <p className="text-brand-text-muted/60 text-[10px]">
+                No styles yet —{' '}
+                <a href={`/projects/${projectId}/prompts`} target="_blank" rel="noreferrer" className="text-brand-cyan/60 hover:text-brand-cyan">
+                  create one
+                </a>{' '}
+                to shape the AI's voice.
+              </p>
+            )}
           </div>
 
           {/* Tags — full width */}
