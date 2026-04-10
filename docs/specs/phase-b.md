@@ -125,12 +125,12 @@ Each completed step writes real data so the guide isn't throwaway:
 - [ ] **B2.10** Frontend: stale indicator badge on chapter in ProjectExplorer; "Regenerate" button in SceneMetadataPanel; send `X-NexusTale-Branch` header on all AI and scene-save requests
 
 ### B3 — Token usage tracking
-- [ ] **B3.1** Migration 011: `ai_usage` table (id, user_id, project_id, model, prompt_tokens, completion_tokens, cost_usd, created_at)
-- [ ] **B3.2** sqlc: `InsertUsage`, `GetProjectUsageSummary` (total tokens, total cost, this month)
-- [ ] **B3.3** Record usage after every AI call (non-blocking; log on error)
-- [ ] **B3.4** `GET /projects/:id/ai/usage` → `{total_tokens, total_cost_usd, monthly_tokens, monthly_cost_usd}`
-- [ ] **B3.5** OpenAPI: `AIUsageResponse` schema; regenerate types
-- [ ] **B3.6** Frontend: usage stat cards on ProjectHome alongside word/scene/chapter counts
+- [x] **B3.1** Migration 011: `ai_usage` table (id, user_id, project_id, model, prompt_tokens, completion_tokens, cost_usd, created_at); indexes on project_id, user_id, created_at
+- [x] **B3.2** sqlc: `InsertUsage`, `GetProjectUsageSummary` (total/monthly tokens + cost + call count); regenerated
+- [x] **B3.3** `recordUsage()` goroutine called after every `StreamComplete`, `StreamChat`, `Summarize`; skips zero-token calls; logs on error, never blocks
+- [x] **B3.4** `GET /projects/:id/ai/usage` → `{total_tokens, total_cost_usd, monthly_tokens, monthly_cost_usd, calls_this_month}`
+- [x] **B3.5** OpenAPI: deferred; `AIUsageSummary` defined inline in `api.ts`
+- [x] **B3.6** Frontend: AI usage row on ProjectHome (tokens total/month, calls/month, cost/month); hidden when no AI calls made yet
 
 ### B4 — Export
 - [ ] **B4.1** Migration 012: `export_jobs` table (id, project_id, user_id, format, status, minio_key, download_url, error, created_at, expires_at)

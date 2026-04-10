@@ -32,6 +32,14 @@ export type ProjectStats           = components['schemas']['ProjectStats']
 
 // ── Inline types (not yet in OpenAPI spec) ────────────────────────────────────
 
+export interface AIUsageSummary {
+  total_tokens:     number
+  total_cost_usd:   number
+  monthly_tokens:   number
+  monthly_cost_usd: number
+  calls_this_month: number
+}
+
 export interface PromptResponse {
   id:             string
   project_id:     string
@@ -296,6 +304,9 @@ export const api = {
   },
 
   ai: {
+    usage: (token: string, projectId: string) =>
+      request<AIUsageSummary>('GET', `/projects/${projectId}/ai/usage`, undefined, token),
+
     /**
      * Stream a scene completion from POST /projects/:id/ai/complete.
      * Supports "continue" and "beat" modes.

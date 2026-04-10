@@ -66,6 +66,17 @@ type Act struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type AiUsage struct {
+	ID               uuid.UUID          `json:"id"`
+	UserID           uuid.UUID          `json:"user_id"`
+	ProjectID        uuid.UUID          `json:"project_id"`
+	Model            string             `json:"model"`
+	PromptTokens     int32              `json:"prompt_tokens"`
+	CompletionTokens int32              `json:"completion_tokens"`
+	CostUsd          pgtype.Numeric     `json:"cost_usd"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
 type Chapter struct {
 	ID        uuid.UUID          `json:"id"`
 	ProjectID uuid.UUID          `json:"project_id"`

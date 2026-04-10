@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
 import { api } from '@/services/api'
-import type { Project, ProjectStats } from '@/services/api'
+import type { Project, ProjectStats, AIUsageSummary } from '@/services/api'
 
 export default function ProjectHome() {
   const { id } = useParams<{ id: string }>()
@@ -13,6 +13,7 @@ export default function ProjectHome() {
 
   const [project, setProject] = useState<Project | null>(null)
   const [stats,   setStats]   = useState<ProjectStats | null>(null)
+  const [usage,   setUsage]   = useState<AIUsageSummary | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -21,13 +22,15 @@ export default function ProjectHome() {
 
     const load = async () => {
       try {
-        const [p, s] = await Promise.all([
+        const [p, s, u] = await Promise.all([
           api.projects.get(accessToken, id),
           api.projects.stats(accessToken, id),
+          api.ai.usage(accessToken, id).catch(() => null),
         ])
         if (!cancelled) {
           setProject(p)
           setStats(s)
+          setUsage(u)
         }
       } catch {
         if (!cancelled) navigate('/dashboard', { replace: true })
@@ -95,13 +98,41 @@ export default function ProjectHome() {
 
         {/* Stats row */}
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
             <StatCard label="Words" value={stats.total_word_count.toLocaleString()} color="text-brand-cyan" />
             <StatCard label="Scenes" value={String(stats.scene_count)} color="text-brand-gold" />
             <StatCard label="Chapters" value={String(stats.chapter_count)} color="text-brand-purple" />
             <StatCard label="Last updated" value={lastUpdated} color="text-brand-text-muted" small />
           </div>
         )}
+
+        {/* AI usage row — only shown when at least one AI call has been made */}
+        {usage && usage.total_tokens > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+            <StatCard
+              label="AI tokens (total)"
+              value={usage.total_tokens.toLocaleString()}
+              color="text-brand-purple"
+            />
+            <StatCard
+              label="AI tokens (month)"
+              value={usage.monthly_tokens.toLocaleString()}
+              color="text-brand-purple"
+            />
+            <StatCard
+              label="AI calls (month)"
+              value={String(usage.calls_this_month)}
+              color="text-brand-text-muted"
+            />
+            <StatCard
+              label="AI cost (month)"
+              value={usage.monthly_cost_usd > 0 ? `$${usage.monthly_cost_usd.toFixed(4)}` : '$0.00'}
+              color="text-brand-text-muted"
+              small
+            />
+          </div>
+        )}
+        {usage && usage.total_tokens === 0 && <div className="mb-10" />}
 
         {/* Quick-open cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
