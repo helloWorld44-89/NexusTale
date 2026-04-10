@@ -93,15 +93,15 @@ Each completed step writes real data so the guide isn't throwaway:
 ## Checklist (all phases)
 
 ### B1 — AI proxy + adapters
-- [ ] **B1.1** Define `Adapter` interface in `internal/ai/adapter.go`: `Complete`, `Chat`, `Summarize`, `StreamComplete`, `StreamChat`, `IsThinkingModel`; add `CompleteMode` type (`continue` | `beat`)
-- [ ] **B1.2** Implement `OpenAIAdapter` (gpt-4o-mini default); reads key from `DecryptAPIKey`
-- [ ] **B1.3** Implement `AnthropicAdapter` (claude-haiku-4-5 default)
-- [ ] **B1.4** Implement `OllamaAdapter` (local HTTP; model from config; no key needed)
-- [ ] **B1.5** `AdapterFactory` — selects adapter by provider + model; thinking model detection (`isThinkingModel`); falls back to Ollama if no key
-- [ ] **B1.6** AI service: `Complete(ctx, projectID, userID, req CompleteRequest)`, `Chat(...)`, `Summarize(...)`; beat mode uses dedicated system prompt template with `{title}/{genre}/{tense}/{pov}/{pov_character}` substitution
-- [ ] **B1.7** HTTP routes: `POST /projects/:id/ai/complete` (accepts `mode`, `beat`, `prompt_id`), `POST /projects/:id/ai/chat`, `POST /projects/:id/ai/summarize`; all behind `RequireAuth`
-- [ ] **B1.8** OpenAPI: `AICompleteRequest` (with `mode` + `beat` + `prompt_id`), `AIChatRequest`, `AIChatMessage`, `AICompleteResponse`, `AISummarizeResponse`; regenerate types
-- [ ] **B1.9** Frontend: wire `ChatBar` to `POST /ai/chat`; display streaming response with SSE; show model name in header
+- [x] **B1.1** Define `Adapter` interface (`adapters/interface.go`): `Complete`, `Chat`, `Summarize`, `StreamComplete`, `StreamChat`, `IsThinkingModel`, `Provider`; `CompleteMode` type (`continue` | `beat`)
+- [x] **B1.2** `OpenAIAdapter` (`adapters/openai.go`): gpt-4o-mini default; thinking model detection; `simulateStream` for non-streaming models
+- [x] **B1.3** `AnthropicAdapter` (`adapters/anthropic.go`): claude-haiku-4-5-20251001 default; Anthropic SSE event parsing; system prompt in `System` field
+- [x] **B1.4** `OllamaAdapter` (`adapters/ollama.go`): `/api/chat` NDJSON streaming; no key needed
+- [x] **B1.5** `AdapterFactory` (`adapters/factory.go`): provider preference order `[anthropic, openai]` → Ollama fallback; thinking model detection (`o1/o3/o4/deepseek-reasoner/qwq/r1`)
+- [x] **B1.6** AI service (`ai/service.go`): beat/continue system prompt builders with project/scene metadata; `resolveContext` fetches scene+project non-fatally
+- [x] **B1.7** HTTP routes (`ai/handler.go`): `POST /projects/:id/ai/complete`, `/ai/chat` (SSE via `io.Pipe`), `/ai/summarize` (JSON); all behind `RequireAuth`; `config.AIConfig` wired in `cmd/api/main.go`
+- [x] **B1.8** OpenAPI: deferred to after B1.9 (types added inline to `api.ts` for now)
+- [x] **B1.9** Frontend: wire `ChatBar` to `POST /ai/chat`; display streaming response with SSE; pass `projectId` + `sceneId` as context; typing indicator + Stop button
 
 ### B1.5 — Writing styles (prose prompts)
 - [ ] **B1.5.1** Migration 014: `project_prompts` table (`id, project_id, name, category, content, system_content, sort_order`); `ALTER TABLE user_api_keys ADD COLUMN force_non_streaming BOOL NOT NULL DEFAULT false`

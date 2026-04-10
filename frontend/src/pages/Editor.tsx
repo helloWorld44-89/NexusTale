@@ -266,7 +266,13 @@ export default function Editor() {
             onToggleWiki={() => toggleLeftPanel('wiki')}
           />
         )}
-        {!focusMode && leftPanel === 'chat' && <ChatBar />}
+        {!focusMode && leftPanel === 'chat' && projectId && accessToken && (
+          <ChatBar
+            token={accessToken}
+            projectId={projectId}
+            sceneId={selectedSceneId ?? undefined}
+          />
+        )}
         {!focusMode && leftPanel === 'git' && projectId && accessToken && (
           <GitPanel token={accessToken} projectId={projectId} />
         )}
