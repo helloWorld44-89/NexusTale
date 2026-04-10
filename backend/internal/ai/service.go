@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jconder44/nexustale/internal/ai/adapters"
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
@@ -211,7 +212,9 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 		s.applyPromptPreset(ctx, req.PromptID, &adapterReq)
 	}
 
-	return adapter.StreamComplete(ctx, adapterReq, w)
+	usage, err := adapter.StreamComplete(ctx, adapterReq, w)
+	s.recordUsage(req.ProjectID, userID, adapter.Provider(), usage)
+	return usage, err
 }
 
 // StreamChat streams a chat response to w.
@@ -226,10 +229,12 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 		maxTok = s.cfg.MaxTokens
 	}
 
-	return adapter.StreamChat(ctx, adapters.ChatRequest{
+	usage, err := adapter.StreamChat(ctx, adapters.ChatRequest{
 		Messages:  req.Messages,
 		MaxTokens: maxTok,
 	}, w)
+	s.recordUsage(req.ProjectID, userID, adapter.Provider(), usage)
+	return usage, err
 }
 
 // Summarize generates a 2–3 sentence summary of the provided text.
@@ -239,7 +244,9 @@ func (s *Service) Summarize(ctx context.Context, userID uuid.UUID, provider, tex
 	if err != nil {
 		return "", adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
 	}
-	return adapter.Summarize(ctx, text)
+	summary, usage, err := adapter.Summarize(ctx, text)
+	s.recordUsage(uuid.Nil, userID, adapter.Provider(), usage)
+	return summary, usage, err
 }
 
 // ── internal helpers ──────────────────────────────────────────────────────────
@@ -253,6 +260,68 @@ type resolvedScene struct {
 	Content string
 	Tense   string
 	Pov     string
+}
+
+// UsageSummary is the public response for GET /projects/:id/ai/usage.
+type UsageSummary struct {
+	TotalTokens    int64   `json:"total_tokens"`
+	TotalCostUSD   float64 `json:"total_cost_usd"`
+	MonthlyTokens  int64   `json:"monthly_tokens"`
+	MonthlyCostUSD float64 `json:"monthly_cost_usd"`
+	CallsThisMonth int64   `json:"calls_this_month"`
+}
+
+// GetUsageSummary returns aggregate token usage for a project.
+func (s *Service) GetUsageSummary(ctx context.Context, projectID uuid.UUID) (UsageSummary, error) {
+	row, err := s.queries.GetProjectUsageSummary(ctx, projectID)
+	if err != nil {
+		return UsageSummary{}, fmt.Errorf("get usage summary: %w", err)
+	}
+	// sqlc types COALESCE(SUM(NUMERIC)) as interface{}; pgx scans it as pgtype.Numeric.
+	return UsageSummary{
+		TotalTokens:    row.TotalTokens,
+		TotalCostUSD:   numericToFloat64(row.TotalCostUsd),
+		MonthlyTokens:  row.MonthlyTokens,
+		MonthlyCostUSD: numericToFloat64(row.MonthlyCostUsd),
+		CallsThisMonth: row.CallsThisMonth,
+	}, nil
+}
+
+// numericToFloat64 converts a pgtype.Numeric scanned as interface{} to float64.
+func numericToFloat64(v interface{}) float64 {
+	if n, ok := v.(pgtype.Numeric); ok {
+		f, err := n.Float64Value()
+		if err == nil && f.Valid {
+			return f.Float64
+		}
+	}
+	return 0
+}
+
+// recordUsage inserts a usage row non-blocking. Errors are logged and discarded
+// so they never block or fail the parent AI call.
+func (s *Service) recordUsage(projectID, userID uuid.UUID, model string, usage adapters.Usage) {
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+		return // nothing to record (e.g. streaming aborted before tokens known)
+	}
+	go func() {
+		// Build a pgtype.Numeric from the float64 cost via string scan.
+		var cost pgtype.Numeric
+		if err := cost.Scan(fmt.Sprintf("%.8f", usage.CostUSD)); err != nil {
+			// Fallback: zero cost rather than dropping the record entirely.
+			_ = cost.Scan("0")
+		}
+		if err := s.queries.InsertUsage(context.Background(), sqlcgen.InsertUsageParams{
+			UserID:           userID,
+			ProjectID:        projectID,
+			Model:            model,
+			PromptTokens:     int32(usage.PromptTokens),
+			CompletionTokens: int32(usage.CompletionTokens),
+			CostUsd:          cost,
+		}); err != nil {
+			slog.Warn("ai: failed to record usage", "error", err)
+		}
+	}()
 }
 
 // applyPromptPreset modifies adapterReq in place according to the stored preset:

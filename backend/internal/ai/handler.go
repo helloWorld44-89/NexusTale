@@ -29,6 +29,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	ai.POST("/complete", h.Complete)
 	ai.POST("/chat", h.Chat)
 	ai.POST("/summarize", h.Summarize)
+	ai.GET("/usage", h.Usage)
 }
 
 // ── request types ─────────────────────────────────────────────────────────────
@@ -238,6 +239,22 @@ func (h *Handler) Summarize(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"summary": summary})
+}
+
+// Usage returns aggregate token/cost stats for the project.
+//
+// GET /projects/:id/ai/usage
+func (h *Handler) Usage(c *gin.Context) {
+	projectID, _, ok := resolveIDs(c)
+	if !ok {
+		return
+	}
+	summary, err := h.svc.GetUsageSummary(c.Request.Context(), projectID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, summary)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
