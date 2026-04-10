@@ -14,6 +14,14 @@ type Config struct {
 	Redis      RedisConfig
 	Minio      MinioConfig
 	Git        GitConfig
+	AI         AIConfig
+}
+
+type AIConfig struct {
+	OllamaURL     string
+	OllamaModel   string
+	MaxTokens     int
+	BeatMaxTokens int
 }
 
 type ServerConfig struct {
@@ -84,6 +92,10 @@ func Load() (*Config, error) {
 	v.SetDefault("git.repospath", "./data/repos")
 	// 32-byte dev default — must be overridden in production
 	v.SetDefault("encryption.key", "0000000000000000000000000000000000000000000000000000000000000000")
+	v.SetDefault("ai.ollamaurl", "http://localhost:11434")
+	v.SetDefault("ai.ollamamodel", "llama3.2")
+	v.SetDefault("ai.maxtokens", 2048)
+	v.SetDefault("ai.beatmaxtokens", 600)
 
 	// Try config file
 	v.SetConfigName("config")
@@ -124,6 +136,12 @@ func Load() (*Config, error) {
 		},
 		Git: GitConfig{
 			ReposPath: v.GetString("git.repospath"),
+		},
+		AI: AIConfig{
+			OllamaURL:     v.GetString("ai.ollamaurl"),
+			OllamaModel:   v.GetString("ai.ollamamodel"),
+			MaxTokens:     v.GetInt("ai.maxtokens"),
+			BeatMaxTokens: v.GetInt("ai.beatmaxtokens"),
 		},
 	}
 
