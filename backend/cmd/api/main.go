@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/jconder44/nexustale/internal/ai"
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/internal/config"
 	"github.com/jconder44/nexustale/internal/project"
@@ -67,11 +68,18 @@ func main() {
 	gitService := project.NewGitService(cfg.Git.ReposPath)
 	projectService := project.NewService(queries, gitService)
 	wikiService := wiki.NewService(queries)
+	aiService := ai.NewService(authService, queries, ai.AIConfig{
+		OllamaURL:     cfg.AI.OllamaURL,
+		OllamaModel:   cfg.AI.OllamaModel,
+		MaxTokens:     cfg.AI.MaxTokens,
+		BeatMaxTokens: cfg.AI.BeatMaxTokens,
+	})
 
 	// Handlers
 	authHandler := auth.NewHandler(authService)
 	projectHandler := project.NewHandler(projectService)
 	wikiHandler := wiki.NewHandler(wikiService)
+	aiHandler := ai.NewHandler(aiService)
 
 	// Router
 	gin.SetMode(cfg.Server.Mode)
@@ -94,6 +102,9 @@ func main() {
 
 		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService))
 		wikiHandler.RegisterRoutes(wikiGroup)
+
+		aiGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		aiHandler.RegisterRoutes(aiGroup)
 	}
 
 	// Server with graceful shutdown
