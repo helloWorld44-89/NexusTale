@@ -11,6 +11,7 @@ interface ScribeEditorProps {
   projectId?:  string
   sceneId?:    string
   promptId?:   string | null
+  branch?:     string
 }
 
 export default function ScribeEditor({
@@ -22,6 +23,7 @@ export default function ScribeEditor({
   projectId,
   sceneId,
   promptId,
+  branch,
 }: ScribeEditorProps) {
   const handleBeatAccept = (text: string) => {
     onChange(content + text)
@@ -63,6 +65,7 @@ export default function ScribeEditor({
           projectId={projectId}
           sceneId={sceneId}
           promptId={promptId ?? null}
+          branch={branch}
           onAccept={handleBeatAccept}
         />
       )}

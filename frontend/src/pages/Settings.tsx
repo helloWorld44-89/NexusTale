@@ -47,6 +47,12 @@ export default function Settings() {
   const [loadingKeys, setLoading] = useState(true)
   const [error, setError]         = useState<string | null>(null)
 
+  // Ollama URL form state
+  const [ollamaURL,      setOllamaURL]      = useState('')
+  const [savingOllama,   setSavingOllama]   = useState(false)
+  const [ollamaErr,      setOllamaErr]      = useState<string | null>(null)
+  const [ollamaOk,       setOllamaOk]       = useState(false)
+
   // Danger zone state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [confirmEmail, setConfirmEmail]         = useState('')
@@ -78,10 +84,39 @@ export default function Settings() {
     if (!accessToken) return
     setLoading(true)
     api.apiKeys.list(accessToken)
-      .then(setKeys)
+      .then((ks) => {
+        setKeys(ks)
+        // Pre-populate Ollama URL field if one is already stored.
+        // The hint is the last 4 chars; we can't recover the full URL so we
+        // just show a placeholder indicating something is saved.
+        const ollamaKey = ks.find((k) => k.provider === 'ollama')
+        if (ollamaKey) setOllamaURL('')   // can't recover full URL; show empty + hint
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [accessToken])
+
+  const handleSaveOllamaURL = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!accessToken || !ollamaURL.trim()) return
+    setSavingOllama(true)
+    setOllamaErr(null)
+    setOllamaOk(false)
+    try {
+      const saved = await api.apiKeys.upsert(accessToken, 'ollama', ollamaURL.trim())
+      setKeys((prev) => {
+        const filtered = prev.filter((k) => k.provider !== 'ollama')
+        return [...filtered, saved].sort((a, b) => a.provider.localeCompare(b.provider))
+      })
+      setOllamaURL('')
+      setOllamaOk(true)
+      setTimeout(() => setOllamaOk(false), 2500)
+    } catch (e: unknown) {
+      setOllamaErr(e instanceof Error ? e.message : 'Failed to save URL')
+    } finally {
+      setSavingOllama(false)
+    }
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -206,6 +241,65 @@ export default function Settings() {
               className="px-4 py-2 rounded-lg bg-brand-cyan text-brand-bg text-sm font-semibold hover:bg-brand-cyan/80 disabled:opacity-50 transition-colors"
             >
               {saving ? 'Saving…' : 'Save Key'}
+            </button>
+          </form>
+        </section>
+
+        {/* Ollama (local AI) */}
+        <section>
+          <h2 className="text-lg font-semibold text-brand-text mb-1">Local AI (Ollama)</h2>
+          <p className="text-sm text-brand-text-muted mb-6">
+            Set the base URL of your Ollama instance. Used when no cloud API key is configured,
+            or when you explicitly choose <span className="font-mono text-brand-text">ollama</span> as
+            the provider. Required when the app runs in Docker — <span className="font-mono text-brand-text">localhost</span> won't
+            reach the host machine.
+          </p>
+
+          {/* Show stored hint if one exists */}
+          {keys.find((k) => k.provider === 'ollama') && (
+            <div className="mb-4 flex items-center justify-between px-4 py-3 rounded-lg border border-brand-border bg-brand-bg-card">
+              <div>
+                <span className="text-sm font-medium text-brand-text">Ollama URL</span>
+                <span className="ml-3 text-xs text-brand-text-muted font-mono">
+                  ••••{keys.find((k) => k.provider === 'ollama')!.key_hint}
+                </span>
+              </div>
+              <button
+                onClick={() => handleDelete('ollama')}
+                className="text-xs text-red-400 hover:text-red-300 transition-colors"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveOllamaURL} className="space-y-4 border border-brand-border rounded-xl p-5 bg-brand-bg-card">
+            <h3 className="text-sm font-medium text-brand-text">Set Ollama base URL</h3>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-brand-text-muted uppercase tracking-wider">Base URL</label>
+              <input
+                type="url"
+                value={ollamaURL}
+                onChange={(e) => setOllamaURL(e.target.value)}
+                placeholder="http://host.docker.internal:11434"
+                className="bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-text placeholder:text-brand-text-muted/40 focus:outline-none focus:border-brand-cyan font-mono"
+              />
+              <p className="text-xs text-brand-text-muted">
+                Examples: <span className="font-mono">http://host.docker.internal:11434</span> (Docker Desktop),{' '}
+                <span className="font-mono">http://192.168.1.10:11434</span> (LAN IP)
+              </p>
+            </div>
+
+            {ollamaErr && <p className="text-xs text-red-400">{ollamaErr}</p>}
+            {ollamaOk  && <p className="text-xs text-emerald-400">URL saved.</p>}
+
+            <button
+              type="submit"
+              disabled={savingOllama || !ollamaURL.trim()}
+              className="px-4 py-2 rounded-lg bg-brand-cyan text-brand-bg text-sm font-semibold hover:bg-brand-cyan/80 disabled:opacity-50 transition-colors"
+            >
+              {savingOllama ? 'Saving…' : 'Save URL'}
             </button>
           </form>
         </section>

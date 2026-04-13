@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jconder44/nexustale/internal/ai/adapters"
 	"github.com/jconder44/nexustale/internal/auth"
+	"github.com/jconder44/nexustale/pkg/apperror"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
@@ -27,13 +28,19 @@ type AIConfig struct {
 // It resolves the user's stored API key to build the correct adapter,
 // then delegates to that adapter for completion, chat, and summarization.
 type Service struct {
-	authSvc *auth.Service
-	queries *sqlcgen.Queries
-	cfg     AIConfig
+	authSvc  *auth.Service
+	queries  *sqlcgen.Queries
+	cfg      AIConfig
+	debounce *debouncer
 }
 
 func NewService(authSvc *auth.Service, queries *sqlcgen.Queries, cfg AIConfig) *Service {
-	return &Service{authSvc: authSvc, queries: queries, cfg: cfg}
+	return &Service{
+		authSvc:  authSvc,
+		queries:  queries,
+		cfg:      cfg,
+		debounce: newDebouncer(),
+	}
 }
 
 // ── adapter resolution ────────────────────────────────────────────────────────
@@ -47,7 +54,7 @@ var providerPreference = []string{"anthropic", "openai"}
 // providerPreference order, falling back to Ollama if none are stored.
 func (s *Service) getAdapter(ctx context.Context, userID uuid.UUID, provider string) (adapters.Adapter, error) {
 	adapterCfg := adapters.AdapterConfig{
-		OllamaURL:   s.cfg.OllamaURL,
+		OllamaURL:   s.ollamaURLForUser(ctx, userID),
 		OllamaModel: s.cfg.OllamaModel,
 	}
 
@@ -82,6 +89,18 @@ func (s *Service) getAdapter(ctx context.Context, userID uuid.UUID, provider str
 
 	// No cloud key found — use Ollama.
 	return adapters.NewAdapter("ollama", "", "", adapterCfg)
+}
+
+// ollamaURLForUser returns the Ollama base URL for the given user.
+// If the user has stored a custom URL via Settings (provider="ollama"),
+// that takes precedence over the server-wide default from config.
+// This allows each user to point at their own Ollama instance — important
+// when the API runs in Docker and Ollama is on the host or another machine.
+func (s *Service) ollamaURLForUser(ctx context.Context, userID uuid.UUID) string {
+	if url, err := s.authSvc.DecryptAPIKey(ctx, userID, "ollama"); err == nil && url != "" {
+		return url
+	}
+	return s.cfg.OllamaURL
 }
 
 // ── beat system prompt ────────────────────────────────────────────────────────
@@ -150,6 +169,7 @@ func continueSystemPrompt(title string, genres []string, tense, pov string) stri
 type CompleteRequest struct {
 	ProjectID   uuid.UUID
 	SceneID     uuid.UUID
+	BranchName  string                // active Timeline; empty = resolved via ResolveBranch
 	Mode        adapters.CompleteMode // "continue" | "beat"
 	Beat        string                // required when mode=beat
 	Instruction string                // optional hint for continue mode
@@ -160,11 +180,12 @@ type CompleteRequest struct {
 
 // ChatRequest is the public request type for chat operations.
 type ChatRequest struct {
-	ProjectID uuid.UUID
-	SceneID   uuid.UUID
-	Messages  []adapters.Message
-	Provider  string
-	MaxTokens int
+	ProjectID  uuid.UUID
+	SceneID    uuid.UUID
+	BranchName string // active Timeline
+	Messages   []adapters.Message
+	Provider   string
+	MaxTokens  int
 }
 
 // StreamComplete streams the AI response for scene continuation or beat expansion.
@@ -191,15 +212,26 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 	adapterReq.Mode = req.Mode
 	adapterReq.MaxTokens = maxTok
 
+	// Build the AI context window (chapter summaries + @[entity] snippets).
+	ctxBlock := s.BuildContext(ctx, req.ProjectID, req.BranchName, scene.Content)
+
 	switch req.Mode {
 	case adapters.CompleteModeBeat:
 		if maxTok == 0 || maxTok > s.cfg.BeatMaxTokens {
 			adapterReq.MaxTokens = s.cfg.BeatMaxTokens
 		}
-		adapterReq.SystemPrompt = beatSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov, "")
+		sysPrompt := beatSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov, "")
+		if ctxBlock != "" {
+			sysPrompt = ctxBlock + "\n\n" + sysPrompt
+		}
+		adapterReq.SystemPrompt = sysPrompt
 		adapterReq.Content = req.Beat
 	default:
-		adapterReq.SystemPrompt = continueSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov)
+		sysPrompt := continueSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov)
+		if ctxBlock != "" {
+			sysPrompt = ctxBlock + "\n\n" + sysPrompt
+		}
+		adapterReq.SystemPrompt = sysPrompt
 		content := scene.Content
 		if req.Instruction != "" {
 			content += "\n\n[Instruction: " + req.Instruction + "]"
@@ -218,6 +250,8 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 }
 
 // StreamChat streams a chat response to w.
+// A context window (chapter summaries + @[entity] snippets) is injected as a
+// system message prepended to the conversation.
 func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequest, w io.Writer) (adapters.Usage, error) {
 	adapter, err := s.getAdapter(ctx, userID, req.Provider)
 	if err != nil {
@@ -229,8 +263,23 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 		maxTok = s.cfg.MaxTokens
 	}
 
+	// Resolve scene content for @[entity] parsing if a scene is in scope.
+	sceneContent := ""
+	if req.SceneID != uuid.Nil {
+		if sc, err := s.queries.GetScene(ctx, req.SceneID); err == nil {
+			sceneContent = sc.Content
+		}
+	}
+
+	messages := req.Messages
+	ctxBlock := s.BuildContext(ctx, req.ProjectID, req.BranchName, sceneContent)
+	if ctxBlock != "" {
+		// Prepend a system message so the model sees story context first.
+		messages = append([]adapters.Message{{Role: "system", Content: ctxBlock}}, messages...)
+	}
+
 	usage, err := adapter.StreamChat(ctx, adapters.ChatRequest{
-		Messages:  req.Messages,
+		Messages:  messages,
 		MaxTokens: maxTok,
 	}, w)
 	s.recordUsage(req.ProjectID, userID, adapter.Provider(), usage)
@@ -269,6 +318,82 @@ type UsageSummary struct {
 	MonthlyTokens  int64   `json:"monthly_tokens"`
 	MonthlyCostUSD float64 `json:"monthly_cost_usd"`
 	CallsThisMonth int64   `json:"calls_this_month"`
+}
+
+// ChapterSummaryResponse is the response type for chapter summary endpoints.
+type ChapterSummaryResponse struct {
+	ChapterID  string `json:"chapter_id"`
+	BranchName string `json:"branch_name"`
+	AiSummary  string `json:"ai_summary"`
+	Stale      bool   `json:"stale"`
+}
+
+// GetChapterSummary returns the stored summary for (chapterID, branchName),
+// falling back to "canon" if the branch has no row yet.
+func (s *Service) GetChapterSummary(ctx context.Context, chapterID uuid.UUID, branchName string) (*ChapterSummaryResponse, error) {
+	row, err := s.queries.GetChapterSummary(ctx, sqlcgen.GetChapterSummaryParams{
+		ChapterID:  chapterID,
+		BranchName: branchName,
+	})
+	if err != nil {
+		// Fall back to canon if the active branch has no row.
+		if branchName != canonBranch {
+			row, err = s.queries.GetChapterSummary(ctx, sqlcgen.GetChapterSummaryParams{
+				ChapterID:  chapterID,
+				BranchName: canonBranch,
+			})
+		}
+		if err != nil {
+			// No summary exists yet — return empty rather than 404.
+			return &ChapterSummaryResponse{
+				ChapterID:  chapterID.String(),
+				BranchName: branchName,
+				AiSummary:  "",
+				Stale:      true,
+			}, nil
+		}
+	}
+	return &ChapterSummaryResponse{
+		ChapterID:  row.ChapterID.String(),
+		BranchName: row.BranchName,
+		AiSummary:  row.AiSummary,
+		Stale:      row.Stale,
+	}, nil
+}
+
+// RegenerateChapterSummary forces a synchronous LLM summarization of the
+// chapter, stores the result, and returns the new summary text.
+func (s *Service) RegenerateChapterSummary(ctx context.Context, userID, chapterID uuid.UUID, branchName string) (string, error) {
+	scenes, err := s.queries.ListScenesByChapter(ctx, chapterID)
+	if err != nil {
+		return "", fmt.Errorf("list scenes: %w", err)
+	}
+	if len(scenes) == 0 {
+		return "", apperror.Validation("chapter has no scenes to summarize")
+	}
+
+	var sb strings.Builder
+	for i, sc := range scenes {
+		if i > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(sc.Content)
+	}
+
+	summary, _, err := s.Summarize(ctx, userID, "", sb.String())
+	if err != nil {
+		return "", fmt.Errorf("summarize: %w", err)
+	}
+
+	if err := s.queries.UpsertChapterSummary(ctx, sqlcgen.UpsertChapterSummaryParams{
+		ChapterID:  chapterID,
+		BranchName: branchName,
+		AiSummary:  summary,
+	}); err != nil {
+		slog.Warn("ai: upsert chapter summary failed", "chapter_id", chapterID, "error", err)
+	}
+
+	return summary, nil
 }
 
 // GetUsageSummary returns aggregate token usage for a project.

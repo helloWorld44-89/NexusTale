@@ -394,6 +394,12 @@ func (h *Handler) UpdateScene(c *gin.Context) {
 		return
 	}
 
+	// Populate notifier fields so the service can schedule summary regen.
+	if claims := auth.GetClaims(c); claims != nil {
+		req.NotifyUserID = claims.UserID
+		req.NotifyBranch = c.GetHeader("X-NexusTale-Branch")
+	}
+
 	resp, err := h.svc.UpdateScene(c.Request.Context(), sceneID, req)
 	if err != nil {
 		handleError(c, err)
@@ -513,13 +519,19 @@ func (h *Handler) Diverge(c *gin.Context) {
 		return
 	}
 
+	claims := auth.GetClaims(c)
+	if claims == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
 	var req DivergeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "validation error", "detail": err.Error()})
 		return
 	}
 
-	timeline, err := h.svc.Diverge(c.Request.Context(), id, req)
+	timeline, err := h.svc.Diverge(c.Request.Context(), id, claims.UserID, req)
 	if err != nil {
 		handleError(c, err)
 		return
@@ -533,7 +545,13 @@ func (h *Handler) TravelTo(c *gin.Context) {
 		return
 	}
 
-	status, err := h.svc.TravelTo(c.Request.Context(), id, c.Param("tname"))
+	claims := auth.GetClaims(c)
+	if claims == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	status, err := h.svc.TravelTo(c.Request.Context(), id, claims.UserID, c.Param("tname"))
 	if err != nil {
 		handleError(c, err)
 		return

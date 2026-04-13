@@ -40,6 +40,38 @@ export interface AIUsageSummary {
   calls_this_month: number
 }
 
+export interface ChapterSummaryResponse {
+  chapter_id:  string
+  branch_name: string
+  ai_summary:  string
+  stale:       boolean
+}
+
+export interface GuideStep {
+  step_key:     string
+  label:        string
+  data:         Record<string, unknown>
+  is_complete:  boolean
+  completed_at?: string
+}
+
+export interface GuideProgress {
+  steps:           GuideStep[]
+  completed_count: number
+  total_count:     number
+}
+
+export interface ExportJob {
+  id:           string
+  project_id:   string
+  format:       'markdown' | 'epub'
+  status:       'pending' | 'processing' | 'done' | 'failed'
+  download_url?: string  // presigned URL; only when status=done
+  error_msg?:   string   // only when status=failed
+  expires_at?:  string   // ISO-8601; only when status=done
+  created_at:   string
+}
+
 export interface PromptResponse {
   id:             string
   project_id:     string
@@ -71,9 +103,11 @@ async function request<T>(
   path: string,
   body?: unknown,
   token?: string,
+  extraHeaders?: Record<string, string>,
 ): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
+  if (extraHeaders) Object.assign(headers, extraHeaders)
 
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -170,8 +204,9 @@ export const api = {
       summary?: string
       summary_stale?: boolean
       sort_order?: number
-    }) =>
-      request<Scene>('PATCH', `/chapters/${chapterId}/scenes/${sceneId}`, data, token),
+    }, branch?: string) =>
+      request<Scene>('PATCH', `/chapters/${chapterId}/scenes/${sceneId}`, data, token,
+        branch ? { 'X-NexusTale-Branch': branch } : undefined),
   },
 
   git: {
@@ -321,15 +356,20 @@ export const api = {
         beat?: string
         instruction?: string
         promptId?: string
+        branch?: string
       },
       onDelta: (text: string) => void,
       signal?: AbortSignal,
     ): Promise<void> => {
+      const branchHeaders: Record<string, string> = params.branch
+        ? { 'X-NexusTale-Branch': params.branch }
+        : {}
       const res = await fetch(`${BASE}/projects/${projectId}/ai/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          ...branchHeaders,
         },
         body: JSON.stringify({
           scene_id:    params.sceneId ?? '',
@@ -385,12 +425,17 @@ export const api = {
       sceneId: string | undefined,
       onDelta: (text: string) => void,
       signal?: AbortSignal,
+      branch?: string,
     ): Promise<void> => {
+      const branchHeaders: Record<string, string> = branch
+        ? { 'X-NexusTale-Branch': branch }
+        : {}
       const res = await fetch(`${BASE}/projects/${projectId}/ai/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          ...branchHeaders,
         },
         body: JSON.stringify({ messages, scene_id: sceneId ?? '' }),
         signal,
@@ -429,6 +474,70 @@ export const api = {
         }
       }
     },
+  },
+
+  chapterSummaries: {
+    get: (token: string, projectId: string, chapterId: string, branch?: string) =>
+      request<ChapterSummaryResponse>(
+        'GET', `/projects/${projectId}/chapters/${chapterId}/summary`, undefined, token,
+        branch ? { 'X-NexusTale-Branch': branch } : undefined,
+      ),
+
+    regenerate: (token: string, projectId: string, chapterId: string, branch?: string) =>
+      request<ChapterSummaryResponse>(
+        'POST', `/projects/${projectId}/chapters/${chapterId}/summarize`, undefined, token,
+        branch ? { 'X-NexusTale-Branch': branch } : undefined,
+      ),
+  },
+
+  guide: {
+    getProgress: (token: string, projectId: string): Promise<GuideProgress> =>
+      request<GuideProgress>('GET', `/projects/${projectId}/guide`, undefined, token),
+
+    saveStep: (token: string, projectId: string, step: string, data: Record<string, unknown>): Promise<GuideStep> =>
+      request<GuideStep>('POST', `/projects/${projectId}/guide/${step}`, data, token),
+
+    completeStep: (token: string, projectId: string, step: string, data: Record<string, unknown>): Promise<GuideStep> =>
+      request<GuideStep>('POST', `/projects/${projectId}/guide/${step}/complete`, data, token),
+  },
+
+  export: {
+    /**
+     * Trigger a markdown export — streams a zip and triggers browser download.
+     * Uses raw fetch because the response is binary, not JSON.
+     */
+    downloadMarkdown: async (token: string, projectId: string, filename: string): Promise<void> => {
+      const res = await fetch(`${BASE}/projects/${projectId}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ format: 'markdown' }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new ApiError(res.status, (data as { message?: string }).message ?? `Export failed ${res.status}`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    },
+
+    /** Start an async EPUB export — returns the job ID immediately (HTTP 202). */
+    startEpub: (token: string, projectId: string): Promise<{ job_id: string }> =>
+      request<{ job_id: string }>('POST', `/projects/${projectId}/export`, { format: 'epub' }, token),
+
+    /** Poll a single export job for status + presigned download URL. */
+    getJob: (token: string, projectId: string, jobId: string): Promise<ExportJob> =>
+      request<ExportJob>('GET', `/projects/${projectId}/export/${jobId}`, undefined, token),
+
+    /** List the 20 most recent export jobs for the project. */
+    listJobs: (token: string, projectId: string): Promise<{ jobs: ExportJob[] }> =>
+      request<{ jobs: ExportJob[] }>('GET', `/projects/${projectId}/export`, undefined, token),
   },
 
   users: {

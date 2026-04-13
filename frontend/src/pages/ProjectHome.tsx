@@ -1,20 +1,25 @@
 // ProjectHome — project overview page shown before entering the editor.
 // Displays stats, quick-open links to wiki + editor, and project metadata.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
 import { api } from '@/services/api'
-import type { Project, ProjectStats, AIUsageSummary } from '@/services/api'
+import type { Project, ProjectStats, AIUsageSummary, ExportJob } from '@/services/api'
 
 export default function ProjectHome() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const accessToken = useAuthStore((s) => s.accessToken)
 
-  const [project, setProject] = useState<Project | null>(null)
-  const [stats,   setStats]   = useState<ProjectStats | null>(null)
-  const [usage,   setUsage]   = useState<AIUsageSummary | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [project,    setProject]    = useState<Project | null>(null)
+  const [stats,      setStats]      = useState<ProjectStats | null>(null)
+  const [usage,      setUsage]      = useState<AIUsageSummary | null>(null)
+  const [loading,    setLoading]    = useState(true)
+  const [epubJobId,  setEpubJobId]  = useState<string | null>(null)
+  const [epubJob,    setEpubJob]    = useState<ExportJob | null>(null)
+  const [exporting,  setExporting]  = useState(false)
+  const [exportErr,  setExportErr]  = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!id || !accessToken) return
@@ -42,6 +47,60 @@ export default function ProjectHome() {
     load()
     return () => { cancelled = true }
   }, [id, accessToken])
+
+  // Poll for EPUB job completion every 3 seconds.
+  useEffect(() => {
+    if (!epubJobId || !accessToken || !id) return
+    if (pollRef.current) clearInterval(pollRef.current)
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const job = await api.export.getJob(accessToken, id, epubJobId)
+        setEpubJob(job)
+        if (job.status === 'done' || job.status === 'failed') {
+          clearInterval(pollRef.current!)
+          pollRef.current = null
+          setExporting(false)
+        }
+      } catch {
+        clearInterval(pollRef.current!)
+        pollRef.current = null
+        setExporting(false)
+      }
+    }, 3000)
+
+    return () => {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    }
+  }, [epubJobId, accessToken, id])
+
+  const handleMarkdownExport = async () => {
+    if (!accessToken || !id || !project) return
+    setExporting(true)
+    setExportErr(null)
+    try {
+      await api.export.downloadMarkdown(accessToken, id, `${project.title}.zip`)
+    } catch (e) {
+      setExportErr(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleEpubExport = async () => {
+    if (!accessToken || !id) return
+    setExporting(true)
+    setExportErr(null)
+    setEpubJob(null)
+    try {
+      const { job_id } = await api.export.startEpub(accessToken, id)
+      setEpubJobId(job_id)
+      setEpubJob({ id: job_id, project_id: id, format: 'epub', status: 'pending', created_at: new Date().toISOString() })
+    } catch (e) {
+      setExportErr(e instanceof Error ? e.message : 'Export failed')
+      setExporting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -135,7 +194,7 @@ export default function ProjectHome() {
         {usage && usage.total_tokens === 0 && <div className="mb-10" />}
 
         {/* Quick-open cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
           <ActionCard
             title="Open Editor"
             description="Write and manage your manuscript — scenes, chapters, and acts."
@@ -150,6 +209,47 @@ export default function ProjectHome() {
             onClick={() => navigate(`/projects/${id}/wiki`)}
             icon={<WikiIcon />}
           />
+          <ActionCard
+            title="Novel Guide"
+            description="Step-by-step wizard: premise, characters, world, outline, first scene."
+            accent="gold"
+            onClick={() => navigate(`/projects/${id}/guide`)}
+            icon={<GuideIcon />}
+          />
+        </div>
+
+        {/* Export panel */}
+        <div className="bg-brand-bg-card border border-brand-border rounded-xl p-6">
+          <h2 className="text-sm font-semibold text-brand-text mb-4 flex items-center gap-2">
+            <ExportIcon />
+            Export Manuscript
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={handleMarkdownExport}
+              disabled={exporting}
+              className="px-4 py-2 rounded-lg bg-brand-cyan/10 text-brand-cyan text-sm font-medium hover:bg-brand-cyan/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exporting && !epubJobId ? 'Exporting…' : 'Download Markdown (.zip)'}
+            </button>
+            <button
+              onClick={handleEpubExport}
+              disabled={exporting}
+              className="px-4 py-2 rounded-lg bg-brand-purple/10 text-brand-purple text-sm font-medium hover:bg-brand-purple/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exporting && epubJobId ? 'Generating EPUB…' : 'Export EPUB'}
+            </button>
+          </div>
+
+          {exportErr && (
+            <p className="mt-3 text-sm text-red-400">{exportErr}</p>
+          )}
+
+          {epubJob && (
+            <div className="mt-4">
+              <EpubJobStatus job={epubJob} />
+            </div>
+          )}
         </div>
       </main>
     </div>
@@ -176,14 +276,18 @@ function ActionCard({
 }: {
   title: string
   description: string
-  accent: 'cyan' | 'purple'
+  accent: 'cyan' | 'purple' | 'gold'
   onClick: () => void
   icon: React.ReactNode
 }) {
-  const border = accent === 'cyan'
-    ? 'hover:border-brand-cyan/40 hover:shadow-cyan-glow/20'
-    : 'hover:border-brand-purple/40'
-  const iconBg = accent === 'cyan' ? 'bg-brand-cyan/10 text-brand-cyan' : 'bg-brand-purple/10 text-brand-purple'
+  const border =
+    accent === 'cyan'   ? 'hover:border-brand-cyan/40 hover:shadow-cyan-glow/20' :
+    accent === 'purple' ? 'hover:border-brand-purple/40' :
+                          'hover:border-brand-gold/40'
+  const iconBg =
+    accent === 'cyan'   ? 'bg-brand-cyan/10 text-brand-cyan' :
+    accent === 'purple' ? 'bg-brand-purple/10 text-brand-purple' :
+                          'bg-brand-gold/10 text-brand-gold'
 
   return (
     <button
@@ -196,6 +300,49 @@ function ActionCard({
       <h2 className="text-base font-semibold text-brand-text mb-1 group-hover:text-brand-cyan transition-colors">{title}</h2>
       <p className="text-brand-muted text-sm leading-relaxed">{description}</p>
     </button>
+  )
+}
+
+function EpubJobStatus({ job }: { job: ExportJob }) {
+  const statusColor =
+    job.status === 'done'       ? 'text-green-400' :
+    job.status === 'failed'     ? 'text-red-400'   :
+    job.status === 'processing' ? 'text-brand-cyan' :
+                                  'text-brand-muted'
+
+  const label =
+    job.status === 'done'       ? 'EPUB ready' :
+    job.status === 'failed'     ? 'Export failed' :
+    job.status === 'processing' ? 'Building EPUB…' :
+                                  'Queued…'
+
+  return (
+    <div className="flex items-center gap-3 text-sm">
+      {(job.status === 'pending' || job.status === 'processing') && (
+        <svg className="animate-spin h-4 w-4 text-brand-cyan" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+      )}
+      <span className={statusColor}>{label}</span>
+      {job.status === 'done' && job.download_url && (
+        <a
+          href={job.download_url}
+          download
+          className="px-3 py-1 rounded bg-brand-purple/20 text-brand-purple text-xs font-medium hover:bg-brand-purple/30 transition-colors"
+        >
+          Download EPUB
+        </a>
+      )}
+      {job.status === 'failed' && job.error_msg && (
+        <span className="text-red-400/70 text-xs">{job.error_msg}</span>
+      )}
+      {job.status === 'done' && job.expires_at && (
+        <span className="text-brand-muted text-xs">
+          Expires {new Date(job.expires_at).toLocaleDateString()}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -222,6 +369,23 @@ function WikiIcon() {
     <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="10" cy="10" r="7" />
       <path d="M10 7v3l2 2" />
+    </svg>
+  )
+}
+
+function GuideIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h12M4 8h8M4 12h10M4 16h6" />
+    </svg>
+  )
+}
+
+function ExportIcon() {
+  return (
+    <svg className="w-4 h-4 text-brand-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 3v9M6 8l4 4 4-4" />
+      <path d="M4 14v1a2 2 0 002 2h8a2 2 0 002-2v-1" />
     </svg>
   )
 }

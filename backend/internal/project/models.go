@@ -113,6 +113,11 @@ type UpdateSceneRequest struct {
 	Summary      *string   `json:"summary"`
 	SummaryStale *bool     `json:"summary_stale"`
 	SortOrder    *int32    `json:"sort_order"`
+
+	// NotifyUserID and NotifyBranch are set by the handler (not from JSON)
+	// so the service can fire the summary notifier after a content change.
+	NotifyUserID uuid.UUID `json:"-"`
+	NotifyBranch string    `json:"-"`
 }
 
 // Response DTOs

@@ -14,11 +14,14 @@ import (
 	"github.com/jconder44/nexustale/internal/ai"
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/internal/config"
+	"github.com/jconder44/nexustale/internal/export"
+	"github.com/jconder44/nexustale/internal/guide"
 	"github.com/jconder44/nexustale/internal/project"
 	"github.com/jconder44/nexustale/internal/prompts"
 	"github.com/jconder44/nexustale/internal/wiki"
 	"github.com/jconder44/nexustale/pkg/db"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
+	"github.com/jconder44/nexustale/pkg/storage"
 )
 
 func main() {
@@ -76,6 +79,26 @@ func main() {
 		BeatMaxTokens: cfg.AI.BeatMaxTokens,
 	})
 
+	// Wire the AI service as the summary notifier so scene saves trigger
+	// debounced chapter-summary regeneration (B2).
+	projectService.WithNotifier(aiService)
+
+	// MinIO storage client (used by export service for EPUB uploads).
+	storageClient, err := storage.New(storage.Config{
+		Endpoint:  cfg.Minio.Endpoint,
+		AccessKey: cfg.Minio.AccessKey,
+		SecretKey: cfg.Minio.SecretKey,
+		Bucket:    cfg.Minio.Bucket,
+		UseSSL:    cfg.Minio.UseSSL,
+	})
+	if err != nil {
+		slog.Error("failed to connect to MinIO", "error", err)
+		os.Exit(1)
+	}
+
+	exportService := export.NewService(queries, storageClient)
+	exportService.StartWorkers(2)
+
 	promptsService := prompts.NewService(queries)
 
 	// Handlers
@@ -83,6 +106,9 @@ func main() {
 	projectHandler := project.NewHandler(projectService)
 	wikiHandler := wiki.NewHandler(wikiService)
 	aiHandler := ai.NewHandler(aiService)
+	exportHandler := export.NewHandler(exportService)
+	guideService := guide.NewService(queries)
+	guideHandler := guide.NewHandler(guideService)
 	promptsHandler := prompts.NewHandler(promptsService)
 
 	// Router
@@ -109,6 +135,12 @@ func main() {
 
 		aiGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		aiHandler.RegisterRoutes(aiGroup)
+
+		exportGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		exportHandler.RegisterRoutes(exportGroup)
+
+		guideGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		guideHandler.RegisterRoutes(guideGroup)
 
 		promptsGroup := v1.Group("/projects/:id/prompts", auth.RequireAuth(authService))
 		promptsHandler.RegisterRoutes(promptsGroup)
