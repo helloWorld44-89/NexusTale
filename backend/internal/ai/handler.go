@@ -30,6 +30,10 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	ai.POST("/chat", h.Chat)
 	ai.POST("/summarize", h.Summarize)
 	ai.GET("/usage", h.Usage)
+
+	// Chapter summary endpoints (B2): mounted under the project group.
+	rg.GET("/chapters/:cid/summary", h.GetChapterSummary)
+	rg.POST("/chapters/:cid/summarize", h.RegenerateChapterSummary)
 }
 
 // ── request types ─────────────────────────────────────────────────────────────
@@ -103,9 +107,12 @@ func (h *Handler) Complete(c *gin.Context) {
 		}
 	}
 
+	branch := h.svc.ResolveBranch(c.Request.Context(), c.GetHeader("X-NexusTale-Branch"), userID, projectID)
+
 	svcReq := CompleteRequest{
 		ProjectID:   projectID,
 		SceneID:     sceneID,
+		BranchName:  branch,
 		Mode:        mode,
 		Beat:        req.Beat,
 		Instruction: req.Instruction,
@@ -166,12 +173,15 @@ func (h *Handler) Chat(c *gin.Context) {
 		sceneID = id
 	}
 
+	branch := h.svc.ResolveBranch(c.Request.Context(), c.GetHeader("X-NexusTale-Branch"), userID, projectID)
+
 	svcReq := ChatRequest{
-		ProjectID: projectID,
-		SceneID:   sceneID,
-		Messages:  req.Messages,
-		Provider:  req.Provider,
-		MaxTokens: req.MaxTokens,
+		ProjectID:  projectID,
+		SceneID:    sceneID,
+		BranchName: branch,
+		Messages:   req.Messages,
+		Provider:   req.Provider,
+		MaxTokens:  req.MaxTokens,
 	}
 
 	setSSeHeaders(c)
@@ -297,4 +307,62 @@ func handleError(c *gin.Context, err error) {
 func writeSSEError(w io.Writer, msg string) {
 	encoded, _ := json.Marshal(map[string]string{"error": msg})
 	fmt.Fprintf(w, "data: %s\n\n", encoded)
+}
+
+// GetChapterSummary returns the AI-generated summary for a chapter on the
+// active Timeline (branch).
+//
+// GET /projects/:id/chapters/:cid/summary
+func (h *Handler) GetChapterSummary(c *gin.Context) {
+	projectID, userID, ok := resolveIDs(c)
+	if !ok {
+		return
+	}
+
+	chapterID, err := uuid.Parse(c.Param("cid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid chapter id"})
+		return
+	}
+
+	branch := h.svc.ResolveBranch(c.Request.Context(), c.GetHeader("X-NexusTale-Branch"), userID, projectID)
+
+	row, err := h.svc.GetChapterSummary(c.Request.Context(), chapterID, branch)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, row)
+}
+
+// RegenerateChapterSummary forces a synchronous re-summarization of all
+// scenes in a chapter and stores the result.
+//
+// POST /projects/:id/chapters/:cid/summarize
+func (h *Handler) RegenerateChapterSummary(c *gin.Context) {
+	projectID, userID, ok := resolveIDs(c)
+	if !ok {
+		return
+	}
+
+	chapterID, err := uuid.Parse(c.Param("cid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid chapter id"})
+		return
+	}
+
+	branch := h.svc.ResolveBranch(c.Request.Context(), c.GetHeader("X-NexusTale-Branch"), userID, projectID)
+
+	summary, err := h.svc.RegenerateChapterSummary(c.Request.Context(), userID, chapterID, branch)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"chapter_id":  chapterID,
+		"branch_name": branch,
+		"ai_summary":  summary,
+		"stale":       false,
+		"project_id":  projectID,
+	})
 }

@@ -3,7 +3,8 @@
 // Act layer visibility rule: acts are hidden when the project has exactly one
 // act whose title is "Act 1" (the auto-created default). Writers who want
 // structure can rename or add acts and the layer appears automatically.
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { api } from '@/services/api'
 
 interface SceneItem   { id: string; title: string }
 interface ChapterItem { id: string; title: string; scenes: SceneItem[] }
@@ -18,6 +19,10 @@ interface ProjectExplorerProps {
   onCreateAct:       (title: string) => Promise<void>
   onCreateChapter:   (actId: string, title: string) => Promise<void>
   onCreateScene:     (chapterId: string, title: string) => Promise<void>
+  // Optional — enables summary stale badges + Regenerate buttons.
+  token?:      string
+  projectId?:  string
+  branch?:     string
 }
 
 // Hide the act layer when the project only has the silent default act.
@@ -34,12 +39,50 @@ export default function ProjectExplorer({
   onCreateAct,
   onCreateChapter,
   onCreateScene,
+  token,
+  projectId,
+  branch,
 }: ProjectExplorerProps) {
   const hidden = actsAreHidden(acts)
 
   // Collapse state for acts and chapters keyed by id.
   const [expandedActs,     setExpandedActs]     = useState<Record<string, boolean>>({})
   const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({})
+
+  // stale: chapterId → true when the AI summary is outdated.
+  const [staleSummaries, setStaleSummaries] = useState<Record<string, boolean>>({})
+  const [regenerating, setRegenerating] = useState<Record<string, boolean>>({})
+
+  // Fetch summary stale flags for all chapters in the active branch.
+  const loadSummaries = useCallback(async () => {
+    if (!token || !projectId) return
+    const allChapters = acts.flatMap((a) => a.chapters)
+    const results = await Promise.allSettled(
+      allChapters.map((ch) => api.chapterSummaries.get(token, projectId, ch.id, branch))
+    )
+    const staleMap: Record<string, boolean> = {}
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        staleMap[allChapters[i].id] = r.value.stale
+      }
+    })
+    setStaleSummaries(staleMap)
+  }, [token, projectId, branch, acts])
+
+  useEffect(() => { loadSummaries() }, [loadSummaries])
+
+  const handleRegenerate = useCallback(async (chapterId: string) => {
+    if (!token || !projectId) return
+    setRegenerating((p) => ({ ...p, [chapterId]: true }))
+    try {
+      await api.chapterSummaries.regenerate(token, projectId, chapterId, branch)
+      setStaleSummaries((p) => ({ ...p, [chapterId]: false }))
+    } catch {
+      // silently ignore — the stale badge stays
+    } finally {
+      setRegenerating((p) => ({ ...p, [chapterId]: false }))
+    }
+  }, [token, projectId, branch])
 
   // Auto-expand newly added acts/chapters.
   useEffect(() => {
@@ -144,6 +187,9 @@ export default function ProjectExplorer({
                 onSelectScene={onSelectScene}
                 onCreateScene={onCreateScene}
                 onCancelScene={() => setAddingSceneFor(null)}
+                staleSummary={!!staleSummaries[chapter.id]}
+                regenerating={!!regenerating[chapter.id]}
+                onRegenerate={() => handleRegenerate(chapter.id)}
               />
             ))}
           </>
@@ -222,6 +268,9 @@ export default function ProjectExplorer({
                         onSelectScene={onSelectScene}
                         onCreateScene={onCreateScene}
                         onCancelScene={() => setAddingSceneFor(null)}
+                        staleSummary={!!staleSummaries[chapter.id]}
+                        regenerating={!!regenerating[chapter.id]}
+                        onRegenerate={() => handleRegenerate(chapter.id)}
                       />
                     ))}
                   </div>
@@ -248,6 +297,9 @@ function ChapterRow({
   onSelectScene,
   onCreateScene,
   onCancelScene,
+  staleSummary,
+  regenerating,
+  onRegenerate,
 }: {
   chapter:           ChapterItem
   expanded:          boolean
@@ -259,6 +311,9 @@ function ChapterRow({
   onSelectScene:     (chapterId: string, sceneId: string) => void
   onCreateScene:     (chapterId: string, title: string) => Promise<void>
   onCancelScene:     () => void
+  staleSummary?:     boolean
+  regenerating?:     boolean
+  onRegenerate?:     () => void
 }) {
   return (
     <div>
@@ -272,7 +327,23 @@ function ChapterRow({
           <ChevronIcon open={expanded} />
           <FolderIcon open={expanded} />
           <span className="truncate font-medium">{chapter.title}</span>
+          {staleSummary && (
+            <span
+              title="AI summary is outdated — click Regenerate to refresh"
+              className="ml-1 w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 inline-block"
+            />
+          )}
         </button>
+        {staleSummary && onRegenerate && (
+          <button
+            title={regenerating ? 'Regenerating…' : 'Regenerate AI summary'}
+            onClick={(e) => { e.stopPropagation(); onRegenerate() }}
+            disabled={regenerating}
+            className="px-2 py-1.5 text-brand-muted opacity-0 group-hover:opacity-100 hover:text-amber-400 transition-all shrink-0 disabled:opacity-50"
+          >
+            <RefreshIcon spin={regenerating} />
+          </button>
+        )}
         <button
           title="New scene"
           onClick={onAddScene}
@@ -447,6 +518,23 @@ function XIcon() {
   return (
     <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  )
+}
+
+function RefreshIcon({ spin }: { spin?: boolean }) {
+  return (
+    <svg
+      className={`w-3.5 h-3.5 ${spin ? 'animate-spin' : ''}`}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M14 8A6 6 0 1 1 8 2" />
+      <path d="M8 2l3-3M8 2l3 3" />
     </svg>
   )
 }

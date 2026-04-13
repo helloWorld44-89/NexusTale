@@ -389,37 +389,43 @@ Named AI style presets stored per project. Writers can switch between "gritty no
 - Routes: `GET/POST /projects/:id/prompts`, `PUT/DELETE /projects/:id/prompts/:promptId`
 - Frontend: writing style dropdown in SceneMetadataPanel; beat input field in ScribeEditor toolbar (send with `mode: "beat"`); streamed result appended with Accept/Retry/Discard actions
 
-#### B2 — AI memory + context
-Build the context window that feeds every AI call — recent scenes, chapter summaries, pinned wiki entities. Summaries are **branch-isolated** so diverged storylines never pollute each other's AI context.
+#### B2 — AI memory + context ✅ complete (2026-04-13)
+Branch-isolated chapter summaries feed every AI call so the model has story context without manual copy-paste.
 
-- Migration 010: `chapter_summaries(chapter_id, branch_name, ai_summary, stale)` with PK `(chapter_id, branch_name)` + `project_active_branch(project_id, user_id, branch_name)` — no column added to `chapters` itself
-- `ResolveBranch` helper: reads `X-NexusTale-Branch` header → `project_active_branch` table → defaults to `"canon"`; `TravelTo`/`Diverge` upsert `project_active_branch` on every branch switch
-- Auto-summarize goroutine: debounce key is `(chapter_id, branch_name)` — saves on different branches debounce independently; only the active branch's row is marked stale
-- `BuildContext(…, branchName)`: chapter summaries queried by active branch, falling back to `"canon"` (fresh diverges inherit canon summaries until they diverge enough to re-summarize); inline `@[entity]` parsing
-- `Canonize` (merge): deletes merged branch's summary rows + clears `project_active_branch` rows pointing at it
-- Frontend: stale badge + "Regenerate" button; `X-NexusTale-Branch` header on all AI and scene-save requests
+- ✅ Migration 012: `chapter_summaries(chapter_id, branch_name PK, ai_summary, stale, updated_at)` + `project_active_branch(project_id, user_id PK, branch_name, updated_at)`
+- ✅ `ResolveBranch`: `X-NexusTale-Branch` header → `project_active_branch` DB row → `"canon"`
+- ✅ `ScheduleSummarize`: marks stale immediately; debounced (30 s) LLM regeneration; debounce key is `(chapter_id, branch_name)`
+- ✅ `BuildContext`: `## Story so far` from chapter summaries (active branch → canon fallback) + `## Referenced entities` for `@[Entity Name]` inline refs
+- ✅ `SummaryNotifier` interface in `internal/project`; implemented by `ai.Service`; wired via `projectService.WithNotifier(aiService)` in `cmd/api/main.go`
+- ✅ `TravelTo`/`Diverge` upsert `project_active_branch`; `Canonize` deletes merged branch summaries + user pointers
+- ✅ `UpdateScene` fires `ScheduleSummarize` when content changes (userID + branch from request headers)
+- ✅ New routes: `GET /projects/:id/chapters/:cid/summary`, `POST /projects/:id/chapters/:cid/summarize`
+- ✅ Frontend: `X-NexusTale-Branch` header on all AI calls + scene saves; `currentBranch` state in Editor; chapter stale badge (amber dot) + Regenerate button in ProjectExplorer
 
-#### B3 — Token usage tracking
+#### B3 — Token usage tracking ✅ complete (2026-04-10)
 Track cost per project so writers understand AI spend before it becomes a surprise.
 
-- Migration 011: `ai_usage` table (user, project, model, tokens, cost_usd)
-- Record after every AI call (best-effort, non-blocking)
-- `GET /projects/:id/ai/usage` → aggregate (total tokens, estimated cost this month)
-- Frontend: usage summary on ProjectHome stat cards
+- ✅ Migration 011: `ai_usage` table (user, project, model, tokens, cost_usd)
+- ✅ Record after every AI call (best-effort, non-blocking)
+- ✅ `GET /projects/:id/ai/usage` → aggregate (total tokens, estimated cost this month)
+- ✅ Frontend: usage summary on ProjectHome stat cards
 
 #### B4 — Export
 Two export modes: fast synchronous Markdown for quick backup; async EPUB for finished drafts.
 
-- Markdown: walk acts → chapters → scenes, render `.md` with YAML front matter, zip and stream
+- Markdown: walk acts → chapters → scenes, render `.md` with YAML front matter, zip and stream as `application/zip`
 - EPUB: async job queued to a goroutine pool; result uploaded to MinIO; polling endpoint returns signed URL
-- Migration 012: `export_jobs` table (id, project_id, format, status, minio_key, expires_at)
-- Frontend: Export section on ProjectHome; Markdown download button; EPUB "Generate" → polling → download
+- Migration 013: `export_jobs` table (`id, project_id, user_id, format, status, minio_key, error_msg, expires_at, created_at`)
+- `status` enum: `pending | processing | done | failed`
+- Routes: `POST /projects/:id/export` (body: `{format:"markdown"|"epub"}`) → `{job_id}`; `GET /projects/:id/export/:job_id` → status + signed URL when done
+- Markdown is synchronous (streamed zip response, no job row); EPUB uses the async path
+- Frontend: Export panel on ProjectHome — Markdown "Download" button (direct fetch), EPUB "Generate" → poll every 3 s → download link
 
 #### B5 — Novel guide
 A 5-step onboarding wizard that scaffolds a project from premise to first scene, pre-filling wiki and manuscript data. All steps are skippable.
 
 - Steps: Premise → Core Characters → World Basics → Chapter Outline → First Scene
-- Migration 013: `guide_steps` table (project_id, step_key, data JSONB, completed_at)
+- Migration 014: `guide_steps` table (`project_id, step_key, data JSONB, completed_at`); PK `(project_id, step_key)`
 - Each completed step writes real data (creates wiki entities, creates first chapter/scene)
 - Frontend: `/projects/:id/guide` — linear wizard with progress bar; skippable; resumes from last incomplete step
 
@@ -485,17 +491,33 @@ A library of 12 named story structures (Three-Act, Hero's Journey, Heist, Save t
 - ✅ A+7 — Light theme (CSS variables in tailwind config; `:root`/`.light` overrides; themeStore; toggle in settings; `prefers-color-scheme` fallback)
 - ✅ A+8 — Relationship graph visualization (d3 force-directed; nodes by entity type; edge labels; pan/zoom; click → entity detail; WikiHub "Graph" tab)
 
-### Phase B (next major milestone)
+### Phase B — status
 
-See [specs/phase-b.md](./specs/phase-b.md) for full breakdown. Suggested order:
+- ✅ **B1** — AI proxy + adapters
+- ✅ **B1.5** — Writing styles + beat input
+- ✅ **B2** — AI memory + context window (2026-04-13)
+- ✅ **B3** — Token tracking
+- ✅ **B4** — Export (2026-04-13)
+  - `internal/export`: `markdown.go` (zip stream), `epub.go` (go-epub → MinIO), `service.go` (2-worker pool), `handler.go`
+  - Migration 013: `export_jobs` table; `pkg/storage` MinIO client
+  - Routes: `POST /projects/:id/export`, `GET /projects/:id/export`, `GET /projects/:id/export/:job_id`
+  - Frontend: Export panel on ProjectHome — Markdown download (direct fetch → blob), EPUB async with 3 s polling
+- ✅ **Ollama Docker fix** — per-user configurable base URL stored in `user_api_keys(provider="ollama")`; Settings page "Local AI (Ollama)" section
 
-1. **B1** — AI proxy: adapter interface (with `CompleteMode` + `IsThinkingModel`) → OpenAI → Anthropic → Ollama → HTTP routes → ChatBar wired
-2. **B1.5** — Writing styles: migration 014, `project_prompts` CRUD, style selector + beat input UI
-3. **B2** — AI memory: migration 010, auto-summarize, context window builder with `@[entity]` resolution
-4. **B3** — Token tracking: migration 011, usage table, ProjectHome stats
-5. **B4** — Export: Markdown zip (sync) → EPUB async job (MinIO + polling) *(can run in parallel with B1.5–B3)*
-6. **B5** — Novel guide wizard: migrations 012–013, 5-step wizard backend + UI
-7. **B5.5** — Story structure: migration 015, template catalog, scoring wizard, optional guide Step 3.5 *(can run in parallel with B5)*
+**In progress:**
+
+5. **B5** — Novel guide wizard ← **now**
+   - Migration 014: `guide_steps(project_id, step_key PK, data JSONB, completed_at)`
+   - 5 steps: Premise → Characters → World → Outline → First Scene
+   - Each step saves to `guide_steps.data` as JSONB; completing a step runs side effects (create wiki entities, chapters, scene)
+   - Routes: `GET /projects/:id/guide`, `POST /projects/:id/guide/:step`, `POST /projects/:id/guide/:step/complete`
+   - Frontend: `/projects/:id/guide` — stepper wizard with progress bar; each step is a form; skippable; resumes from last incomplete step; "Start Guide" CTA on ProjectHome
+
+**Remaining:**
+
+6. **B5.5** — Story structure templates
+   - Migration 015: seeded `novel_structures` + nullable `projects.structure_id`
+   - Scoring wizard (deterministic, no AI); guide Step 3.5 opt-in
 
 ### Phase C
 7. **Collaboration** — WebSocket hub (`/api/v1/projects/:id/collab`), CRDT sync, presence via Redis.

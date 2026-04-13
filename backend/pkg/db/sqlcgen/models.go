@@ -88,6 +88,27 @@ type Chapter struct {
 	ActID     uuid.UUID          `json:"act_id"`
 }
 
+type ChapterSummary struct {
+	ChapterID  uuid.UUID          `json:"chapter_id"`
+	BranchName string             `json:"branch_name"`
+	AiSummary  string             `json:"ai_summary"`
+	Stale      bool               `json:"stale"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ExportJob struct {
+	ID        uuid.UUID          `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Format    string             `json:"format"`
+	Status    string             `json:"status"`
+	MinioKey  pgtype.Text        `json:"minio_key"`
+	ErrorMsg  pgtype.Text        `json:"error_msg"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Fork struct {
 	ID              uuid.UUID          `json:"id"`
 	SourceProjectID uuid.UUID          `json:"source_project_id"`
@@ -95,6 +116,15 @@ type Fork struct {
 	BranchName      string             `json:"branch_name"`
 	SourceCommitSha string             `json:"source_commit_sha"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type GuideStep struct {
+	ProjectID   uuid.UUID          `json:"project_id"`
+	StepKey     string             `json:"step_key"`
+	Data        json.RawMessage    `json:"data"`
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Project struct {
@@ -107,6 +137,13 @@ type Project struct {
 	Archived    bool               `json:"archived"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProjectActiveBranch struct {
+	ProjectID  uuid.UUID          `json:"project_id"`
+	UserID     uuid.UUID          `json:"user_id"`
+	BranchName string             `json:"branch_name"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type ProjectCollaborator struct {

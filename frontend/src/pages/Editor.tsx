@@ -46,6 +46,7 @@ export default function Editor() {
   const [explorerOpen,      setExplorerOpen]      = useState(true)
   const [focusMode,         setFocusMode]         = useState(false)
   const [selectedPromptId,  setSelectedPromptId]  = useState<string | null>(null)
+  const [currentBranch,    setCurrentBranch]    = useState<string>('canon')
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -73,10 +74,15 @@ export default function Editor() {
 
     const load = async () => {
       try {
-        const [project, rawActs] = await Promise.all([
+        const [project, rawActs, gitStatus] = await Promise.all([
           api.projects.get(accessToken, projectId),
           api.acts.list(accessToken, projectId),
+          api.git.status(accessToken, projectId).catch(() => null),
         ])
+
+        if (!cancelled && gitStatus) {
+          setCurrentBranch(gitStatus.current_timeline ?? 'canon')
+        }
 
         if (cancelled) return
 
@@ -149,10 +155,10 @@ export default function Editor() {
     saveTimerRef.current = setTimeout(() => {
       const chapterId = sceneToChapter[sceneId]
       if (!chapterId || !accessToken) return
-      api.scenes.update(accessToken, chapterId, sceneId, { content: value })
+      api.scenes.update(accessToken, chapterId, sceneId, { content: value }, currentBranch)
         .catch(() => {})
     }, AUTOSAVE_MS)
-  }, [accessToken, sceneToChapter])
+  }, [accessToken, sceneToChapter, currentBranch])
 
   const handleSelectScene = useCallback((chapterId: string, sceneId: string) => {
     setSelectedChapterId(chapterId)
@@ -272,10 +278,15 @@ export default function Editor() {
             token={accessToken}
             projectId={projectId}
             sceneId={selectedSceneId ?? undefined}
+            branch={currentBranch}
           />
         )}
         {!focusMode && leftPanel === 'git' && projectId && accessToken && (
-          <GitPanel token={accessToken} projectId={projectId} />
+          <GitPanel
+            token={accessToken}
+            projectId={projectId}
+            onBranchChange={setCurrentBranch}
+          />
         )}
         {!focusMode && leftPanel === 'wiki' && projectId && accessToken && (
           <WikiPanel token={accessToken} projectId={projectId} currentContent={content} />
@@ -301,6 +312,7 @@ export default function Editor() {
             projectId={projectId}
             sceneId={activeScene?.id}
             promptId={selectedPromptId}
+            branch={currentBranch}
           />
           {activeScene && accessToken && selectedChapterId && projectId && sceneData[activeScene.id] && (
             <SceneMetadataPanel
@@ -324,6 +336,9 @@ export default function Editor() {
             onCreateAct={handleCreateAct}
             onCreateChapter={handleCreateChapter}
             onCreateScene={handleCreateScene}
+            token={accessToken ?? undefined}
+            projectId={projectId}
+            branch={currentBranch}
           />
         )}
       </div>

@@ -5,6 +5,7 @@ import Register from '@/pages/Auth/Register'
 import Dashboard from '@/pages/Dashboard'
 import ProjectHome from '@/pages/ProjectHome'
 import Editor from '@/pages/Editor'
+import Guide from '@/pages/Guide'
 import WikiHub from '@/pages/WikiHub'
 import Settings from '@/pages/Settings'
 
@@ -33,6 +34,15 @@ export function AppRouter() {
         element={
           <ProtectedRoute>
             <ProjectHome />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/projects/:id/guide"
+        element={
+          <ProtectedRoute>
+            <Guide />
           </ProtectedRoute>
         }
       />

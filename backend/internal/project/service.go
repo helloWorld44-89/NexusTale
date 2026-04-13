@@ -15,13 +15,32 @@ import (
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
+// SummaryNotifier is implemented by the AI service (internal/ai.Service).
+// Using an interface here breaks the import cycle between project ↔ ai.
+type SummaryNotifier interface {
+	// ScheduleSummarize marks a chapter summary stale and debounces LLM regen.
+	ScheduleSummarize(userID, chapterID uuid.UUID, branchName string)
+	// UpsertActiveBranch records which Timeline a user is on for a project.
+	UpsertActiveBranch(ctx context.Context, projectID, userID uuid.UUID, branchName string)
+	// CleanupBranch deletes summary rows and active-branch pointers for a
+	// merged Timeline (called by Canonize).
+	CleanupBranch(ctx context.Context, projectID uuid.UUID, branchName string)
+}
+
 type Service struct {
-	queries *sqlcgen.Queries
-	git     *GitService
+	queries  *sqlcgen.Queries
+	git      *GitService
+	notifier SummaryNotifier // optional; nil → branch tracking disabled
 }
 
 func NewService(queries *sqlcgen.Queries, git *GitService) *Service {
 	return &Service{queries: queries, git: git}
+}
+
+// WithNotifier wires the AI summary notifier into the project service.
+// Called from cmd/api during startup after both services are initialised.
+func (s *Service) WithNotifier(n SummaryNotifier) {
+	s.notifier = n
 }
 
 // Projects
@@ -385,6 +404,17 @@ func (s *Service) UpdateScene(ctx context.Context, id uuid.UUID, req UpdateScene
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("update scene: %v", err))
 	}
+
+	// Notify the AI service to mark the chapter summary stale and schedule
+	// re-summarization — only when content was actually updated.
+	if req.Content != nil && s.notifier != nil && req.NotifyUserID != uuid.Nil {
+		branch := req.NotifyBranch
+		if branch == "" {
+			branch = CanonBranch
+		}
+		s.notifier.ScheduleSummarize(req.NotifyUserID, sc.ChapterID, branch)
+	}
+
 	return toSceneResponse(sc), nil
 }
 
@@ -507,7 +537,9 @@ func (s *Service) Timelines(ctx context.Context, projectID uuid.UUID) ([]Timelin
 }
 
 // Diverge creates a new Timeline and switches to it.
-func (s *Service) Diverge(ctx context.Context, projectID uuid.UUID, req DivergeRequest) (*TimelineInfo, error) {
+// userID is recorded in project_active_branch so the user's AI calls resolve
+// to the new branch automatically.
+func (s *Service) Diverge(ctx context.Context, projectID, userID uuid.UUID, req DivergeRequest) (*TimelineInfo, error) {
 	p, err := s.queries.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, apperror.NotFound("project", projectID.String())
@@ -520,6 +552,10 @@ func (s *Service) Diverge(ctx context.Context, projectID uuid.UUID, req DivergeR
 		return nil, apperror.Internal(fmt.Sprintf("diverge: %v", err))
 	}
 
+	if s.notifier != nil {
+		s.notifier.UpsertActiveBranch(ctx, projectID, userID, req.TimelineName)
+	}
+
 	timelines, _ := s.git.Timelines(p.GitRepoPath)
 	for _, t := range timelines {
 		if t.Name == req.TimelineName {
@@ -530,7 +566,8 @@ func (s *Service) Diverge(ctx context.Context, projectID uuid.UUID, req DivergeR
 }
 
 // TravelTo switches the working tree to an existing Timeline.
-func (s *Service) TravelTo(ctx context.Context, projectID uuid.UUID, timelineName string) (*GitStatusResponse, error) {
+// userID is recorded in project_active_branch so AI calls resolve correctly.
+func (s *Service) TravelTo(ctx context.Context, projectID, userID uuid.UUID, timelineName string) (*GitStatusResponse, error) {
 	p, err := s.queries.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, apperror.NotFound("project", projectID.String())
@@ -540,10 +577,15 @@ func (s *Service) TravelTo(ctx context.Context, projectID uuid.UUID, timelineNam
 		return nil, apperror.Internal(fmt.Sprintf("travel to %s: %v", timelineName, err))
 	}
 
+	if s.notifier != nil {
+		s.notifier.UpsertActiveBranch(ctx, projectID, userID, timelineName)
+	}
+
 	return s.GitStatus(ctx, projectID)
 }
 
 // Canonize merges a Timeline into Canon (fast-forward only in Phase A).
+// On success it cleans up the merged branch's summary rows and user pointers.
 func (s *Service) Canonize(ctx context.Context, projectID uuid.UUID, timelineName string) (*CanonizeResult, error) {
 	p, err := s.queries.GetProject(ctx, projectID)
 	if err != nil {
@@ -557,6 +599,11 @@ func (s *Service) Canonize(ctx context.Context, projectID uuid.UUID, timelineNam
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("canonize: %v", err))
 	}
+
+	if s.notifier != nil && !result.HasParadox {
+		s.notifier.CleanupBranch(ctx, projectID, timelineName)
+	}
+
 	return result, nil
 }
 

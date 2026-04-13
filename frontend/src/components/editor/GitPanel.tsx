@@ -7,11 +7,12 @@ import type { TimelineInfo, ChronicleEntry, GitStatusResponse } from '@/services
 interface GitPanelProps {
   token: string
   projectId: string
+  onBranchChange?: (branch: string) => void
 }
 
 type View = 'timelines' | 'lore'
 
-export default function GitPanel({ token, projectId }: GitPanelProps) {
+export default function GitPanel({ token, projectId, onBranchChange }: GitPanelProps) {
   const [view, setView] = useState<View>('timelines')
   const [status, setStatus] = useState<GitStatusResponse | null>(null)
   const [timelines, setTimelines] = useState<TimelineInfo[]>([])
@@ -35,12 +36,13 @@ export default function GitPanel({ token, projectId }: GitPanelProps) {
       setStatus(s)
       setTimelines(tl)
       setLore(lo)
+      if (s.current_timeline) onBranchChange?.(s.current_timeline)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load git state')
     } finally {
       setLoading(false)
     }
-  }, [token, projectId])
+  }, [token, projectId, onBranchChange])
 
   useEffect(() => { loadAll() }, [loadAll])
 
@@ -49,6 +51,7 @@ export default function GitPanel({ token, projectId }: GitPanelProps) {
     setActionError(null)
     try {
       await api.git.travel(token, projectId, timelineName)
+      onBranchChange?.(timelineName)
       await loadAll()
     } catch (e: unknown) {
       setActionError(e instanceof Error ? e.message : 'Travel failed')
@@ -157,7 +160,7 @@ export default function GitPanel({ token, projectId }: GitPanelProps) {
         <DivergeModal
           token={token}
           projectId={projectId}
-          onDone={() => { setShowDiverge(false); loadAll() }}
+          onDone={(branchName) => { setShowDiverge(false); onBranchChange?.(branchName); loadAll() }}
           onClose={() => setShowDiverge(false)}
         />
       )}
@@ -365,7 +368,7 @@ function DivergeModal({
 }: {
   token: string
   projectId: string
-  onDone: () => void
+  onDone: (branchName: string) => void
   onClose: () => void
 }) {
   const [name, setName] = useState('')
@@ -380,7 +383,7 @@ function DivergeModal({
     setError(null)
     try {
       await api.git.diverge(token, projectId, slug)
-      onDone()
+      onDone(slug)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Diverge failed')
       setSubmitting(false)

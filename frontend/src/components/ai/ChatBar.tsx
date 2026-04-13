@@ -13,6 +13,7 @@ interface ChatBarProps {
   token: string
   projectId: string
   sceneId?: string
+  branch?: string
 }
 
 const GREETING: Message = {
@@ -21,7 +22,7 @@ const GREETING: Message = {
   text: "I'm Scribe, your AI co-author. Ask me anything about your story — characters, plot, worldbuilding, or prose suggestions.",
 }
 
-export default function ChatBar({ token, projectId, sceneId }: ChatBarProps) {
+export default function ChatBar({ token, projectId, sceneId, branch }: ChatBarProps) {
   const [messages, setMessages]   = useState<Message[]>([GREETING])
   const [input, setInput]         = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -68,6 +69,7 @@ export default function ChatBar({ token, projectId, sceneId }: ChatBarProps) {
           )
         },
         abortRef.current.signal,
+        branch,
       )
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong.'
@@ -88,7 +90,7 @@ export default function ChatBar({ token, projectId, sceneId }: ChatBarProps) {
       setStreaming(false)
       abortRef.current = null
     }
-  }, [input, streaming, messages, token, projectId, sceneId])
+  }, [input, streaming, messages, token, projectId, sceneId, branch])
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

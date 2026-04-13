@@ -9,10 +9,11 @@ interface BeatInputProps {
   projectId:  string
   sceneId:    string
   promptId:   string | null
+  branch?:    string
   onAccept:   (text: string) => void  // append generated text to scene content
 }
 
-export default function BeatInput({ token, projectId, sceneId, promptId, onAccept }: BeatInputProps) {
+export default function BeatInput({ token, projectId, sceneId, promptId, branch, onAccept }: BeatInputProps) {
   const [open, setOpen]           = useState(false)
   const [beat, setBeat]           = useState('')
   const [generated, setGenerated] = useState('')
@@ -38,6 +39,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, onAccep
           mode:     'beat',
           beat:     text,
           promptId: promptId ?? undefined,
+          branch:   branch,
         },
         (delta) => setGenerated((prev) => prev + delta),
         abortRef.current.signal,
@@ -50,7 +52,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, onAccep
       setStreaming(false)
       abortRef.current = null
     }
-  }, [beat, streaming, token, projectId, sceneId, promptId])
+  }, [beat, streaming, token, projectId, sceneId, promptId, branch])
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
