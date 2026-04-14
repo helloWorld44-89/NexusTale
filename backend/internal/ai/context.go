@@ -9,6 +9,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -269,5 +270,76 @@ func (s *Service) BuildContext(ctx context.Context, projectID uuid.UUID, branchN
 		}
 	}
 
+	// ── 3. Story structure (optional) ─────────────────────────────────────
+	// Injected only when the project has a structure selected. Silently omitted
+	// on any error — structure context is advisory, never load-bearing.
+	if structureCtx := s.buildStructureContext(ctx, projectID); structureCtx != "" {
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(structureCtx)
+	}
+
 	return sb.String()
+}
+
+// ── structure context helper ──────────────────────────────────────────────────
+
+// phaseEntry is the minimal shape of one element in novel_structures.phases JSONB.
+type phaseEntry struct {
+	Name string `json:"name"`
+}
+
+// structureCustomData is the shape written by the frontend freeform path.
+type structureCustomData struct {
+	Rules []string `json:"rules"`
+}
+
+// buildStructureContext returns an optional context block describing the
+// project's story structure. Returns "" when no structure is selected or on
+// any error so that callers can always safely append it without checking.
+//
+// Named structure: injects the structure name + ordered phase list.
+// Freeform structure: injects the writer's custom rules (if any).
+func (s *Service) buildStructureContext(ctx context.Context, projectID uuid.UUID) string {
+	row, err := s.queries.GetProjectStructure(ctx, projectID)
+	if err != nil {
+		return ""
+	}
+
+	var out strings.Builder
+
+	if row.StructureID.Valid && row.StructureName.Valid {
+		// Named structure selected — emit name and phase overview.
+		out.WriteString("## Story structure\n")
+		out.WriteString("Structure: " + row.StructureName.String + "\n")
+
+		if len(row.Phases) > 0 {
+			var phases []phaseEntry
+			if json.Unmarshal(row.Phases, &phases) == nil && len(phases) > 0 {
+				names := make([]string, 0, len(phases))
+				for _, p := range phases {
+					if p.Name != "" {
+						names = append(names, p.Name)
+					}
+				}
+				if len(names) > 0 {
+					out.WriteString("Phases: " + strings.Join(names, " → ") + "\n")
+				}
+			}
+		}
+	} else if len(row.StructureCustom) > 0 {
+		// Freeform structure — emit writer's custom rules if present.
+		var custom structureCustomData
+		if json.Unmarshal(row.StructureCustom, &custom) == nil && len(custom.Rules) > 0 {
+			out.WriteString("## Story rules\n")
+			for _, rule := range custom.Rules {
+				if rule = strings.TrimSpace(rule); rule != "" {
+					out.WriteString("- " + rule + "\n")
+				}
+			}
+		}
+	}
+
+	return out.String()
 }

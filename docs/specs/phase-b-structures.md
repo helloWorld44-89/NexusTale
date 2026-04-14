@@ -297,12 +297,12 @@ ProjectStructureResponse:
 
 ## Checklist
 
-- [ ] **B5.5.1** Migration 015: `novel_structures` table + seed with 12 templates; `projects.structure_id` (nullable FK) + `projects.structure_custom` (nullable JSONB)
-- [ ] **B5.5.2** sqlc: `ListNovelStructures`, `GetNovelStructure`, `GetProjectStructure`, `UpdateProjectStructure`; regenerate
-- [ ] **B5.5.3** Scoring function: `internal/guide/score.go` — deterministic matrix; unit tested; returns empty slice when no structure clears threshold
-- [ ] **B5.5.4** Routes: `GET /novel-structures`, `POST /projects/:id/guide/structure/score`, `GET/PUT /projects/:id/structure`; all behind `RequireAuth` except `GET /novel-structures`
-- [ ] **B5.5.5** Guide Step 3.5 frontend: 4-path chooser (questionnaire / browse / freeform / skip); questionnaire → score call → result card with "Use this / Choose different / Continue without"; browse grid with expand cards
-- [ ] **B5.5.6** `BuildContext` (B2 extension): inject structure phase context when set; silently omit when structure absent or phase match fails
-- [ ] **B5.5.7** OpenAPI: all structure schemas; regenerate types
-- [ ] **B5.5.8** Frontend: structure badge on ProjectHome (only when selected); clicking re-opens structure step
-- [ ] **B5.5.9** Frontend: Timeline tab in WikiHub — when a structure is selected, render phase banners (muted, italic) above each act's events using index-based mapping (`act.sort_order → phases[n]`); no banner when no structure set; display-only (no drag-to-assign); client-side join using `GET /projects/:id/structure` phases + existing timeline data
+- [x] **B5.5.1** Migration 015: `novel_structures` table + seed with 12 templates; `projects.structure_id` (nullable FK) + `projects.structure_custom` (nullable JSONB)
+- [x] **B5.5.2** sqlc: `ListNovelStructures`, `GetNovelStructure`, `GetProjectStructure`, `UpdateProjectStructure`; regenerate
+- [x] **B5.5.3** Scoring function: `internal/guide/score.go` — deterministic matrix; unit tested; returns empty slice when no structure clears threshold
+- [x] **B5.5.4** Routes: `GET /novel-structures`, `POST /projects/:id/guide/structure/score`, `GET/PUT /projects/:id/structure`; all behind `RequireAuth` except `GET /novel-structures`
+- [x] **B5.5.5** Guide Step 3.5 frontend: 4-path chooser (questionnaire / browse / freeform / skip); questionnaire → score call → result card with "Use this / Choose different / Continue without"; browse grid with expand cards
+- [x] **B5.5.6** `BuildContext` (B2 extension): inject structure phase context when set; silently omit when structure absent or phase match fails
+- [x] **B5.5.7** OpenAPI: all structure schemas; regenerate types
+- [x] **B5.5.8** Frontend: structure badge on ProjectHome (only when selected); clicking re-opens structure step
+- [x] **B5.5.9** Frontend: Timeline tab in WikiHub — when a structure is selected, render phase banners (muted, italic) above each era group using index-based mapping (`era group index → phases[n]`); no banner when no structure set; display-only; client-side join using `GET /projects/:id/structure` phases + existing timeline data

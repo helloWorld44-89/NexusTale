@@ -355,6 +355,114 @@ func (s *Service) effectFirstScene(ctx context.Context, projectID uuid.UUID, raw
 	return nil
 }
 
+// ── structure methods ─────────────────────────────────────────────────────────
+
+// NovelStructureResponse is the API shape for a single structure template.
+type NovelStructureResponse struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Phases      json.RawMessage `json:"phases"`
+	Strengths   string          `json:"strengths"`
+	Risks       string          `json:"risks"`
+}
+
+// ProjectStructureResponse is the API shape for a project's current structure.
+type ProjectStructureResponse struct {
+	StructureID     *string         `json:"structure_id"`
+	StructureName   *string         `json:"structure_name"`
+	Phases          json.RawMessage `json:"phases"`
+	StructureCustom json.RawMessage `json:"structure_custom"`
+}
+
+// UpdateStructureRequest is the body for PUT /projects/:id/structure.
+type UpdateStructureRequest struct {
+	StructureID     *string         `json:"structure_id"`      // null = clear
+	StructureCustom json.RawMessage `json:"structure_custom"`  // null = clear
+}
+
+// ListStructures returns all seeded novel structure templates.
+func (s *Service) ListStructures(ctx context.Context) ([]NovelStructureResponse, error) {
+	rows, err := s.queries.ListNovelStructures(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list novel structures: %w", err)
+	}
+	out := make([]NovelStructureResponse, len(rows))
+	for i, r := range rows {
+		out[i] = NovelStructureResponse{
+			ID:          r.ID.String(),
+			Name:        r.Name,
+			Description: r.Description,
+			Phases:      r.Phases,
+			Strengths:   r.Strengths,
+			Risks:       r.Risks,
+		}
+	}
+	return out, nil
+}
+
+// GetStructure returns the structure selection for a project.
+func (s *Service) GetStructure(ctx context.Context, projectID uuid.UUID) (*ProjectStructureResponse, error) {
+	row, err := s.queries.GetProjectStructure(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("get project structure: %w", err)
+	}
+	resp := &ProjectStructureResponse{}
+	if row.StructureID.Valid {
+		id := row.StructureID.Bytes
+		idStr := uuid.UUID(id).String()
+		resp.StructureID = &idStr
+	}
+	if row.StructureName.Valid {
+		resp.StructureName = &row.StructureName.String
+	}
+	if len(row.Phases) > 0 {
+		resp.Phases = row.Phases
+	} else {
+		resp.Phases = json.RawMessage("[]")
+	}
+	if len(row.StructureCustom) > 0 {
+		resp.StructureCustom = row.StructureCustom
+	}
+	return resp, nil
+}
+
+// UpdateStructure sets or clears the structure selection on a project.
+func (s *Service) UpdateStructure(ctx context.Context, projectID uuid.UUID, req UpdateStructureRequest) (*ProjectStructureResponse, error) {
+	params := sqlcgen.UpdateProjectStructureParams{ID: projectID}
+
+	if req.StructureID != nil {
+		sid, err := uuid.Parse(*req.StructureID)
+		if err != nil {
+			return nil, apperror.Validation("invalid structure_id: not a UUID")
+		}
+		params.StructureID.Bytes = [16]byte(sid)
+		params.StructureID.Valid = true
+	}
+	if len(req.StructureCustom) > 0 && string(req.StructureCustom) != "null" {
+		params.StructureCustom = req.StructureCustom
+	}
+
+	if _, err := s.queries.UpdateProjectStructure(ctx, params); err != nil {
+		return nil, fmt.Errorf("update project structure: %w", err)
+	}
+	return s.GetStructure(ctx, projectID)
+}
+
+// ScoreStructures runs the scoring matrix and returns ranked structure recommendations.
+// It does NOT persist anything — purely a computation.
+func (s *Service) ScoreStructures(ctx context.Context, answers map[string][]string) ([]StructureScore, error) {
+	rows, err := s.queries.ListNovelStructures(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list structures for scoring: %w", err)
+	}
+	catalog := make([]Structure, len(rows))
+	for i, r := range rows {
+		catalog[i] = Structure{ID: r.ID.String(), Name: r.Name}
+	}
+	return Score(answers, catalog), nil
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func validStep(key string) bool {

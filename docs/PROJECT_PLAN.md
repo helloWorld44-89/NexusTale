@@ -429,14 +429,18 @@ A 5-step onboarding wizard that scaffolds a project from premise to first scene,
 - Each completed step writes real data (creates wiki entities, creates first chapter/scene)
 - Frontend: `/projects/:id/guide` — linear wizard with progress bar; skippable; resumes from last incomplete step
 
-#### B5.5 — Story structure (optional templates)
+#### B5.5 — Story structure (optional templates) ✅ complete (2026-04-14)
 A library of 12 named story structures (Three-Act, Hero's Journey, Heist, Save the Cat, etc.) plus a scoring wizard that recommends one based on author answers. **Entirely optional** — freeform is a first-class choice, not a fallback. The app works identically with no structure selected.
 
-- Migration 015: `novel_structures` (seeded, read-only) + nullable `projects.structure_id` + nullable `projects.structure_custom`
-- Scoring matrix: deterministic Go function — no AI call; returns empty when no structure qualifies (→ freeform recommended)
-- Guide Step 3.5 (between World Basics and Chapter Outline): 4-path chooser — questionnaire, browse templates, freeform custom rules, or skip entirely; "Continue without structure" always visible
-- `BuildContext` (B2) optionally injects current phase + next beat into system prompt; silently omitted when no structure set
-- Structure badge on ProjectHome only when selected; UI is completely silent when writer chose freeform or skipped
+- ✅ Migration 015: `novel_structures` (seeded with 12 templates) + nullable `projects.structure_id` + nullable `projects.structure_custom`
+- ✅ sqlc: `ListNovelStructures`, `GetNovelStructure`, `GetProjectStructure`, `UpdateProjectStructure`
+- ✅ Scoring matrix: deterministic Go function (`internal/guide/score.go`); 8 unit tests; min threshold 6 pts; secondary ≥70% of top score; empty slice → freeform recommended
+- ✅ Routes: `GET /novel-structures` (public), `POST /projects/:id/guide/structure/score`, `GET/PUT /projects/:id/structure`
+- ✅ Guide Step 3.5 (`StructureStep.tsx`): 4-path chooser — questionnaire (10 Qs → score call → result card), browse templates (accordion grid), freeform custom rules, skip; "Continue without structure" always visible
+- ✅ `BuildContext` extended: injects `## Story structure` block (named: name + phase list; freeform: custom rules) — silently omitted when no structure set
+- ✅ OpenAPI schemas + TypeScript codegen: `NovelStructureResponse`, `StructureScoreRequest/Response`, `ProjectStructureResponse`, `UpdateProjectStructureRequest`
+- ✅ Structure badge on ProjectHome: shows structure name when selected; links to `?step=structure` in guide; silent when not set
+- ✅ Timeline phase banners in WikiHub: events grouped by era (sorted by min year); muted italic phase banners overlaid above each era group when structure selected; display-only; no banner when no structure set
 
 ### Phase C — Collaboration + depth
 
@@ -504,20 +508,14 @@ A library of 12 named story structures (Three-Act, Hero's Journey, Heist, Save t
   - Frontend: Export panel on ProjectHome — Markdown download (direct fetch → blob), EPUB async with 3 s polling
 - ✅ **Ollama Docker fix** — per-user configurable base URL stored in `user_api_keys(provider="ollama")`; Settings page "Local AI (Ollama)" section
 
-**In progress:**
-
-5. **B5** — Novel guide wizard ← **now**
-   - Migration 014: `guide_steps(project_id, step_key PK, data JSONB, completed_at)`
-   - 5 steps: Premise → Characters → World → Outline → First Scene
-   - Each step saves to `guide_steps.data` as JSONB; completing a step runs side effects (create wiki entities, chapters, scene)
-   - Routes: `GET /projects/:id/guide`, `POST /projects/:id/guide/:step`, `POST /projects/:id/guide/:step/complete`
-   - Frontend: `/projects/:id/guide` — stepper wizard with progress bar; each step is a form; skippable; resumes from last incomplete step; "Start Guide" CTA on ProjectHome
+- ✅ **B5** — Novel guide wizard
+  - Migration 014: `guide_steps(project_id, step_key PK, data JSONB, completed_at)`
+  - 5 steps: Premise → Characters → World → Outline → First Scene
+  - Routes: `GET /projects/:id/guide`, `POST /projects/:id/guide/:step`, `POST /projects/:id/guide/:step/complete`
+  - Frontend: `/projects/:id/guide` — stepper wizard; skippable; resumes from last incomplete step; "Start Guide" CTA on ProjectHome
+- ✅ **B5.5** — Story structure templates (2026-04-14; see B5.5 section above)
 
 **Remaining:**
-
-6. **B5.5** — Story structure templates
-   - Migration 015: seeded `novel_structures` + nullable `projects.structure_id`
-   - Scoring wizard (deterministic, no AI); guide Step 3.5 opt-in
 
 ### Phase C
 7. **Collaboration** — WebSocket hub (`/api/v1/projects/:id/collab`), CRDT sync, presence via Redis.
