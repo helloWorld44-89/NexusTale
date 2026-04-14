@@ -480,6 +480,14 @@ export const api = {
     },
   },
 
+  // ── ai.testConnection ──────────────────────────────────────────────────────
+  // POST /ai/test-connection — health-check a stored provider key/URL.
+  // Returns ok + model list on success, ok=false + error on failure.
+  testConnection: (token: string, provider: string) =>
+    request<{ ok: boolean; provider: string; models?: string[]; error?: string }>(
+      'POST', '/ai/test-connection', { provider }, token,
+    ),
+
   chapterSummaries: {
     get: (token: string, projectId: string, chapterId: string, branch?: string) =>
       request<ChapterSummaryResponse>(

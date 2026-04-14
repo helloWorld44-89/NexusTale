@@ -47,6 +47,12 @@ export default function Settings() {
   const [loadingKeys, setLoading] = useState(true)
   const [error, setError]         = useState<string | null>(null)
 
+  // Per-provider test state: provider → { testing, result }
+  const [testStates, setTestStates] = useState<Record<string, {
+    testing: boolean
+    result?: { ok: boolean; models?: string[]; error?: string }
+  }>>({})
+
   // Ollama URL form state
   const [ollamaURL,      setOllamaURL]      = useState('')
   const [savingOllama,   setSavingOllama]   = useState(false)
@@ -145,7 +151,22 @@ export default function Settings() {
     try {
       await api.apiKeys.delete(accessToken, p)
       setKeys((prev) => prev.filter((k) => k.provider !== p))
+      setTestStates((prev) => { const n = { ...prev }; delete n[p]; return n })
     } catch {}
+  }
+
+  const handleTestConnection = async (provider: string) => {
+    if (!accessToken) return
+    setTestStates((prev) => ({ ...prev, [provider]: { testing: true } }))
+    try {
+      const result = await api.testConnection(accessToken, provider)
+      setTestStates((prev) => ({ ...prev, [provider]: { testing: false, result } }))
+    } catch (e: unknown) {
+      setTestStates((prev) => ({
+        ...prev,
+        [provider]: { testing: false, result: { ok: false, error: e instanceof Error ? e.message : 'Request failed' } },
+      }))
+    }
   }
 
   return (
@@ -176,28 +197,53 @@ export default function Settings() {
           ) : error ? (
             <p className="text-sm text-red-400">{error}</p>
           ) : keys.length > 0 ? (
-            <div className="mb-6 space-y-2">
-              {keys.map((k) => (
-                <div
-                  key={k.id}
-                  className="flex items-center justify-between px-4 py-3 rounded-lg border border-brand-border bg-brand-bg-card"
-                >
-                  <div>
-                    <span className="text-sm font-medium text-brand-text">
-                      {PROVIDER_LABELS[k.provider as Provider] ?? k.provider}
-                    </span>
-                    <span className="ml-3 text-xs text-brand-text-muted font-mono">
-                      ••••{k.key_hint}
-                    </span>
+            <div className="mb-6 space-y-3">
+              {keys.filter((k) => k.provider !== 'ollama').map((k) => {
+                const ts = testStates[k.provider]
+                return (
+                  <div key={k.id} className="rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <div>
+                        <span className="text-sm font-medium text-brand-text">
+                          {PROVIDER_LABELS[k.provider as Provider] ?? k.provider}
+                        </span>
+                        <span className="ml-3 text-xs text-brand-text-muted font-mono">
+                          ••••{k.key_hint}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleTestConnection(k.provider)}
+                          disabled={ts?.testing}
+                          className="text-xs text-brand-cyan hover:text-brand-cyan/80 border border-brand-cyan/30 hover:border-brand-cyan/60 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+                        >
+                          {ts?.testing ? 'Testing…' : 'Test'}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(k.provider)}
+                          className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                    {ts?.result && (
+                      <div className={`px-4 py-2 border-t text-xs ${ts.result.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                        {ts.result.ok ? (
+                          <div className="space-y-0.5">
+                            <p className="text-emerald-400 font-medium">Connected</p>
+                            {ts.result.models && ts.result.models.length > 0 && (
+                              <p className="text-brand-muted">{ts.result.models.slice(0, 5).join(', ')}{ts.result.models.length > 5 ? ` +${ts.result.models.length - 5} more` : ''}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-red-400">{ts.result.error}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <button
-                    onClick={() => handleDelete(k.provider)}
-                    className="text-xs text-red-400 hover:text-red-300 transition-colors"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <p className="text-sm text-brand-text-muted mb-6">No keys stored yet.</p>
@@ -255,23 +301,52 @@ export default function Settings() {
             reach the host machine.
           </p>
 
-          {/* Show stored hint if one exists */}
-          {keys.find((k) => k.provider === 'ollama') && (
-            <div className="mb-4 flex items-center justify-between px-4 py-3 rounded-lg border border-brand-border bg-brand-bg-card">
-              <div>
-                <span className="text-sm font-medium text-brand-text">Ollama URL</span>
-                <span className="ml-3 text-xs text-brand-text-muted font-mono">
-                  ••••{keys.find((k) => k.provider === 'ollama')!.key_hint}
-                </span>
+          {/* Show stored hint + Test Connection if one exists */}
+          {keys.find((k) => k.provider === 'ollama') && (() => {
+            const ollamaKey = keys.find((k) => k.provider === 'ollama')!
+            const ts = testStates['ollama']
+            return (
+              <div className="mb-4 rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <span className="text-sm font-medium text-brand-text">Ollama URL</span>
+                    <span className="ml-3 text-xs text-brand-text-muted font-mono">
+                      ••••{ollamaKey.key_hint}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleTestConnection('ollama')}
+                      disabled={ts?.testing}
+                      className="text-xs text-brand-cyan hover:text-brand-cyan/80 border border-brand-cyan/30 hover:border-brand-cyan/60 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+                    >
+                      {ts?.testing ? 'Testing…' : 'Test Connection'}
+                    </button>
+                    <button
+                      onClick={() => handleDelete('ollama')}
+                      className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                {ts?.result && (
+                  <div className={`px-4 py-2 border-t text-xs ${ts.result.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                    {ts.result.ok ? (
+                      <div className="space-y-1">
+                        <p className="text-emerald-400 font-medium">Connected — available models:</p>
+                        <ul className="text-brand-muted space-y-0.5">
+                          {ts.result.models?.map((m) => <li key={m} className="font-mono">{m}</li>)}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="text-red-400">{ts.result.error}</p>
+                    )}
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => handleDelete('ollama')}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors"
-              >
-                Remove
-              </button>
-            </div>
-          )}
+            )
+          })()}
 
           <form onSubmit={handleSaveOllamaURL} className="space-y-4 border border-brand-border rounded-xl p-5 bg-brand-bg-card">
             <h3 className="text-sm font-medium text-brand-text">Set Ollama base URL</h3>
