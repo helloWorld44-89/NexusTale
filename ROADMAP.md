@@ -226,6 +226,34 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 - Multi-region, scale-out collaboration tuning
 - **OpenAPI catch-up** — bring `docs/openapi.yaml` current with all B1–C routes; regenerate `api-types.ts`; restore codegen for newer endpoints (schedule before C3)
 
+### D-Desktop — Native desktop app (optional, Tauri-based)
+
+> Prerequisite: SQLite migration (heavy). Do not start until C-series is stable.
+
+The existing React frontend and Go backend are well-suited for desktop packaging. No frontend code changes required.
+
+**Phase 1 — Tauri wrapper** `[Medium]`
+- Add Tauri to the frontend; bundle compiled Go API binary as a Tauri sidecar
+- Tauri starts/stops the Go process on app launch/close
+- API base URL resolved dynamically to `http://localhost:<port>`
+- Still requires Docker for Postgres at this stage — partial desktop only
+- Output: `.app` / `.exe` / `.deb` that launches the full stack
+
+**Phase 2 — SQLite + local storage** `[Heavy]`
+- Add sqlc SQLite driver; port queries (most translate directly)
+- Replace MinIO with local file system (`~/Library/Application Support/NexusTale/` on macOS, `%APPDATA%` on Windows, `~/.local/share` on Linux)
+- Drop Redis (not needed until real-time collab; replace with in-memory stub)
+- golang-migrate SQLite runner; new migration set
+- Output: fully self-contained — no Docker, no external services
+
+**Phase 3 — Packaging + auto-update** `[Medium]`
+- Code signing (Apple Developer ID, Windows Authenticode)
+- Tauri updater wired to GitHub releases
+- CI: Go cross-compile matrix + Tauri build for macOS/Windows/Linux
+- Output: signed installers with silent auto-update
+
+**What stays identical:** all React code, all Go business logic, all Git versioning (already file-based), all Ollama integration (desktop users run Ollama natively — no URL configuration needed)
+
 ---
 
 ## How to use this file
