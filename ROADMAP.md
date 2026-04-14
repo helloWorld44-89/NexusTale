@@ -52,7 +52,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 ### A0 — Documentation & contracts
 - [x] **A0.1** README — prerequisites, `make dev` + `make run`, env vars, smoke test
-- [x] **A0.2** OpenAPI spec (`docs/openapi.yaml`) — all 40 routes; TypeScript codegen via `npm run gen:api`
+- [~] **A0.2** OpenAPI spec (`docs/openapi.yaml`) — **spec drift**: covers 37 paths through A+ / wiki / git / structures; missing B1–C0.5 (~20 routes: AI, prompts, export, guide, chapter summaries, ai-instructions). Frontend `api.ts` is hand-written for newer routes and working. Catch-up scheduled before C3 (collab). See Phase D.
 - [x] **A0.3** Infra honesty — Redis/MinIO "provisioned but not yet consumed" note in README
 
 ### A1 — Backend: Wiki v1
@@ -224,6 +224,7 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 - Scrivener / Fountain export; advanced Git branching UX
 - Series-level continuity management
 - Multi-region, scale-out collaboration tuning
+- **OpenAPI catch-up** — bring `docs/openapi.yaml` current with all B1–C routes; regenerate `api-types.ts`; restore codegen for newer endpoints (schedule before C3)
 
 ---
 
