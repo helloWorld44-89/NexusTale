@@ -442,20 +442,37 @@ A library of 12 named story structures (Three-Act, Hero's Journey, Heist, Save t
 - ✅ Structure badge on ProjectHome: shows structure name when selected; links to `?step=structure` in guide; silent when not set
 - ✅ Timeline phase banners in WikiHub: events grouped by era (sorted by min year); muted italic phase banners overlaid above each era group when structure selected; display-only; no banner when no structure set
 
-### Phase C — Collaboration + depth
+### Phase C — Polish + depth
 
-- WebSocket + CRDT for scene editing; roles and project invites
-- DOCX export; wiki image upload for entity portraits
-- **Explicit AI context panel** — writer-curated context window: pin wiki entries by ID or tag, include chapters/scenes as full text or summary-only; power-user complement to the automatic context window
-- **Multi-session Workshop** — tabbed named chat sessions per project; each session stores `[{role, content, timestamp}]`; `category: "workshop"` system prompt; export session to Markdown
-- **Prompt history browser** — first 500 chars of assembled prompt + user beat stored in `ai_usage`; UI panel to browse and re-apply previous beats
-- **Import/export writing styles** — download project styles as JSON; import into another project
+Scale key: **Light** (1–2 files, contained) · **Medium** (new routes + frontend feature) · **Heavy** (new package/migration + multi-file frontend) · **Heavier** (multiple packages, complex state) · **Heaviest** (architectural, touches many systems)
+
+#### C0 — Pre-C polish (do first, unblocks everything else)
+
+- **`[Light]` Editor navigation** — persistent nav bar or back-link in the scene editor so writers can reach ProjectHome, Wiki, Guide, and Dashboard without using the browser back button; currently there is no escape route from the editor screen
+- **`[Light]` AI connection health check in Settings** — per-provider test button (`Test Connection`) next to each configured key/URL; pings the adapter, returns model list or a clear error; makes Ollama URL debugging self-service instead of silent failure
+
+#### C1 — Export depth
+
+- **`[Medium]` DOCX export** — add DOCX to the existing export worker (reuse job table + MinIO path); target: clean manuscript formatting (headings, scene breaks, front matter)
+- **`[Medium]` Wiki image upload** — presigned MinIO upload for entity portrait images; stored URL displayed in entity detail panel
+
+#### C2 — AI depth
+
+- **`[Heavy]` Explicit AI context panel** — writer-curated additions to the AI context window: pin wiki entities by name or tag, include specific chapters/scenes as full text or summary; rendered as an extra context block appended to `BuildContext`; power-user complement to automatic summarisation
+- **`[Heavy]` Multi-session Workshop** — named persistent chat sessions per project (`workshop_sessions` table); each session stores `[{role, content, timestamp}]`; uses `category: "workshop"` system prompt; sessions listed in a sidebar panel; exportable to Markdown
+- **`[Medium]` Prompt history browser** — store first 500 chars of assembled prompt + beat text in `ai_usage`; settings-adjacent UI panel to browse, copy, and re-apply previous beats
+- **`[Light]` Import/export writing styles** — download project style presets as JSON; import into another project from the same panel
+
+#### C3 — Collaboration (last, largest)
+
+- **`[Heaviest]` WebSocket + CRDT real-time co-editing** — WebSocket hub per project/document (`/api/v1/projects/:id/collab`); CRDT library choice (Yjs vs Automerge — lock before starting); Redis pub/sub for multi-pod fan-out; presence indicators (who is in which scene); roles (editor / commenter / viewer) and project invite flow; Git snapshot on idle save
 
 ### Phase D — Premium / advanced
 
 - Map builder v2; image generation pipelines
 - Scrivener/Fountain; advanced Git branching UX
 - Multi-region, scale-out collab tuning
+- **Keyboard shortcuts** — writer-defined hotkeys for common editing actions (bold, italic, scene save, beat trigger, focus mode, etc.); shortcut map to be specified before implementation
 
 ---
 
@@ -515,15 +532,24 @@ A library of 12 named story structures (Three-Act, Hero's Journey, Heist, Save t
   - Frontend: `/projects/:id/guide` — stepper wizard; skippable; resumes from last incomplete step; "Start Guide" CTA on ProjectHome
 - ✅ **B5.5** — Story structure templates (2026-04-14; see B5.5 section above)
 
-**Remaining:**
+**Remaining (Phase C — in order):**
 
-### Phase C
-7. **Collaboration** — WebSocket hub (`/api/v1/projects/:id/collab`), CRDT sync, presence via Redis.
-8. **DOCX export + wiki image upload**.
-9. **Explicit AI context panel** — writer-curated context window (pin entities by ID/tag, chapter/scene full-text vs summary).
-10. **Multi-session Workshop** — tabbed named chat sessions; `category: "workshop"` prompt variant; Markdown export.
-11. **Prompt history browser** — store beat + prompt preview in `ai_usage`; browse and re-apply previous beats.
-12. **Import/export writing styles** — JSON round-trip for prose prompt presets across projects.
+**C0 — Pre-C polish** ← next up
+- `[Light]` **Editor navigation** — persistent nav in the scene editor (back to ProjectHome, Wiki, Guide, Dashboard); no escape route currently exists
+- `[Light]` **AI connection test in Settings** — per-provider "Test Connection" button; pings adapter, returns model list or clear error; unblocks Ollama self-debugging
+
+**C1 — Export depth**
+- `[Medium]` **DOCX export** — add to existing export worker; clean manuscript formatting
+- `[Medium]` **Wiki image upload** — entity portrait presigned upload → MinIO; display in entity detail
+
+**C2 — AI depth**
+- `[Heavy]` **Explicit AI context panel** — writer-curated context window (pin entities, chapters, scenes)
+- `[Heavy]` **Multi-session Workshop** — named persistent chat sessions; workshop prompt variant; Markdown export
+- `[Medium]` **Prompt history browser** — browse and re-apply previous beats from `ai_usage`
+- `[Light]` **Import/export writing styles** — JSON round-trip for prose presets across projects
+
+**C3 — Collaboration (last)**
+- `[Heaviest]` **WebSocket + CRDT** — real-time co-editing, presence, roles/invites, Redis fan-out; CRDT library choice must be locked before starting
 
 ### Infrastructure
 10. **Staging/prod pipelines** — clone dev Ansible playbook; parameterize environment; add prod secrets to vault.
