@@ -10,17 +10,24 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 | Area | Status |
 |------|--------|
-| **API shell** | Go 1.23 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens |
-| **Database** | PostgreSQL migrations (009) + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
+| **API shell** | Go 1.25 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens |
+| **Database** | PostgreSQL migrations **(016)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
 | **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; act layer hidden in UI for single default act; full CRUD + integration tests + Bruno |
 | **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; 21 handler integration tests; fast-forward merge; Paradox detection |
-| **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints |
-| **Redis / MinIO** | Provisioned in dev compose; MinIO targeted by B4 EPUB export |
-| **AI proxy** | `internal/ai`: Anthropic, OpenAI, Ollama adapters; beat + continue modes; `POST /ai/complete`, `/ai/chat`, `/ai/summarize`, `GET /ai/usage`; usage recorded per call |
+| **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints; relationship graph (d3 force) |
+| **Redis / MinIO** | Provisioned in dev compose; MinIO used for EPUB export (async job → presigned URL) |
+| **AI proxy** | `internal/ai`: Anthropic, OpenAI, Ollama adapters; beat + continue modes; chapter summaries + AI Bible in every call; `POST /ai/complete`, `/ai/chat`, `/ai/summarize`, `/ai/test-connection`, `GET /ai/usage`; usage recorded per call |
+| **AI context** | `BuildContext`: project identity + AI Bible + chapter summaries (raw content fallback) + current scene + @[Entity] refs + story structure; Nexus identity system prompt on every chat |
+| **AI Bible** | `projects.ai_instructions` (migration 016); auto-generated from guide steps on completion; editable on ProjectHome; 3 API routes |
 | **Writing styles** | `internal/prompts`: `project_prompts` table; CRUD routes; style applied to AI calls via `prompt_id` |
-| **Collaboration, export** | Packages stubbed; no HTTP registration |
-| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub, git panel, **ChatBar SSE chat, BeatInput, writing style selector, AI usage stats on ProjectHome** |
-| **OpenAPI + types** | `docs/openapi.yaml` (45+ routes incl. acts); `frontend/src/services/api-types.ts` generated; inline types for AI/prompts/usage (not yet in spec) |
+| **Export** | Markdown (sync zip) + EPUB (async job, MinIO, presigned URL); `export_jobs` table; goroutine worker pool |
+| **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene); side effects populate wiki + manuscript; guide steps auto-fill AI Bible |
+| **Story structures** | 12 seeded templates + scoring matrix; freeform option; structure badge on ProjectHome; phase banners in WikiHub timeline |
+| **Collaboration** | Package stubbed; no HTTP registration |
+| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub (entities/timeline/graph), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats** |
+| **Navigation** | TopBar: left nav (logo → Dashboard, Home, Wiki, Guide) + breadcrumb + right area (panel toggles, username, Settings, logout); editor fully navigable |
+| **Settings** | AI provider keys (add/remove/test), Ollama URL + model selector, appearance (dark/light), account deletion |
+| **OpenAPI + types** | `docs/openapi.yaml` (45+ routes incl. acts); `frontend/src/services/api-types.ts` generated; inline types for AI/prompts/usage/guide/structures |
 | **CI/CD** | GitHub Actions (self-hosted) → GHCR → Ansible → dev VM; Go tests, tsc, ESLint, API-types drift, sqlc diff, Docker build + push, Ansible deploy |
 | **Bruno collection** | Full integration tests for auth, health, projects, acts, chapters, scenes, wiki (incl. anchor tests), git |
 | **README** | Written — prerequisites, quick start, env vars, Redis/MinIO note |
@@ -152,50 +159,64 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 - [x] **B1.5.4** Frontend — Writing style dropdown in `SceneMetadataPanel`; lazy-loads on open; badge in panel header; `promptId` flows to every AI call
 - [x] **B1.5.5** Frontend — `BeatInput` in `ScribeEditor` toolbar; beat sentence → SSE stream → prose preview; Accept/Retry/Discard; `api.ai.streamComplete` added
 
-### B2 — AI memory + context
-- [ ] **B2.1** Backend — Migration 012: `chapter_summaries(chapter_id, branch_name PK, ai_summary, stale)` + `project_active_branch(project_id, user_id PK, branch_name)` — no column added to `chapters`
-- [ ] **B2.2** Backend — `ResolveBranch` helper: `X-NexusTale-Branch` header → `project_active_branch` → `"canon"`; `TravelTo`/`Diverge` handlers upsert `project_active_branch` after git HEAD switch
-- [ ] **B2.3** Backend — auto-summarize goroutine: debounce key `(chapter_id, branch_name)`; upserts `chapter_summaries` per branch; only marks active branch stale on scene save
-- [ ] **B2.4** Backend — `BuildContext(…, branchName)`: summaries queried by active branch, falling back to `"canon"`; inline `@[entity]` parsing (up to 5 entries injected before user turn); `Canonize` deletes merged branch's summary rows
-- [ ] **B2.5** Backend — `ChapterResponse.ai_summary` sourced from `chapter_summaries` for requesting user's active branch; update OpenAPI; regenerate types
-- [ ] **B2.6** Frontend — stale indicator badge on chapter; "Regenerate" button in SceneMetadataPanel; `X-NexusTale-Branch` header sent on all AI and scene-save requests
+### B2 — AI memory + context ✓
+- [x] **B2.1** Backend — Migration 012: `chapter_summaries(chapter_id, branch_name PK, ai_summary, stale)` + `project_active_branch(project_id, user_id PK, branch_name)`
+- [x] **B2.2** Backend — `ResolveBranch` helper: `X-NexusTale-Branch` header → `project_active_branch` → `"canon"`; `TravelTo`/`Diverge` upsert `project_active_branch`
+- [x] **B2.3** Backend — auto-summarize goroutine: debounce key `(chapter_id, branch_name)`; 30s quiet period; upserts `chapter_summaries`; marks stale immediately on scene save
+- [x] **B2.4** Backend — `BuildContext`: summaries by active branch (canon fallback); `@[entity]` inline ref parsing; story structure phase injection; project identity preamble; current scene full text; raw content fallback for unsummarised chapters
+- [x] **B2.5** Frontend — stale indicator badge on chapter; "Regenerate" button in ProjectExplorer; `X-NexusTale-Branch` header on all AI + scene-save requests
 
 ### B3 — Token usage tracking ✓
 - [x] **B3.1** Backend — Migration 011: `ai_usage` table; `recordUsage` goroutine after every AI call (non-blocking); `GET /projects/:id/ai/usage` aggregate (total/monthly tokens + cost + call count)
 - [x] **B3.2** OpenAPI — deferred; `AIUsageSummary` inline in `api.ts`
 - [x] **B3.3** Frontend — AI usage row on ProjectHome (tokens total/month, calls/month, cost/month); hidden when no calls recorded yet
 
-### B4 — Export
-- [ ] **B4.1** Backend — `GET /projects/:id/export/markdown` synchronous zip: acts → chapters → scenes as `.md` with YAML front matter
-- [ ] **B4.2** Backend — `POST /projects/:id/export/epub` async job (Migration 012: `export_jobs`); goroutine pool; MinIO upload; presigned URL (1h TTL)
-- [ ] **B4.3** Backend — `GET /projects/:id/export/jobs/:jobId` polling; OpenAPI schemas; regenerate types
-- [ ] **B4.4** Frontend — Export section on ProjectHome: Markdown download button; EPUB trigger + 3s poll + download link
+### B4 — Export ✓
+- [x] **B4.1** Backend — Markdown synchronous zip: acts → chapters → scenes as `.md` with YAML front matter; streamed response
+- [x] **B4.2** Backend — EPUB async job (Migration 013: `export_jobs`); 2-worker goroutine pool; go-epub → MinIO upload; presigned URL (1h TTL)
+- [x] **B4.3** Backend — `GET /projects/:id/export/:job_id` polling; `POST /projects/:id/export` body `{format}`
+- [x] **B4.4** Frontend — Export panel on ProjectHome: Markdown download (fetch → blob), EPUB trigger + 3s poll + download link
 
-### B5 — Novel guide
-- [ ] **B5.1** Backend — Migration 013: `guide_steps` table; `GET /projects/:id/guide`; `POST /projects/:id/guide/:stepKey` with step side effects
-- [ ] **B5.2** Backend — step handlers: Premise → update project description; Characters → create wiki entities; World → entities + magic rule; Outline → chapters; First scene → scene + optional AI opening
-- [ ] **B5.3** OpenAPI — guide endpoints + `GuideStepResponse`; regenerate types
-- [ ] **B5.4** Frontend — `/projects/:id/guide` linear wizard; step sidebar with ✓ / current / muted states; skip allowed; "Finish guide" → ProjectHome
+### B5 — Novel guide ✓
+- [x] **B5.1** Backend — Migration 014: `guide_steps` table; `GET /projects/:id/guide`; `POST /projects/:id/guide/:step` (save); `POST .../complete` (side effects)
+- [x] **B5.2** Backend — step side effects: Characters → wiki entities; World → location entities + magic rules; Outline → chapters; First scene → first scene content
+- [x] **B5.3** Frontend — `/projects/:id/guide` linear wizard; step sidebar; skippable; resumes from last incomplete step
 
-### B5.5 — Story structure (optional templates)
-> Structure is a tool, not a requirement — freeform is a first-class choice at every step.
+### B5.5 — Story structure (optional templates) ✓
+- [x] **B5.5.1** Backend — Migration 015: `novel_structures` (12 seeded templates); `projects.structure_id UUID NULL`; `projects.structure_custom JSONB NULL`
+- [x] **B5.5.2** Backend — `internal/guide/score.go`: deterministic scoring matrix; 8 unit tests; freeform recommended when no structure clears threshold
+- [x] **B5.5.3** Backend — `GET /novel-structures` (no auth), `POST .../guide/structure/score`, `GET/PUT .../structure`
+- [x] **B5.5.4** Frontend — Guide Step 3.5: 4-path chooser (questionnaire / browse templates / freeform / skip); result card with "Use / Choose different / Continue without"
+- [x] **B5.5.5** Frontend — Structure badge on ProjectHome; `BuildContext` injects `## Story structure` block with phase list
+- [x] **B5.5.6** Frontend — WikiHub timeline: era-grouped events; muted italic phase banners above each group when structure selected
 
-- [ ] **B5.5.1** Backend — Migration 015: `novel_structures` table (seeded with 12 templates from `NOVEL_STRUCTURES.md`); `projects.structure_id UUID NULL`; `projects.structure_custom JSONB NULL`
-- [ ] **B5.5.2** Backend — `internal/guide/score.go`: deterministic scoring matrix from `STRUCTURESELCTION.md`; returns empty when no structure clears threshold (freeform recommended)
-- [ ] **B5.5.3** Backend — `GET /novel-structures` (no auth), `POST /projects/:id/guide/structure/score` (score-only, no side effects), `GET/PUT /projects/:id/structure`
-- [ ] **B5.5.4** OpenAPI — structure schemas; regenerate types
-- [ ] **B5.5.5** Frontend — Guide Step 3.5: 4-path chooser (questionnaire / browse / freeform / skip); "Continue without structure" always visible; questionnaire → score → result card with "Use / Choose different / Continue without"
-- [ ] **B5.5.6** Frontend — Structure badge on ProjectHome (only shown when a structure is selected); `BuildContext` injects phase context only when present
-- [ ] **B5.5.7** Frontend — Timeline tab in WikiHub: when a structure is selected, phase banners (muted, italic) appear above each act's events using index-based mapping; renders identically to today when no structure set; client-side join, no new backend route
+## Phase C — Polish + depth
 
-## Phase C — Collaboration + depth
+Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 
-- WebSocket + CRDT for scene editing; roles and project invites
-- DOCX export; wiki image upload for entity portraits
-- **Explicit AI context panel** — writer-curated context: pin specific wiki entries by ID or tag, include scenes as full text or summary-only, per-chapter granularity (power-user alternative to the automatic context window)
-- **Multi-session Workshop** — promote `ChatBar` to tabbed named sessions per project; each session persists `[{role, content, timestamp}]`; separate `category: "workshop"` system prompt; export session to Markdown
-- **Prompt history browser** — store first 500 chars of assembled prompt + the user's beat/instruction in `ai_usage`; UI panel to browse and re-apply previous beats
-- **Import/export writing styles** — download project styles as JSON; import from file or another project
+### C0 — Pre-C polish ✓ (2026-04-14)
+- [x] **`[Light]`** Editor navigation — TopBar full redesign: left nav (logo/Home/Wiki/Guide) + breadcrumb + right (toggles/username/Settings/logout)
+- [x] **`[Light]`** AI connection test in Settings — per-provider Test button; Ollama returns model list; cloud returns "Connected" or error
+- [x] **`[Light]`** Nexus rename — ChatBar → Nexus AI; on-theme intro shown only when ≥1 key configured; no-connection message with Settings link
+- [x] **`[Light]`** Per-user Ollama model selection — `user_api_keys(provider="ollama_model")`; model list from Test Connection is clickable to save
+
+### C0.5 — AI context quality ✓ (2026-04-14)
+- [x] **`[Medium]`** BuildContext enrichment — project identity always injected; raw scene content fallback for chapters without summaries; current scene labeled + included; N+1 entity query fixed
+- [x] **`[Light]`** StreamChat Nexus identity — always prepends "You are Nexus…" system prompt; context appended
+- [x] **`[Heavy]`** AI Bible — migration 016 `projects.ai_instructions`; guide auto-fills on step completion (only when empty); `GET/PUT /projects/:id/ai-instructions` + `POST .../generate`; injected as `## Story bible` in every AI call; ProjectHome card with autosave textarea + Regenerate button
+
+### C1 — Export depth ← next
+- [ ] **`[Medium]`** DOCX export — add to existing export worker (reuse job table + MinIO path); clean manuscript formatting (headings, scene breaks, front matter)
+- [ ] **`[Medium]`** Wiki image upload — presigned MinIO upload for entity portrait images; stored URL displayed in entity detail panel
+
+### C2 — AI depth
+- [ ] **`[Heavy]`** Explicit AI context panel — writer-curated additions to the AI context window: pin wiki entities by name or tag, include specific chapters/scenes as full text or summary
+- [ ] **`[Heavy]`** Multi-session Workshop — named persistent chat sessions per project (`workshop_sessions` table); each session stores `[{role, content, timestamp}]`; sidebar panel; exportable to Markdown
+- [ ] **`[Medium]`** Prompt history browser — store first 500 chars of assembled prompt + beat text in `ai_usage`; UI panel to browse and re-apply previous beats
+- [ ] **`[Light]`** Import/export writing styles — download project style presets as JSON; import into another project
+
+### C3 — Collaboration (last, largest)
+- [ ] **`[Heaviest]`** WebSocket + CRDT — real-time co-editing per scene; CRDT library choice (Yjs vs Automerge — lock before starting); Redis pub/sub fan-out; presence indicators; roles (editor/commenter/viewer) + invite flow; Git snapshot on idle
 
 ## Phase D — Premium / advanced
 
@@ -210,4 +231,4 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated: Phase A + A+ fully done. Phase B in progress — B1 (AI proxy), B1.5 (writing styles + beat input), B3 (token tracking) complete. B2 (AI memory/context), B4 (export), B5 (novel guide), B5.5 (story structures) remain.*
+*Last updated 2026-04-14: Phase A, A+, and B fully complete. C0 (editor navigation, AI connection test, Nexus rename, Ollama model selector) and C0.5 (AI context enrichment, AI Bible) complete. Next: C1 — DOCX export + wiki image upload.*

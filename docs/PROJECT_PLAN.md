@@ -446,10 +446,20 @@ A library of 12 named story structures (Three-Act, Hero's Journey, Heist, Save t
 
 Scale key: **Light** (1–2 files, contained) · **Medium** (new routes + frontend feature) · **Heavy** (new package/migration + multi-file frontend) · **Heavier** (multiple packages, complex state) · **Heaviest** (architectural, touches many systems)
 
-#### C0 — Pre-C polish (do first, unblocks everything else)
+#### C0 — Pre-C polish ✅ complete (2026-04-14)
 
-- **`[Light]` Editor navigation** — persistent nav bar or back-link in the scene editor so writers can reach ProjectHome, Wiki, Guide, and Dashboard without using the browser back button; currently there is no escape route from the editor screen
-- **`[Light]` AI connection health check in Settings** — per-provider test button (`Test Connection`) next to each configured key/URL; pings the adapter, returns model list or a clear error; makes Ollama URL debugging self-service instead of silent failure
+- ✅ **`[Light]` Editor navigation** — TopBar fully redesigned: left nav (NexusTale logo → Dashboard, Home → ProjectHome, Wiki, Guide), center breadcrumb (project › act › chapter › scene), right area (panel toggles + username chip + Settings gear + logout button). `handleLogout` wired in Editor; `displayName` and `onLogout` props added to TopBar.
+- ✅ **`[Light]` AI connection health check in Settings** — per-provider "Test" button for cloud keys; "Test Connection" for Ollama URL returns model list; all results expand inline with green/red panel; `POST /ai/test-connection` pings `/api/tags` (Ollama), `/v1/models` (OpenAI/Anthropic) with 8s timeout.
+- ✅ **`[Light]` Nexus AI rename** — ChatBar renamed to "Nexus" with radial signal logo; on-theme intro message shown only when ≥1 API key is configured (`api.apiKeys.list` check on mount); no-connection message with link to Settings when no keys.
+- ✅ **`[Light]` Per-user Ollama model selection** — `user_api_keys(provider="ollama_model")` stores chosen model; `ollamaModelForUser()` in AI service reads it, overriding config default; Settings Ollama card shows model list as clickable rows after Test Connection; clicking saves model immediately.
+
+#### C0.5 — AI context quality ✅ complete (2026-04-14)
+
+These fixes were prerequisite to AI being genuinely useful for writers — blocking before Phase C content features.
+
+- ✅ **`[Medium]` BuildContext enrichment** — `BuildContext` now always injects project title/genres as a preamble. For chapters without AI summaries it falls back to raw scene content snippets (first 600 chars) so new/seeded projects have real context without requiring editor saves. Current scene full text labeled as "Current scene" is always included. `@[Entity]` lookup refactored to a single query (was N+1).
+- ✅ **`[Light]` StreamChat identity** — Chat now always prepends a Nexus identity system prompt ("You are Nexus, an AI co-author…") so the model has role + project context even on the first message; context block appended to the identity prompt.
+- ✅ **`[Heavy]` AI Bible (migration 016)** — `projects.ai_instructions TEXT` column; guide service `GenerateAIInstructions()` builds prose story bible (title, premise, theme, characters, world, magic systems) from completed guide steps; `AutoFillAIInstructions()` saves it when field is empty on any step completion. Three routes: `GET/PUT /projects/:id/ai-instructions` + `POST /projects/:id/ai-instructions/generate` (force-regenerate from guide, overwrites). `BuildContext` injects bible as `## Story bible` block above chapter content. ProjectHome AI Bible card: autosaving textarea (1.2s debounce) + "Regenerate from Guide" button.
 
 #### C1 — Export depth
 
@@ -534,11 +544,7 @@ Scale key: **Light** (1–2 files, contained) · **Medium** (new routes + fronte
 
 **Remaining (Phase C — in order):**
 
-**C0 — Pre-C polish** ← next up
-- `[Light]` **Editor navigation** — persistent nav in the scene editor (back to ProjectHome, Wiki, Guide, Dashboard); no escape route currently exists
-- `[Light]` **AI connection test in Settings** — per-provider "Test Connection" button; pings adapter, returns model list or clear error; unblocks Ollama self-debugging
-
-**C1 — Export depth**
+**C1 — Export depth** ← next up
 - `[Medium]` **DOCX export** — add to existing export worker; clean manuscript formatting
 - `[Medium]` **Wiki image upload** — entity portrait presigned upload → MinIO; display in entity detail
 
