@@ -23,12 +23,15 @@ func NewHandler(svc *Service) *Handler {
 // RegisterRoutes mounts guide routes under the provided project group.
 // Expects :id to be the project UUID in the group path.
 //
-//	GET  /projects/:id/guide                    — full progress (all steps)
-//	POST /projects/:id/guide/:step              — save step data (no completion)
-//	POST /projects/:id/guide/:step/complete     — complete step + run side effects
-//	POST /projects/:id/guide/structure/score    — score answers, return ranked suggestions
-//	GET  /projects/:id/structure                — current structure selection
-//	PUT  /projects/:id/structure                — set or clear structure selection
+//	GET  /projects/:id/guide                        — full progress (all steps)
+//	POST /projects/:id/guide/:step                  — save step data (no completion)
+//	POST /projects/:id/guide/:step/complete         — complete step + run side effects
+//	POST /projects/:id/guide/structure/score        — score answers, return ranked suggestions
+//	GET  /projects/:id/structure                    — current structure selection
+//	PUT  /projects/:id/structure                    — set or clear structure selection
+//	GET  /projects/:id/ai-instructions              — get project AI bible text
+//	PUT  /projects/:id/ai-instructions              — save edited AI bible text
+//	POST /projects/:id/ai-instructions/generate     — regenerate bible from guide steps
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/guide", h.GetProgress)
 	rg.POST("/guide/:step", h.SaveStep)
@@ -36,6 +39,9 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/guide/structure/score", h.ScoreStructures)
 	rg.GET("/structure", h.GetStructure)
 	rg.PUT("/structure", h.UpdateStructure)
+	rg.GET("/ai-instructions", h.GetAIInstructions)
+	rg.PUT("/ai-instructions", h.UpdateAIInstructions)
+	rg.POST("/ai-instructions/generate", h.GenerateAIInstructions)
 }
 
 // RegisterPublicRoutes mounts routes that require no authentication.
@@ -162,6 +168,64 @@ func (h *Handler) UpdateStructure(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// ── AI Bible handlers ─────────────────────────────────────────────────────────
+
+// GetAIInstructions handles GET /projects/:id/ai-instructions.
+// Returns the project's current AI bible text.
+func (h *Handler) GetAIInstructions(c *gin.Context) {
+	projectID, ok := resolveProjectID(c)
+	if !ok {
+		return
+	}
+	text, err := h.svc.GetAIInstructionsText(c.Request.Context(), projectID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"instructions": text})
+}
+
+// UpdateAIInstructions handles PUT /projects/:id/ai-instructions.
+// Saves the user's edited AI bible text.
+func (h *Handler) UpdateAIInstructions(c *gin.Context) {
+	projectID, ok := resolveProjectID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Instructions string `json:"instructions"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request"})
+		return
+	}
+	if err := h.svc.SaveAIInstructions(c.Request.Context(), projectID, req.Instructions); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"instructions": req.Instructions})
+}
+
+// GenerateAIInstructions handles POST /projects/:id/ai-instructions/generate.
+// Regenerates the AI bible from the project's guide steps and saves it,
+// overwriting any existing text.  Used when the user clicks "Regenerate from Guide".
+func (h *Handler) GenerateAIInstructions(c *gin.Context) {
+	projectID, ok := resolveProjectID(c)
+	if !ok {
+		return
+	}
+	text, err := h.svc.GenerateAIInstructions(c.Request.Context(), projectID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	if err := h.svc.SaveAIInstructions(c.Request.Context(), projectID, text); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"instructions": text})
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

@@ -195,46 +195,129 @@ func (s *Service) regenerateSummary(userID, chapterID uuid.UUID, branchName stri
 // entityRefRE matches @[Entity Name] inline references in scene content.
 var entityRefRE = regexp.MustCompile(`@\[([^\]]+)\]`)
 
+// contentFallbackLimit is the maximum rune count of raw scene content included
+// per chapter when no AI summary exists for that chapter yet.
+const contentFallbackLimit = 600
+
 // BuildContext assembles a context block to prepend to AI system prompts.
 //
-//   - Chapter summaries for the active branch (falls back to "canon" when the
-//     branch diverged recently and has no summary of its own yet).
-//   - Wiki entity snippets for any @[Entity Name] references found in
-//     sceneContent.
+//  1. Project identity — title and genres, always included.
+//  2. Story so far — AI chapter summaries when available; raw scene content
+//     (truncated to contentFallbackLimit) for chapters not yet summarised.
+//     Falls back to "canon" summaries when the active branch has none.
+//  3. Current scene — full text of the scene the user is currently editing,
+//     labelled clearly so the model understands which part of the story is in scope.
+//  4. Wiki entity snippets — for any @[Entity Name] refs in the current scene.
+//  5. Story structure — name + phases when the project has one selected.
 //
-// The returned string is empty if there is no useful context yet.
-func (s *Service) BuildContext(ctx context.Context, projectID uuid.UUID, branchName, sceneContent string) string {
+// The returned string is never empty: the project identity block is always
+// present so the model always knows the project it is working on.
+func (s *Service) BuildContext(ctx context.Context, projectID uuid.UUID, branchName, sceneContent string, currentSceneID uuid.UUID) string {
 	var sb strings.Builder
 
-	// ── 1. Chapter summaries ──────────────────────────────────────────────
-	rows, err := s.queries.ListChapterSummariesByProject(ctx, sqlcgen.ListChapterSummariesByProjectParams{
+	// ── 1. Project identity + AI bible ───────────────────────────────────
+	if projectID != uuid.Nil {
+		p, err := s.queries.GetProject(ctx, projectID)
+		if err == nil {
+			sb.WriteString("## Project\n")
+			sb.WriteString("**Title**: " + p.Title + "\n")
+			if len(p.Genres) > 0 {
+				sb.WriteString("**Genre**: " + strings.Join(p.Genres, ", ") + "\n")
+			}
+			// AI bible — user-editable text that overrides the bare project identity.
+			// Auto-populated from guide steps when first saved; always takes
+			// precedence over the bare title/genres block above.
+			if strings.TrimSpace(p.AiInstructions) != "" {
+				sb.WriteString("\n## Story bible\n")
+				sb.WriteString(p.AiInstructions + "\n")
+			}
+		}
+	}
+
+	// ── 2. Story so far ───────────────────────────────────────────────────
+	// Load AI chapter summaries for the active branch.
+	summaryRows, _ := s.queries.ListChapterSummariesByProject(ctx, sqlcgen.ListChapterSummariesByProjectParams{
 		ProjectID:  projectID,
 		BranchName: branchName,
 	})
-
-	// If the active branch has no summaries yet, fall back to "canon".
-	if (err != nil || len(rows) == 0) && branchName != canonBranch {
-		rows, err = s.queries.ListChapterSummariesByProject(ctx, sqlcgen.ListChapterSummariesByProjectParams{
+	if len(summaryRows) == 0 && branchName != canonBranch {
+		summaryRows, _ = s.queries.ListChapterSummariesByProject(ctx, sqlcgen.ListChapterSummariesByProjectParams{
 			ProjectID:  projectID,
 			BranchName: canonBranch,
 		})
 	}
 
-	if err == nil && len(rows) > 0 {
-		sb.WriteString("## Story so far\n")
-		for _, r := range rows {
-			if r.AiSummary == "" {
+	// Build a lookup: chapterID → summary text (empty string = no summary yet).
+	summaryByChapter := make(map[uuid.UUID]string)
+	for _, r := range summaryRows {
+		summaryByChapter[r.ChapterID] = r.AiSummary
+	}
+
+	// Fetch the chapter list so we can produce a "story so far" block even
+	// when summaries don't exist yet (fallback to raw scene content).
+	chapters, err := s.queries.ListChaptersByProject(ctx, projectID)
+	if err == nil && len(chapters) > 0 {
+		var storySoFar strings.Builder
+		for _, ch := range chapters {
+			if summary, ok := summaryByChapter[ch.ID]; ok && summary != "" {
+				storySoFar.WriteString(fmt.Sprintf("**%s**: %s\n", ch.Title, summary))
 				continue
 			}
-			sb.WriteString(fmt.Sprintf("**%s**: %s\n", r.ChapterTitle, r.AiSummary))
+			// No AI summary yet — fall back to a raw content snippet.
+			scenes, err := s.queries.ListScenesByChapter(ctx, ch.ID)
+			if err != nil || len(scenes) == 0 {
+				continue
+			}
+			var combined strings.Builder
+			for i, sc := range scenes {
+				if i > 0 {
+					combined.WriteString(" ")
+				}
+				combined.WriteString(strings.TrimSpace(sc.Content))
+			}
+			snippet := []rune(combined.String())
+			if len(snippet) > contentFallbackLimit {
+				snippet = append(snippet[:contentFallbackLimit], []rune("…")...)
+			}
+			if len(snippet) > 0 {
+				storySoFar.WriteString(fmt.Sprintf("**%s** *(excerpt)*: %s\n", ch.Title, string(snippet)))
+			}
+		}
+		if storySoFar.Len() > 0 {
+			if sb.Len() > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString("## Story so far\n")
+			sb.WriteString(storySoFar.String())
 		}
 	}
 
-	// ── 2. @[Entity] inline references ───────────────────────────────────
+	// ── 3. Current scene ─────────────────────────────────────────────────
+	// Include the full text of the scene currently open in the editor so the
+	// model can answer specific questions about it.
+	if currentSceneID != uuid.Nil && sceneContent != "" {
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sc, err := s.queries.GetScene(ctx, currentSceneID)
+		label := "Current scene"
+		if err == nil && sc.Title != "" {
+			label = fmt.Sprintf("Current scene — %s", sc.Title)
+		}
+		sb.WriteString(fmt.Sprintf("## %s\n%s\n", label, sceneContent))
+	}
+
+	// ── 4. @[Entity] inline references ───────────────────────────────────
 	matches := entityRefRE.FindAllStringSubmatch(sceneContent, -1)
 	if len(matches) > 0 {
 		seen := make(map[string]bool)
 		var entitySnippets []string
+
+		// Fetch all entities once; filter by name below.
+		entities, _ := s.queries.ListEntitiesByProject(ctx, sqlcgen.ListEntitiesByProjectParams{
+			ProjectID: projectID,
+			Type:      pgtype.Text{},
+		})
 
 		for _, m := range matches {
 			name := m[1]
@@ -242,14 +325,6 @@ func (s *Service) BuildContext(ctx context.Context, projectID uuid.UUID, branchN
 				continue
 			}
 			seen[name] = true
-
-			entities, err := s.queries.ListEntitiesByProject(ctx, sqlcgen.ListEntitiesByProjectParams{
-				ProjectID: projectID,
-				Type:      pgtype.Text{}, // no filter → return all types
-			})
-			if err != nil {
-				break
-			}
 			for _, e := range entities {
 				if strings.EqualFold(e.Name, name) && e.Summary != "" {
 					entitySnippets = append(entitySnippets,
@@ -264,15 +339,13 @@ func (s *Service) BuildContext(ctx context.Context, projectID uuid.UUID, branchN
 				sb.WriteString("\n")
 			}
 			sb.WriteString("## Referenced entities\n")
-			for _, s := range entitySnippets {
-				sb.WriteString(s + "\n")
+			for _, snippet := range entitySnippets {
+				sb.WriteString(snippet + "\n")
 			}
 		}
 	}
 
-	// ── 3. Story structure (optional) ─────────────────────────────────────
-	// Injected only when the project has a structure selected. Silently omitted
-	// on any error — structure context is advisory, never load-bearing.
+	// ── 5. Story structure (optional) ─────────────────────────────────────
 	if structureCtx := s.buildStructureContext(ctx, projectID); structureCtx != "" {
 		if sb.Len() > 0 {
 			sb.WriteString("\n")
