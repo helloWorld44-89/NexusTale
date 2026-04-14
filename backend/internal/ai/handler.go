@@ -30,6 +30,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	ai.POST("/chat", h.Chat)
 	ai.POST("/summarize", h.Summarize)
 	ai.GET("/usage", h.Usage)
+	ai.GET("/context-preview", h.ContextPreview)
 
 	// Chapter summary endpoints (B2): mounted under the project group.
 	rg.GET("/chapters/:cid/summary", h.GetChapterSummary)
@@ -365,6 +366,50 @@ func (h *Handler) GetChapterSummary(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, row)
+}
+
+// ContextPreview returns the assembled AI context block without calling an LLM.
+// Writers can use this to see exactly what Nexus knows about their project at
+// any point — useful for debugging context gaps and understanding what story
+// information is in scope during AI calls.
+//
+// GET /projects/:id/ai/context-preview?scene_id=<uuid>
+func (h *Handler) ContextPreview(c *gin.Context) {
+	projectID, userID, ok := resolveIDs(c)
+	if !ok {
+		return
+	}
+
+	var sceneID uuid.UUID
+	if sid := c.Query("scene_id"); sid != "" {
+		id, err := uuid.Parse(sid)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid scene_id"})
+			return
+		}
+		sceneID = id
+	}
+
+	branch := h.svc.ResolveBranch(c.Request.Context(), c.GetHeader("X-NexusTale-Branch"), userID, projectID)
+
+	// Resolve scene content for @[entity] parsing and current-scene block.
+	sceneContent := ""
+	if sceneID != uuid.Nil {
+		if sc, err := h.svc.queries.GetScene(c.Request.Context(), sceneID); err == nil {
+			sceneContent = sc.Content
+		}
+	}
+
+	ctxBlock := h.svc.BuildContext(c.Request.Context(), projectID, branch, sceneContent, sceneID)
+
+	// Rough token estimate: ~4 characters per token (safe for English prose).
+	estimatedTokens := len([]rune(ctxBlock)) / 4
+
+	c.JSON(http.StatusOK, gin.H{
+		"context":          ctxBlock,
+		"branch":           branch,
+		"estimated_tokens": estimatedTokens,
+	})
 }
 
 // RegenerateChapterSummary forces a synchronous re-summarization of all
