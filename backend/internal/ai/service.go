@@ -55,7 +55,7 @@ var providerPreference = []string{"anthropic", "openai"}
 func (s *Service) getAdapter(ctx context.Context, userID uuid.UUID, provider string) (adapters.Adapter, error) {
 	adapterCfg := adapters.AdapterConfig{
 		OllamaURL:   s.ollamaURLForUser(ctx, userID),
-		OllamaModel: s.cfg.OllamaModel,
+		OllamaModel: s.ollamaModelForUser(ctx, userID),
 	}
 
 	tryProvider := func(p string) (adapters.Adapter, bool) {
@@ -101,6 +101,16 @@ func (s *Service) ollamaURLForUser(ctx context.Context, userID uuid.UUID) string
 		return url
 	}
 	return s.cfg.OllamaURL
+}
+
+// ollamaModelForUser returns the Ollama model name for the given user.
+// If the user has stored a preferred model via Settings (provider="ollama_model"),
+// that takes precedence over the server-wide default from config.
+func (s *Service) ollamaModelForUser(ctx context.Context, userID uuid.UUID) string {
+	if model, err := s.authSvc.DecryptAPIKey(ctx, userID, "ollama_model"); err == nil && model != "" {
+		return model
+	}
+	return s.cfg.OllamaModel
 }
 
 // ── beat system prompt ────────────────────────────────────────────────────────
