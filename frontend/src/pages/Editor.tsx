@@ -32,7 +32,16 @@ const AUTOSAVE_MS = 1500
 export default function Editor() {
   const { id: projectId } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const accessToken = useAuthStore((s) => s.accessToken)
+  const { accessToken, user, logout } = useAuthStore((s) => ({
+    accessToken: s.accessToken,
+    user: s.user,
+    logout: s.logout,
+  }))
+
+  const handleLogout = useCallback(async () => {
+    await logout()
+    navigate('/login', { replace: true })
+  }, [logout, navigate])
 
   const [projectTitle,      setProjectTitle]      = useState('')
   const [acts,              setActs]              = useState<ActWithChapters[]>([])
@@ -251,16 +260,19 @@ export default function Editor() {
     <div className="h-screen flex flex-col bg-brand-bg overflow-hidden font-sans">
       {!focusMode && (
         <TopBar
+          projectId={projectId ?? ''}
           projectTitle={projectTitle}
           actTitle={actTitle}
           chapterTitle={activeChapter?.title ?? ''}
           sceneTitle={activeScene?.title ?? ''}
+          displayName={user?.display_name ?? ''}
           leftPanel={leftPanel}
           explorerOpen={explorerOpen}
           focusMode={focusMode}
           onToggleChat={() => toggleLeftPanel('chat')}
           onToggleExplorer={() => setExplorerOpen((v) => !v)}
           onToggleFocus={() => setFocusMode((v) => !v)}
+          onLogout={handleLogout}
         />
       )}
 

@@ -36,6 +36,12 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/chapters/:cid/summarize", h.RegenerateChapterSummary)
 }
 
+// RegisterUserRoutes mounts user-scoped (non-project) AI routes.
+// Caller must apply auth middleware.
+func (h *Handler) RegisterUserRoutes(rg *gin.RouterGroup) {
+	rg.POST("/ai/test-connection", h.TestConnectionHandler)
+}
+
 // ── request types ─────────────────────────────────────────────────────────────
 
 type completeRequest struct {
@@ -292,6 +298,32 @@ func setSSeHeaders(c *gin.Context) {
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no") // disable nginx proxy buffering
+}
+
+// TestConnectionHandler tests connectivity for the specified AI provider.
+//
+// POST /ai/test-connection
+//
+//	{ "provider": "ollama" }
+//	→ { "ok": true, "provider": "ollama", "models": ["llama3:latest", ...] }
+//	→ { "ok": false, "provider": "ollama", "error": "cannot reach Ollama …" }
+func (h *Handler) TestConnectionHandler(c *gin.Context) {
+	claims := auth.GetClaims(c)
+	if claims == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	var req struct {
+		Provider string `json:"provider" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "provider is required"})
+		return
+	}
+
+	result := h.svc.TestConnection(c.Request.Context(), claims.UserID, req.Provider)
+	c.JSON(http.StatusOK, result)
 }
 
 // handleError maps apperror to HTTP status codes, matching the pattern in other handlers.

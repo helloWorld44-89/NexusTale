@@ -136,6 +136,10 @@ func main() {
 		aiGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		aiHandler.RegisterRoutes(aiGroup)
 
+		// User-scoped AI routes (no project context required).
+		aiUserGroup := v1.Group("", auth.RequireAuth(authService))
+		aiHandler.RegisterUserRoutes(aiUserGroup)
+
 		exportGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		exportHandler.RegisterRoutes(exportGroup)
 
