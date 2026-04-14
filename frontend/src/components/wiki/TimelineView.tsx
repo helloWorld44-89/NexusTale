@@ -1,14 +1,20 @@
 // TimelineView — chronological list of wiki timeline events with CRUD.
-import { useState, useEffect, useCallback } from 'react'
+// Accepts optional `phases` + `structureName` from a selected novel structure;
+// when provided, muted phase banners are overlaid between era groups.
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { api } from '@/services/api'
 import type { WikiTimelineEvent } from '@/services/api'
 
 interface TimelineViewProps {
   token: string
   projectId: string
+  /** Phase list from the project's selected story structure. */
+  phases?: Array<{ name: string }>
+  /** Display name of the selected story structure (for the hint label). */
+  structureName?: string
 }
 
-export default function TimelineView({ token, projectId }: TimelineViewProps) {
+export default function TimelineView({ token, projectId, phases, structureName }: TimelineViewProps) {
   const [events, setEvents] = useState<WikiTimelineEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -29,6 +35,28 @@ export default function TimelineView({ token, projectId }: TimelineViewProps) {
   }, [token, projectId])
 
   useEffect(() => { load() }, [load])
+
+  // Group events by era, sorted by earliest year in each group.
+  const eraGroups = useMemo(() => {
+    const map = new Map<string, WikiTimelineEvent[]>()
+    for (const ev of events) {
+      const key = ev.era ?? ''
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(ev)
+    }
+    const entries = [...map.entries()]
+    entries.sort(([, a], [, b]) => {
+      const minYear = (evs: WikiTimelineEvent[]) =>
+        evs.reduce((m, e) => (e.year != null ? Math.min(m, e.year) : m), Infinity)
+      const ay = minYear(a)
+      const by = minYear(b)
+      if (ay === Infinity && by === Infinity) return 0
+      if (ay === Infinity) return 1
+      if (by === Infinity) return -1
+      return ay - by
+    })
+    return entries
+  }, [events])
 
   const handleCreated = (ev: WikiTimelineEvent) => {
     setEvents((prev) => [...prev, ev])
@@ -86,31 +114,51 @@ export default function TimelineView({ token, projectId }: TimelineViewProps) {
           </button>
         </div>
       ) : (
-        /* Event list */
-        <div className="space-y-2">
-          {events.map((ev) =>
-            editing?.id === ev.id ? (
-              <EventForm
-                key={ev.id}
-                token={token}
-                projectId={projectId}
-                events={events}
-                existing={ev}
-                onSaved={handleUpdated}
-                onCancel={() => setEditing(null)}
-              />
-            ) : (
-              <EventCard
-                key={ev.id}
-                event={ev}
-                allEvents={events}
-                onEdit={() => setEditing(ev)}
-                onDeleted={handleDeleted}
-                token={token}
-                projectId={projectId}
-              />
-            ),
-          )}
+        /* Era-grouped event list with optional structure phase banners */
+        <div className="space-y-6">
+          {eraGroups.map(([era, groupEvents], groupIdx) => (
+            <div key={era || '__no_era__'}>
+              {/* Phase banner — shown when a structure is active */}
+              {phases && phases[groupIdx] && (
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex-1 h-px bg-brand-border/40" />
+                  <span
+                    className="text-xs text-brand-muted/70 italic font-medium tracking-wide shrink-0"
+                    title={structureName ? `${structureName} · phase ${groupIdx + 1}` : undefined}
+                  >
+                    {phases[groupIdx].name}
+                  </span>
+                  <div className="flex-1 h-px bg-brand-border/40" />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {groupEvents.map((ev) =>
+                  editing?.id === ev.id ? (
+                    <EventForm
+                      key={ev.id}
+                      token={token}
+                      projectId={projectId}
+                      events={events}
+                      existing={ev}
+                      onSaved={handleUpdated}
+                      onCancel={() => setEditing(null)}
+                    />
+                  ) : (
+                    <EventCard
+                      key={ev.id}
+                      event={ev}
+                      allEvents={events}
+                      onEdit={() => setEditing(ev)}
+                      onDeleted={handleDeleted}
+                      token={token}
+                      projectId={projectId}
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

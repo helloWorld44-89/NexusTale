@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '@/services/api'
-import type { WikiEntity, EntityType } from '@/services/api'
+import type { WikiEntity, EntityType, ProjectStructure } from '@/services/api'
 import TimelineView from '@/components/wiki/TimelineView'
 import RelationshipGraph from '@/components/wiki/RelationshipGraph'
 import { useAuthStore } from '@/app/store/authStore'
@@ -16,10 +16,12 @@ export default function WikiHub() {
   const [tab, setTab] = useState<Tab>('entities')
   const [projectTitle, setProjectTitle] = useState('')
   const [graphEntityId, setGraphEntityId] = useState<string | null>(null)
+  const [structure, setStructure] = useState<ProjectStructure | null>(null)
 
   useEffect(() => {
     if (!projectId || !token) return
     api.projects.get(token, projectId).then((p) => setProjectTitle(p.title)).catch(() => {})
+    api.structures.get(token, projectId).then(setStructure).catch(() => {})
   }, [token, projectId])
 
   if (!projectId) return null
@@ -71,7 +73,14 @@ export default function WikiHub() {
             onClearInitialSelected={() => setGraphEntityId(null)}
           />
         )}
-        {tab === 'timeline' && <TimelineView token={token} projectId={projectId} />}
+        {tab === 'timeline' && (
+          <TimelineView
+            token={token}
+            projectId={projectId}
+            phases={structure?.phases ?? undefined}
+            structureName={structure?.structure_name ?? undefined}
+          />
+        )}
         {tab === 'graph' && projectId && (
           <RelationshipGraph
             token={token}

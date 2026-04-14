@@ -725,6 +725,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/novel-structures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the full catalog of seeded story structure templates (no auth required) */
+        get: operations["listNovelStructures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/guide/structure/score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Score answers against the structure matrix and return ranked suggestions (no persistence) */
+        post: operations["scoreStructure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/structure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** Get the current story structure selection for a project */
+        get: operations["getProjectStructure"];
+        /** Set or clear the story structure selection for a project */
+        put: operations["updateProjectStructure"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectId}/wiki/autolink": {
         parameters: {
             query?: never;
@@ -1113,6 +1169,47 @@ export interface components {
             entity_name: string;
             start: number;
             end: number;
+        };
+        StructurePhase: {
+            name: string;
+            description: string;
+            hints: string;
+        };
+        NovelStructureResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            phases: components["schemas"]["StructurePhase"][];
+            strengths: string;
+            risks: string;
+        };
+        StructureScoreRequest: {
+            answers: {
+                [key: string]: string[];
+            };
+        };
+        StructureScoreEntry: {
+            /** Format: uuid */
+            structure_id: string;
+            name: string;
+            score: number;
+            is_secondary: boolean;
+        };
+        StructureScoreResponse: {
+            ranked: components["schemas"]["StructureScoreEntry"][];
+        };
+        ProjectStructureResponse: {
+            /** Format: uuid */
+            structure_id?: string | null;
+            structure_name?: string | null;
+            phases?: components["schemas"]["StructurePhase"][] | null;
+            structure_custom?: Record<string, never> | null;
+        };
+        UpdateProjectStructureRequest: {
+            /** Format: uuid */
+            structure_id?: string | null;
+            structure_custom?: Record<string, never> | null;
         };
     };
     responses: {
@@ -2589,6 +2686,103 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listNovelStructures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All structure templates ordered by sort_order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NovelStructureResponse"][];
+                };
+            };
+        };
+    };
+    scoreStructure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StructureScoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Ranked structure recommendations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructureScoreResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getProjectStructure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current structure selection (null fields when none selected). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectStructureResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateProjectStructure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectStructureRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated structure selection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectStructureResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     autolink: {

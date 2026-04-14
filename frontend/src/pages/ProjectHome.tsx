@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
 import { api } from '@/services/api'
-import type { Project, ProjectStats, AIUsageSummary, ExportJob } from '@/services/api'
+import type { Project, ProjectStats, AIUsageSummary, ExportJob, ProjectStructure } from '@/services/api'
 
 export default function ProjectHome() {
   const { id } = useParams<{ id: string }>()
@@ -14,6 +14,7 @@ export default function ProjectHome() {
   const [project,    setProject]    = useState<Project | null>(null)
   const [stats,      setStats]      = useState<ProjectStats | null>(null)
   const [usage,      setUsage]      = useState<AIUsageSummary | null>(null)
+  const [structure,  setStructure]  = useState<ProjectStructure | null>(null)
   const [loading,    setLoading]    = useState(true)
   const [epubJobId,  setEpubJobId]  = useState<string | null>(null)
   const [epubJob,    setEpubJob]    = useState<ExportJob | null>(null)
@@ -27,15 +28,17 @@ export default function ProjectHome() {
 
     const load = async () => {
       try {
-        const [p, s, u] = await Promise.all([
+        const [p, s, u, st] = await Promise.all([
           api.projects.get(accessToken, id),
           api.projects.stats(accessToken, id),
           api.ai.usage(accessToken, id).catch(() => null),
+          api.structures.get(accessToken, id).catch(() => null),
         ])
         if (!cancelled) {
           setProject(p)
           setStats(s)
           setUsage(u)
+          setStructure(st)
         }
       } catch {
         if (!cancelled) navigate('/dashboard', { replace: true })
@@ -151,6 +154,20 @@ export default function ProjectHome() {
                   {g}
                 </span>
               ))}
+            </div>
+          )}
+          {/* Structure badge — only shown when a named structure is selected */}
+          {structure?.structure_name && (
+            <div className="mt-3">
+              <Link
+                to={`/projects/${id}/guide?step=structure`}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-brand-cyan/30 bg-brand-cyan/5 text-brand-cyan text-xs font-medium hover:bg-brand-cyan/10 transition-colors"
+              >
+                <svg className="w-3 h-3 opacity-70" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 4h12M2 8h8M2 12h5" />
+                </svg>
+                {structure.structure_name}
+              </Link>
             </div>
           )}
         </div>

@@ -1,14 +1,31 @@
-// Guide — 5-step novel wizard that scaffolds a project from premise to first scene.
-// Each step autosaves on blur; the "Complete Step" button runs backend side effects.
+// Guide — 6-step novel wizard that scaffolds a project from premise to first scene.
+// Steps 1-5 are backed by guide_steps on the server; Step 3.5 (Structure) is
+// an optional frontend-only step whose result lands in projects.structure_id.
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
 import { api } from '@/services/api'
-import type { GuideStep, GuideProgress } from '@/services/api'
+import type { GuideProgress, ProjectStructure } from '@/services/api'
+import { StructureStep } from '@/components/guide/StructureStep'
 
-// ── Step keys in canonical order ──────────────────────────────────────────────
-const STEPS = ['premise', 'characters', 'world', 'outline', 'first_scene'] as const
-type StepKey = typeof STEPS[number]
+// ── Step definitions ──────────────────────────────────────────────────────────
+
+// Backend guide_steps keys — never include 'structure'.
+type StepKey = 'premise' | 'characters' | 'world' | 'outline' | 'first_scene'
+
+// Display step adds the optional structure step between world and outline.
+type DisplayStep = StepKey | 'structure'
+
+const DISPLAY_STEPS: DisplayStep[] = ['premise', 'characters', 'world', 'structure', 'outline', 'first_scene']
+
+const DISPLAY_LABELS: Record<DisplayStep, string> = {
+  premise:     'Premise',
+  characters:  'Core Characters',
+  world:       'World Basics',
+  structure:   'Story Structure',
+  outline:     'Chapter Outline',
+  first_scene: 'First Scene',
+}
 
 // ── per-step default data ─────────────────────────────────────────────────────
 function defaultData(step: StepKey): Record<string, unknown> {
@@ -24,11 +41,13 @@ function defaultData(step: StepKey): Record<string, unknown> {
 export default function Guide() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const accessToken = useAuthStore((s) => s.accessToken)
 
-  const [progress,     setProgress]     = useState<GuideProgress | null>(null)
-  const [activeStep,   setActiveStep]   = useState<StepKey>('premise')
-  const [stepData,     setStepData]     = useState<Record<StepKey, Record<string, unknown>>>({
+  const [progress,          setProgress]          = useState<GuideProgress | null>(null)
+  const [projectStructure,  setProjectStructure]  = useState<ProjectStructure | null>(null)
+  const [activeStep,        setActiveStep]        = useState<DisplayStep>('premise')
+  const [stepData,          setStepData]          = useState<Record<StepKey, Record<string, unknown>>>({
     premise:     defaultData('premise'),
     characters:  defaultData('characters'),
     world:       defaultData('world'),
@@ -40,23 +59,43 @@ export default function Guide() {
   const [completing,   setCompleting]   = useState(false)
   const [error,        setError]        = useState<string | null>(null)
 
-  // Load guide progress on mount.
+  // Load guide progress and current structure selection on mount.
   useEffect(() => {
     if (!id || !accessToken) return
-    api.guide.getProgress(accessToken, id)
-      .then((p) => {
+    Promise.all([
+      api.guide.getProgress(accessToken, id),
+      api.structures.get(accessToken, id),
+    ])
+      .then(([p, s]) => {
         setProgress(p)
-        // Merge saved data into local state.
+        setProjectStructure(s)
+        // Merge saved step data into local state.
         const merged = { ...stepData }
-        for (const s of p.steps) {
-          if (s.data && Object.keys(s.data).length > 0) {
-            merged[s.step_key as StepKey] = s.data as Record<string, unknown>
+        for (const step of p.steps) {
+          if (step.data && Object.keys(step.data).length > 0) {
+            merged[step.step_key as StepKey] = step.data as Record<string, unknown>
           }
         }
         setStepData(merged)
-        // Resume from first incomplete step.
-        const first = p.steps.find((s) => !s.is_complete)
-        if (first) setActiveStep(first.step_key as StepKey)
+        // If a ?step= query param is present, honour it directly.
+        const stepParam = searchParams.get('step')
+        if (stepParam && DISPLAY_STEPS.includes(stepParam as DisplayStep)) {
+          setActiveStep(stepParam as DisplayStep)
+        } else {
+          // Resume at the first incomplete backend step, inserting structure if world is done but outline isn't.
+          const firstIncomplete = p.steps.find((step) => !step.is_complete)
+          if (firstIncomplete) {
+            const key = firstIncomplete.step_key as StepKey
+            // If world is complete and structure not yet chosen, land on structure step.
+            const worldDone   = p.steps.find((step) => step.step_key === 'world')?.is_complete ?? false
+            const outlineDone = p.steps.find((step) => step.step_key === 'outline')?.is_complete ?? false
+            if (worldDone && !outlineDone && !s.structure_id) {
+              setActiveStep('structure')
+            } else {
+              setActiveStep(key)
+            }
+          }
+        }
       })
       .catch(() => navigate(`/projects/${id}`, { replace: true }))
       .finally(() => setLoading(false))
@@ -64,28 +103,31 @@ export default function Guide() {
   }, [id, accessToken])
 
   const updateField = useCallback((key: string, value: unknown) => {
+    if (activeStep === 'structure') return
     setStepData((prev) => ({
       ...prev,
-      [activeStep]: { ...prev[activeStep], [key]: value },
+      [activeStep]: { ...prev[activeStep as StepKey], [key]: value },
     }))
   }, [activeStep])
 
   const handleSave = async () => {
-    if (!id || !accessToken) return
+    if (!id || !accessToken || activeStep === 'structure') return
     setSaving(true)
     try {
-      await api.guide.saveStep(accessToken, id, activeStep, stepData[activeStep])
-    } catch { /* non-fatal */ } finally {
+      await api.guide.saveStep(accessToken, id, activeStep, stepData[activeStep as StepKey])
+    } catch { /* non-fatal autosave */ } finally {
       setSaving(false)
     }
   }
 
   const handleComplete = async () => {
-    if (!id || !accessToken) return
+    if (!id || !accessToken || activeStep === 'structure') return
     setCompleting(true)
     setError(null)
     try {
-      const updated = await api.guide.completeStep(accessToken, id, activeStep, stepData[activeStep])
+      const updated = await api.guide.completeStep(
+        accessToken, id, activeStep as StepKey, stepData[activeStep as StepKey],
+      )
       setProgress((prev) => {
         if (!prev) return prev
         return {
@@ -94,9 +136,7 @@ export default function Guide() {
           completed_count: prev.steps.filter((s) => s.step_key === activeStep ? true : s.is_complete).length,
         }
       })
-      // Advance to next incomplete step.
-      const idx = STEPS.indexOf(activeStep)
-      if (idx < STEPS.length - 1) setActiveStep(STEPS[idx + 1])
+      advanceStep()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to complete step')
     } finally {
@@ -104,9 +144,15 @@ export default function Guide() {
     }
   }
 
+  // Advance to the next display step.
+  const advanceStep = () => {
+    const idx = DISPLAY_STEPS.indexOf(activeStep)
+    if (idx < DISPLAY_STEPS.length - 1) setActiveStep(DISPLAY_STEPS[idx + 1])
+  }
+
   const handleSkip = () => {
-    const idx = STEPS.indexOf(activeStep)
-    if (idx < STEPS.length - 1) setActiveStep(STEPS[idx + 1])
+    if (activeStep === 'structure') { advanceStep(); return }
+    advanceStep()
   }
 
   if (loading) {
@@ -120,8 +166,38 @@ export default function Guide() {
     )
   }
 
-  const currentStepInfo = progress?.steps.find((s) => s.step_key === activeStep)
+  // All five backend steps complete = wizard done (structure is optional, ignored here).
   const allComplete = progress ? progress.completed_count === progress.total_count : false
+
+  // For the regular step form: look up backend progress.
+  const currentStepInfo = activeStep !== 'structure'
+    ? progress?.steps.find((s) => s.step_key === activeStep)
+    : null
+
+  // ── Sidebar step list ───────────────────────────────────────────────────────
+  // Build a merged display list: inject the optional structure step and derive
+  // its is_complete / label from projectStructure.
+  const structureComplete = !!(projectStructure?.structure_id || projectStructure?.structure_custom)
+
+  const displayStepList = DISPLAY_STEPS.map((key, i) => {
+    if (key === 'structure') {
+      return {
+        step_key:   'structure' as const,
+        label:      DISPLAY_LABELS.structure,
+        is_complete: structureComplete,
+        optional:   true,
+        index:      i,
+      }
+    }
+    const backendStep = progress?.steps.find((s) => s.step_key === key)
+    return {
+      step_key:   key,
+      label:      DISPLAY_LABELS[key],
+      is_complete: backendStep?.is_complete ?? false,
+      optional:   false,
+      index:      i,
+    }
+  })
 
   return (
     <div className="min-h-screen bg-brand-bg flex flex-col">
@@ -147,7 +223,7 @@ export default function Guide() {
         {/* Sidebar — step list */}
         <nav className="w-52 shrink-0">
           <p className="text-xs uppercase tracking-widest text-brand-muted mb-4">Steps</p>
-          {/* Progress bar */}
+          {/* Progress bar — counts only the 5 backend steps */}
           {progress && (
             <div className="mb-6">
               <div className="h-1.5 rounded-full bg-brand-border overflow-hidden">
@@ -162,10 +238,10 @@ export default function Guide() {
             </div>
           )}
           <ol className="space-y-1">
-            {progress?.steps.map((s, i) => (
+            {displayStepList.map((s) => (
               <li key={s.step_key}>
                 <button
-                  onClick={() => setActiveStep(s.step_key as StepKey)}
+                  onClick={() => setActiveStep(s.step_key as DisplayStep)}
                   className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors
                     ${activeStep === s.step_key
                       ? 'bg-brand-cyan/10 text-brand-cyan'
@@ -178,9 +254,14 @@ export default function Guide() {
                         ? 'bg-brand-cyan/20 text-brand-cyan'
                         : 'bg-brand-border text-brand-muted'}`}
                   >
-                    {s.is_complete ? '✓' : i + 1}
+                    {s.is_complete ? '✓' : s.index + 1}
                   </span>
-                  {s.label}
+                  <span className="flex-1 min-w-0">
+                    {s.label}
+                    {s.optional && (
+                      <span className="block text-[10px] text-brand-muted/60 leading-none mt-0.5">optional</span>
+                    )}
+                  </span>
                 </button>
               </li>
             ))}
@@ -191,19 +272,39 @@ export default function Guide() {
         <main className="flex-1 min-w-0">
           {allComplete ? (
             <AllDone projectId={id!} />
+          ) : activeStep === 'structure' ? (
+            /* ── Structure step — its own self-contained component ── */
+            <div>
+              <div className="mb-6">
+                <h1 className="text-2xl font-bold text-brand-text mb-1">Story Structure</h1>
+                <p className="text-sm text-brand-muted">
+                  Pick a template, get a personalised recommendation, or define your own rules.
+                  This step is entirely optional.
+                </p>
+              </div>
+              <div className="bg-brand-bg-card border border-brand-border rounded-xl p-6">
+                <StructureStep
+                  token={accessToken!}
+                  projectId={id!}
+                  onComplete={(s) => { setProjectStructure(s); advanceStep() }}
+                  onSkip={advanceStep}
+                />
+              </div>
+            </div>
           ) : (
+            /* ── Regular wizard steps ── */
             <>
               <div className="mb-6">
                 <h1 className="text-2xl font-bold text-brand-text mb-1">
-                  {currentStepInfo?.label ?? activeStep}
+                  {currentStepInfo?.label ?? DISPLAY_LABELS[activeStep as StepKey]}
                 </h1>
-                <StepHint step={activeStep} />
+                <StepHint step={activeStep as StepKey} />
               </div>
 
               <div className="bg-brand-bg-card border border-brand-border rounded-xl p-6 mb-6">
                 <StepForm
-                  step={activeStep}
-                  data={stepData[activeStep]}
+                  step={activeStep as StepKey}
+                  data={stepData[activeStep as StepKey]}
                   onChange={updateField}
                   onBlur={handleSave}
                 />
@@ -221,7 +322,7 @@ export default function Guide() {
                 </button>
                 <button
                   onClick={handleSkip}
-                  disabled={STEPS.indexOf(activeStep) === STEPS.length - 1}
+                  disabled={DISPLAY_STEPS.indexOf(activeStep) === DISPLAY_STEPS.length - 1}
                   className="px-4 py-2.5 rounded-lg border border-brand-border text-brand-muted text-sm hover:text-brand-text hover:border-brand-cyan/30 disabled:opacity-30 transition-colors"
                 >
                   Skip for now

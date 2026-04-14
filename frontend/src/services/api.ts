@@ -61,6 +61,10 @@ export interface GuideProgress {
   total_count:     number
 }
 
+export type NovelStructure      = components['schemas']['NovelStructureResponse']
+export type StructureScore      = components['schemas']['StructureScoreEntry']
+export type ProjectStructure    = components['schemas']['ProjectStructureResponse']
+
 export interface ExportJob {
   id:           string
   project_id:   string
@@ -499,6 +503,24 @@ export const api = {
 
     completeStep: (token: string, projectId: string, step: string, data: Record<string, unknown>): Promise<GuideStep> =>
       request<GuideStep>('POST', `/projects/${projectId}/guide/${step}/complete`, data, token),
+  },
+
+  structures: {
+    /** Public catalog — no auth required. */
+    list: (): Promise<NovelStructure[]> =>
+      request<NovelStructure[]>('GET', '/novel-structures'),
+
+    /** Run the scoring matrix. Returns ranked suggestions without persisting. */
+    score: (token: string, projectId: string, answers: Record<string, string[]>): Promise<{ ranked: StructureScore[] }> =>
+      request<{ ranked: StructureScore[] }>('POST', `/projects/${projectId}/guide/structure/score`, { answers }, token),
+
+    /** Get the current structure selection for a project. */
+    get: (token: string, projectId: string): Promise<ProjectStructure> =>
+      request<ProjectStructure>('GET', `/projects/${projectId}/structure`, undefined, token),
+
+    /** Set or clear the structure selection. Pass structure_id: null to clear. */
+    update: (token: string, projectId: string, body: { structure_id?: string | null; structure_custom?: Record<string, unknown> | null }): Promise<ProjectStructure> =>
+      request<ProjectStructure>('PUT', `/projects/${projectId}/structure`, body, token),
   },
 
   export: {

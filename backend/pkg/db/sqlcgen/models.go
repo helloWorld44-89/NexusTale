@@ -127,16 +127,28 @@ type GuideStep struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type NovelStructure struct {
+	ID          uuid.UUID       `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Phases      json.RawMessage `json:"phases"`
+	Strengths   string          `json:"strengths"`
+	Risks       string          `json:"risks"`
+	SortOrder   int32           `json:"sort_order"`
+}
+
 type Project struct {
-	ID          uuid.UUID          `json:"id"`
-	OwnerID     uuid.UUID          `json:"owner_id"`
-	Title       string             `json:"title"`
-	Description string             `json:"description"`
-	Genres      []string           `json:"genres"`
-	GitRepoPath string             `json:"git_repo_path"`
-	Archived    bool               `json:"archived"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID              uuid.UUID          `json:"id"`
+	OwnerID         uuid.UUID          `json:"owner_id"`
+	Title           string             `json:"title"`
+	Description     string             `json:"description"`
+	Genres          []string           `json:"genres"`
+	GitRepoPath     string             `json:"git_repo_path"`
+	Archived        bool               `json:"archived"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	StructureID     pgtype.UUID        `json:"structure_id"`
+	StructureCustom []byte             `json:"structure_custom"`
 }
 
 type ProjectActiveBranch struct {

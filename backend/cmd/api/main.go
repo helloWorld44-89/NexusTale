@@ -139,6 +139,8 @@ func main() {
 		exportGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		exportHandler.RegisterRoutes(exportGroup)
 
+		guideHandler.RegisterPublicRoutes(v1)
+
 		guideGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		guideHandler.RegisterRoutes(guideGroup)
 
