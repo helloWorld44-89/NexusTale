@@ -54,10 +54,15 @@ export default function Settings() {
   }>>({})
 
   // Ollama URL form state
-  const [ollamaURL,      setOllamaURL]      = useState('')
-  const [savingOllama,   setSavingOllama]   = useState(false)
-  const [ollamaErr,      setOllamaErr]      = useState<string | null>(null)
-  const [ollamaOk,       setOllamaOk]       = useState(false)
+  const [ollamaURL,          setOllamaURL]          = useState('')
+  const [savingOllama,       setSavingOllama]        = useState(false)
+  const [ollamaErr,          setOllamaErr]           = useState<string | null>(null)
+  const [ollamaOk,           setOllamaOk]            = useState(false)
+
+  // Ollama model selection state
+  const [ollamaModelSaving,  setOllamaModelSaving]  = useState(false)
+  const [ollamaModelOk,      setOllamaModelOk]      = useState(false)
+  const [ollamaModelErr,     setOllamaModelErr]     = useState<string | null>(null)
 
   // Danger zone state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -155,6 +160,26 @@ export default function Settings() {
     } catch {}
   }
 
+  const handleSetOllamaModel = async (model: string) => {
+    if (!accessToken) return
+    setOllamaModelSaving(true)
+    setOllamaModelOk(false)
+    setOllamaModelErr(null)
+    try {
+      const saved = await api.apiKeys.upsert(accessToken, 'ollama_model', model)
+      setKeys((prev) => {
+        const filtered = prev.filter((k) => k.provider !== 'ollama_model')
+        return [...filtered, saved].sort((a, b) => a.provider.localeCompare(b.provider))
+      })
+      setOllamaModelOk(true)
+      setTimeout(() => setOllamaModelOk(false), 2500)
+    } catch (e: unknown) {
+      setOllamaModelErr(e instanceof Error ? e.message : 'Failed to save model')
+    } finally {
+      setOllamaModelSaving(false)
+    }
+  }
+
   const handleTestConnection = async (provider: string) => {
     if (!accessToken) return
     setTestStates((prev) => ({ ...prev, [provider]: { testing: true } }))
@@ -198,7 +223,7 @@ export default function Settings() {
             <p className="text-sm text-red-400">{error}</p>
           ) : keys.length > 0 ? (
             <div className="mb-6 space-y-3">
-              {keys.filter((k) => k.provider !== 'ollama').map((k) => {
+              {keys.filter((k) => k.provider !== 'ollama' && k.provider !== 'ollama_model').map((k) => {
                 const ts = testStates[k.provider]
                 return (
                   <div key={k.id} className="rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
@@ -301,18 +326,26 @@ export default function Settings() {
             reach the host machine.
           </p>
 
-          {/* Show stored hint + Test Connection if one exists */}
+          {/* Show stored hint + Test Connection + model selector if URL is saved */}
           {keys.find((k) => k.provider === 'ollama') && (() => {
-            const ollamaKey = keys.find((k) => k.provider === 'ollama')!
-            const ts = testStates['ollama']
+            const ollamaKey    = keys.find((k) => k.provider === 'ollama')!
+            const modelKey     = keys.find((k) => k.provider === 'ollama_model')
+            const ts           = testStates['ollama']
+            const modelList    = ts?.result?.ok ? (ts.result.models ?? []) : []
             return (
               <div className="mb-4 rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
+                {/* URL row */}
                 <div className="flex items-center justify-between px-4 py-3">
                   <div>
                     <span className="text-sm font-medium text-brand-text">Ollama URL</span>
                     <span className="ml-3 text-xs text-brand-text-muted font-mono">
                       ••••{ollamaKey.key_hint}
                     </span>
+                    {modelKey && (
+                      <span className="ml-3 text-xs text-brand-purple font-mono" title="Active model">
+                        model: ••••{modelKey.key_hint}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -330,14 +363,27 @@ export default function Settings() {
                     </button>
                   </div>
                 </div>
+
+                {/* Test result panel */}
                 {ts?.result && (
-                  <div className={`px-4 py-2 border-t text-xs ${ts.result.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                  <div className={`px-4 py-3 border-t text-xs ${ts.result.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
                     {ts.result.ok ? (
-                      <div className="space-y-1">
-                        <p className="text-emerald-400 font-medium">Connected — available models:</p>
-                        <ul className="text-brand-muted space-y-0.5">
-                          {ts.result.models?.map((m) => <li key={m} className="font-mono">{m}</li>)}
-                        </ul>
+                      <div className="space-y-2">
+                        <p className="text-emerald-400 font-medium">Connected — click a model to activate it:</p>
+                        {ollamaModelErr && <p className="text-red-400">{ollamaModelErr}</p>}
+                        {ollamaModelOk  && <p className="text-emerald-400">Model saved.</p>}
+                        <div className="space-y-1">
+                          {modelList.map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => handleSetOllamaModel(m)}
+                              disabled={ollamaModelSaving}
+                              className="block w-full text-left font-mono text-brand-text hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <p className="text-red-400">{ts.result.error}</p>
