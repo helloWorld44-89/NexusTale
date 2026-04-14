@@ -531,6 +531,20 @@ export const api = {
       request<ProjectStructure>('PUT', `/projects/${projectId}/structure`, body, token),
   },
 
+  aiInstructions: {
+    /** Get the project's AI bible text. */
+    get: (token: string, projectId: string): Promise<{ instructions: string }> =>
+      request<{ instructions: string }>('GET', `/projects/${projectId}/ai-instructions`, undefined, token),
+
+    /** Save edited AI bible text. */
+    update: (token: string, projectId: string, instructions: string): Promise<{ instructions: string }> =>
+      request<{ instructions: string }>('PUT', `/projects/${projectId}/ai-instructions`, { instructions }, token),
+
+    /** Regenerate AI bible from guide steps (overwrites existing text). */
+    generate: (token: string, projectId: string): Promise<{ instructions: string }> =>
+      request<{ instructions: string }>('POST', `/projects/${projectId}/ai-instructions/generate`, undefined, token),
+  },
+
   export: {
     /**
      * Trigger a markdown export — streams a zip and triggers browser download.

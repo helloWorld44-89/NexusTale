@@ -222,8 +222,8 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 	adapterReq.Mode = req.Mode
 	adapterReq.MaxTokens = maxTok
 
-	// Build the AI context window (chapter summaries + @[entity] snippets).
-	ctxBlock := s.BuildContext(ctx, req.ProjectID, req.BranchName, scene.Content)
+	// Build the AI context window (project identity + chapter content + @[entity] snippets).
+	ctxBlock := s.BuildContext(ctx, req.ProjectID, req.BranchName, scene.Content, req.SceneID)
 
 	switch req.Mode {
 	case adapters.CompleteModeBeat:
@@ -282,11 +282,19 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 	}
 
 	messages := req.Messages
-	ctxBlock := s.BuildContext(ctx, req.ProjectID, req.BranchName, sceneContent)
-	if ctxBlock != "" {
-		// Prepend a system message so the model sees story context first.
-		messages = append([]adapters.Message{{Role: "system", Content: ctxBlock}}, messages...)
-	}
+
+	// Build the context window (project identity + chapter content + @[entity] snippets).
+	ctxBlock := s.BuildContext(ctx, req.ProjectID, req.BranchName, sceneContent, req.SceneID)
+
+	// Always prepend a system message so the model has an identity and story context.
+	// The context block already includes the project title and all chapter content,
+	// so no further project metadata fetch is needed here.
+	nexusSystem := "You are Nexus, an AI co-author and story intelligence embedded in NexusTale. " +
+		"You have full access to this project's chapters, wiki, and timeline. " +
+		"Answer questions about the story accurately, help develop the narrative, suggest improvements, " +
+		"and assist with writing. Be concise unless the user asks for detail.\n\n" + ctxBlock
+
+	messages = append([]adapters.Message{{Role: "system", Content: nexusSystem}}, messages...)
 
 	usage, err := adapter.StreamChat(ctx, adapters.ChatRequest{
 		Messages:  messages,

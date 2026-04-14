@@ -22,23 +22,33 @@ export default function ProjectHome() {
   const [exportErr,  setExportErr]  = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // AI Bible state
+  const [aiBible,         setAiBible]         = useState('')
+  const [aiBibleSaving,   setAiBibleSaving]   = useState(false)
+  const [aiBibleOk,       setAiBibleOk]       = useState(false)
+  const [aiBibleErr,      setAiBibleErr]      = useState<string | null>(null)
+  const [aiBibleRegen,    setAiBibleRegen]    = useState(false)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
     if (!id || !accessToken) return
     let cancelled = false
 
     const load = async () => {
       try {
-        const [p, s, u, st] = await Promise.all([
+        const [p, s, u, st, bible] = await Promise.all([
           api.projects.get(accessToken, id),
           api.projects.stats(accessToken, id),
           api.ai.usage(accessToken, id).catch(() => null),
           api.structures.get(accessToken, id).catch(() => null),
+          api.aiInstructions.get(accessToken, id).catch(() => null),
         ])
         if (!cancelled) {
           setProject(p)
           setStats(s)
           setUsage(u)
           setStructure(st)
+          setAiBible(bible?.instructions ?? '')
         }
       } catch {
         if (!cancelled) navigate('/dashboard', { replace: true })
@@ -76,6 +86,42 @@ export default function ProjectHome() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     }
   }, [epubJobId, accessToken, id])
+
+  const handleAiBibleChange = (value: string) => {
+    setAiBible(value)
+    setAiBibleOk(false)
+    setAiBibleErr(null)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(async () => {
+      if (!accessToken || !id) return
+      setAiBibleSaving(true)
+      try {
+        await api.aiInstructions.update(accessToken, id, value)
+        setAiBibleOk(true)
+        setTimeout(() => setAiBibleOk(false), 2000)
+      } catch (e) {
+        setAiBibleErr(e instanceof Error ? e.message : 'Save failed')
+      } finally {
+        setAiBibleSaving(false)
+      }
+    }, 1200)
+  }
+
+  const handleAiBibleRegenerate = async () => {
+    if (!accessToken || !id) return
+    setAiBibleRegen(true)
+    setAiBibleErr(null)
+    try {
+      const { instructions } = await api.aiInstructions.generate(accessToken, id)
+      setAiBible(instructions)
+      setAiBibleOk(true)
+      setTimeout(() => setAiBibleOk(false), 2000)
+    } catch (e) {
+      setAiBibleErr(e instanceof Error ? e.message : 'Generate failed')
+    } finally {
+      setAiBibleRegen(false)
+    }
+  }
 
   const handleMarkdownExport = async () => {
     if (!accessToken || !id || !project) return
@@ -233,6 +279,40 @@ export default function ProjectHome() {
             onClick={() => navigate(`/projects/${id}/guide`)}
             icon={<GuideIcon />}
           />
+        </div>
+
+        {/* AI Bible panel */}
+        <div className="bg-brand-bg-card border border-brand-border rounded-xl p-6 mb-4">
+          <div className="flex items-start justify-between mb-3 gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-brand-text flex items-center gap-2">
+                <NexusIcon />
+                AI Bible
+              </h2>
+              <p className="text-xs text-brand-muted mt-1">
+                Nexus reads this before every response. Auto-filled from your Novel Guide — edit freely to add tone, world rules, or anything else the AI should always know.
+              </p>
+            </div>
+            <button
+              onClick={handleAiBibleRegenerate}
+              disabled={aiBibleRegen}
+              className="shrink-0 px-3 py-1.5 rounded-lg border border-brand-border text-xs text-brand-muted hover:text-brand-cyan hover:border-brand-cyan/40 transition-colors disabled:opacity-50"
+            >
+              {aiBibleRegen ? 'Generating…' : 'Regenerate from Guide'}
+            </button>
+          </div>
+          <textarea
+            value={aiBible}
+            onChange={(e) => handleAiBibleChange(e.target.value)}
+            placeholder={"You are writing \"My Novel\" — a sci-fi/fantasy story.\n\nPremise: ...\nCharacters:\n- ...\nWorld: ..."}
+            rows={10}
+            className="w-full bg-brand-bg border border-brand-border rounded-lg px-4 py-3 text-sm text-brand-text placeholder:text-brand-muted/40 focus:outline-none focus:border-brand-cyan/60 font-mono resize-y leading-relaxed"
+          />
+          <div className="flex items-center gap-2 mt-2 text-xs">
+            {aiBibleSaving && <span className="text-brand-muted">Saving…</span>}
+            {aiBibleOk    && <span className="text-emerald-400">Saved.</span>}
+            {aiBibleErr   && <span className="text-red-400">{aiBibleErr}</span>}
+          </div>
         </div>
 
         {/* Export panel */}
@@ -403,6 +483,15 @@ function ExportIcon() {
     <svg className="w-4 h-4 text-brand-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M10 3v9M6 8l4 4 4-4" />
       <path d="M4 14v1a2 2 0 002 2h8a2 2 0 002-2v-1" />
+    </svg>
+  )
+}
+
+function NexusIcon() {
+  return (
+    <svg className="w-4 h-4 text-brand-purple" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="2" />
+      <path d="M8 1v3M8 12v3M1 8h3M12 8h3M3.22 3.22l2.12 2.12M10.66 10.66l2.12 2.12M3.22 12.78l2.12-2.12M10.66 5.34l2.12-2.12" />
     </svg>
   )
 }

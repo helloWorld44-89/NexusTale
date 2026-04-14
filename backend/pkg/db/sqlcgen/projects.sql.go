@@ -24,7 +24,7 @@ func (q *Queries) ArchiveProject(ctx context.Context, id uuid.UUID) error {
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (owner_id, title, description, genres, git_repo_path)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom
+RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions
 `
 
 type CreateProjectParams struct {
@@ -56,6 +56,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.UpdatedAt,
 		&i.StructureID,
 		&i.StructureCustom,
+		&i.AiInstructions,
 	)
 	return i, err
 }
@@ -69,8 +70,19 @@ func (q *Queries) DeleteProject(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getAIInstructions = `-- name: GetAIInstructions :one
+SELECT ai_instructions FROM projects WHERE id = $1
+`
+
+func (q *Queries) GetAIInstructions(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getAIInstructions, id)
+	var ai_instructions string
+	err := row.Scan(&ai_instructions)
+	return ai_instructions, err
+}
+
 const getProject = `-- name: GetProject :one
-SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom
+SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions
 FROM projects
 WHERE id = $1
 `
@@ -90,6 +102,7 @@ func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error)
 		&i.UpdatedAt,
 		&i.StructureID,
 		&i.StructureCustom,
+		&i.AiInstructions,
 	)
 	return i, err
 }
@@ -132,7 +145,7 @@ func (q *Queries) GetProjectStats(ctx context.Context, id uuid.UUID) (GetProject
 }
 
 const listProjectsByOwner = `-- name: ListProjectsByOwner :many
-SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom
+SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions
 FROM projects
 WHERE owner_id = $1 AND archived = false
 ORDER BY updated_at DESC
@@ -159,6 +172,7 @@ func (q *Queries) ListProjectsByOwner(ctx context.Context, ownerID uuid.UUID) ([
 			&i.UpdatedAt,
 			&i.StructureID,
 			&i.StructureCustom,
+			&i.AiInstructions,
 		); err != nil {
 			return nil, err
 		}
@@ -170,13 +184,27 @@ func (q *Queries) ListProjectsByOwner(ctx context.Context, ownerID uuid.UUID) ([
 	return items, nil
 }
 
+const updateAIInstructions = `-- name: UpdateAIInstructions :exec
+UPDATE projects SET ai_instructions = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateAIInstructionsParams struct {
+	ID             uuid.UUID `json:"id"`
+	AiInstructions string    `json:"ai_instructions"`
+}
+
+func (q *Queries) UpdateAIInstructions(ctx context.Context, arg UpdateAIInstructionsParams) error {
+	_, err := q.db.Exec(ctx, updateAIInstructions, arg.ID, arg.AiInstructions)
+	return err
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects
 SET title = COALESCE($2, title),
     description = COALESCE($3, description),
     updated_at = now()
 WHERE id = $1
-RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom
+RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions
 `
 
 type UpdateProjectParams struct {
@@ -200,6 +228,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.UpdatedAt,
 		&i.StructureID,
 		&i.StructureCustom,
+		&i.AiInstructions,
 	)
 	return i, err
 }

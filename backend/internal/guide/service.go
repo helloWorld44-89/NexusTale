@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jconder44/nexustale/pkg/apperror"
@@ -189,9 +190,146 @@ func (s *Service) CompleteStep(ctx context.Context, projectID uuid.UUID, stepKey
 			// stuck incomplete just because e.g. a chapter already exists.
 			slog.Warn("guide: side effect failed", "step", stepKey, "error", err)
 		}
+		// Auto-fill the AI bible when instructions are empty.
+		go s.AutoFillAIInstructions(context.Background(), projectID)
 	}
 
 	return toStepResponse(row), nil
+}
+
+// ── AI Bible ──────────────────────────────────────────────────────────────────
+
+// GenerateAIInstructions builds a story-bible text from the project's completed
+// guide steps: premise (logline, theme, genres), characters, and world
+// (setting, locations, magic systems).  Returns an empty string when no
+// useful guide data exists yet.
+func (s *Service) GenerateAIInstructions(ctx context.Context, projectID uuid.UUID) (string, error) {
+	rows, err := s.queries.ListGuideSteps(ctx, projectID)
+	if err != nil {
+		return "", fmt.Errorf("list guide steps: %w", err)
+	}
+
+	stored := make(map[string]sqlcgen.GuideStep)
+	for _, r := range rows {
+		stored[r.StepKey] = r
+	}
+
+	var sb strings.Builder
+
+	// Fetch project for title/genres.
+	p, err := s.queries.GetProject(ctx, projectID)
+	if err == nil && p.Title != "" {
+		sb.WriteString("You are writing \"" + p.Title + "\"")
+		if len(p.Genres) > 0 {
+			sb.WriteString(" — a " + strings.Join(p.Genres, "/") + " story")
+		}
+		sb.WriteString(".\n")
+	}
+
+	// Premise block.
+	if row, ok := stored["premise"]; ok {
+		var d premiseData
+		if json.Unmarshal(row.Data, &d) == nil {
+			if d.Logline != "" {
+				sb.WriteString("\nPremise: " + d.Logline + "\n")
+			}
+			if d.Theme != "" {
+				sb.WriteString("Theme: " + d.Theme + "\n")
+			}
+		}
+	}
+
+	// Characters block.
+	if row, ok := stored["characters"]; ok {
+		var d charactersData
+		if json.Unmarshal(row.Data, &d) == nil && len(d.Characters) > 0 {
+			sb.WriteString("\nCore characters:\n")
+			for _, ch := range d.Characters {
+				if ch.Name == "" {
+					continue
+				}
+				line := "- " + ch.Name
+				if ch.Role != "" {
+					line += " (" + ch.Role + ")"
+				}
+				if ch.Description != "" {
+					line += ": " + ch.Description
+				}
+				sb.WriteString(line + "\n")
+			}
+		}
+	}
+
+	// World block.
+	if row, ok := stored["world"]; ok {
+		var d worldData
+		if json.Unmarshal(row.Data, &d) == nil {
+			if d.Setting != "" {
+				sb.WriteString("\nWorld/Setting: " + d.Setting + "\n")
+			}
+			if len(d.Locations) > 0 {
+				sb.WriteString("Key locations:\n")
+				for _, loc := range d.Locations {
+					if loc.Name == "" {
+						continue
+					}
+					line := "- " + loc.Name
+					if loc.Description != "" {
+						line += ": " + loc.Description
+					}
+					sb.WriteString(line + "\n")
+				}
+			}
+			if len(d.MagicSystems) > 0 {
+				sb.WriteString("Systems/Magic:\n")
+				for _, ms := range d.MagicSystems {
+					if ms.Name == "" {
+						continue
+					}
+					line := "- " + ms.Name
+					if ms.Description != "" {
+						line += ": " + ms.Description
+					}
+					sb.WriteString(line + "\n")
+				}
+			}
+		}
+	}
+
+	return strings.TrimSpace(sb.String()), nil
+}
+
+// GetAIInstructionsText returns the stored ai_instructions text for a project.
+func (s *Service) GetAIInstructionsText(ctx context.Context, projectID uuid.UUID) (string, error) {
+	return s.queries.GetAIInstructions(ctx, projectID)
+}
+
+// SaveAIInstructions persists the given text as the project's ai_instructions.
+func (s *Service) SaveAIInstructions(ctx context.Context, projectID uuid.UUID, text string) error {
+	return s.queries.UpdateAIInstructions(ctx, sqlcgen.UpdateAIInstructionsParams{
+		ID:             projectID,
+		AiInstructions: text,
+	})
+}
+
+// AutoFillAIInstructions generates and saves ai_instructions for a project only
+// when the field is currently empty.  Called non-blocking after a guide step
+// completes so the user always has a usable baseline without manual action.
+func (s *Service) AutoFillAIInstructions(ctx context.Context, projectID uuid.UUID) {
+	existing, err := s.queries.GetAIInstructions(ctx, projectID)
+	if err != nil || strings.TrimSpace(existing) != "" {
+		return // already has content — never overwrite user edits
+	}
+	text, err := s.GenerateAIInstructions(ctx, projectID)
+	if err != nil || text == "" {
+		return
+	}
+	if err := s.queries.UpdateAIInstructions(ctx, sqlcgen.UpdateAIInstructionsParams{
+		ID:             projectID,
+		AiInstructions: text,
+	}); err != nil {
+		slog.Warn("guide: auto-fill ai_instructions failed", "project_id", projectID, "error", err)
+	}
 }
 
 // ── side effects ──────────────────────────────────────────────────────────────
