@@ -2,7 +2,7 @@
 // worldbuilding facts, and craft references. Lives in WikiHub under the
 // "Research" tab. Notes can be pinned into the AI context window via
 // the Context Pins panel in the Editor.
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { api } from '@/services/api'
 import type { ResearchNote } from '@/services/api'
 
@@ -121,13 +121,15 @@ export default function ResearchNotesTab({ token, projectId }: ResearchNotesTabP
 // ── note card ─────────────────────────────────────────────────────────────────
 
 function NoteCard({ note, onClick }: { note: ResearchNote; onClick: () => void }) {
-  const relTime = (() => {
-    const diff = Date.now() - new Date(note.updated_at).getTime()
+  // Capture current time once on mount so the relative-time calc is pure during render.
+  const [now] = useState(Date.now)
+  const relTime = useMemo(() => {
+    const diff = now - new Date(note.updated_at).getTime()
     const days = Math.floor(diff / 86_400_000)
     if (days === 0) return 'today'
     if (days === 1) return 'yesterday'
     return `${days}d ago`
-  })()
+  }, [now, note.updated_at])
 
   const bodyPreview = note.body.slice(0, 140)
 

@@ -2,7 +2,7 @@
 // Left column: session list. Right column: active session chat.
 // Messages are persisted to the backend after each exchange.
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { api } from '@/services/api'
 import type { WorkshopSession, WorkshopMessage } from '@/services/api'
 
@@ -527,16 +527,18 @@ function SessionItem({
   onDelete: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
+  // Capture current time once on mount so the relative-time calc is pure during render.
+  const [now] = useState(Date.now)
 
-  const relTime = (() => {
-    const diff = Date.now() - new Date(session.updated_at).getTime()
+  const relTime = useMemo(() => {
+    const diff = now - new Date(session.updated_at).getTime()
     const mins = Math.floor(diff / 60_000)
     if (mins < 1) return 'just now'
     if (mins < 60) return `${mins}m ago`
     const hrs = Math.floor(mins / 60)
     if (hrs < 24) return `${hrs}h ago`
     return `${Math.floor(hrs / 24)}d ago`
-  })()
+  }, [now, session.updated_at])
 
   return (
     <div
