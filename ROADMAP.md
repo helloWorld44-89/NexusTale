@@ -222,8 +222,8 @@ The author opts in to letting Nexus write directly to the manuscript — appendi
 
 - [x] **`[Light]`** Continue button — "Continue →" in the ScribeEditor toolbar; streams `/ai/complete?mode=continue`; same Accept/Retry/Discard flow as BeatInput; no backend changes needed
 - [x] **`[Light]`** Insert into scene — hover-reveal "insert into scene" button on every completed assistant message in Nexus chat and Workshop; appends text to active scene with autosave; only shown when a scene is active
-- [ ] **`[Medium]`** Manuscript tool definitions — define backend tool schema (`append_to_scene`, `replace_scene_content`, `create_scene`, `create_chapter`, `create_act`); register as callable functions in the AI service; extend OpenAI + Anthropic adapters to emit tool-call events in the SSE stream
-- [ ] **`[Medium]`** Tool execution + author control — frontend intercepts `[TOOL:...]` SSE events; executes the corresponding API call; emits an inline event row in the panel ("↳ Appended 3 paragraphs to Chapter 2, Scene 1") with an Undo button; live scene content refresh if the active scene was written to; "Allow AI writes" toggle per Workshop session (opt-in, off by default)
+- [x] **`[Medium]`** Manuscript tool definitions — `adapters/tools.go` (ToolAdapter interface); Anthropic + OpenAI `ChatTools` + `BuildToolResultMessages`; `ai/tools.go` defines 5 tools (append_to_scene, replace_scene_content, create_scene, create_chapter, create_act) + executor; `StreamChatWithTools` agentic loop (max 10 rounds); `tools_enabled` in WorkshopChat; WorkshopPanel Agent toggle + tool notice banners
+- [ ] **`[Medium]`** Tool execution author control — live scene content refresh when the active scene was written to by a tool; per-tool Undo action (restore prior scene content); inline confirmation rows in Workshop panel with scene link; "Allow AI writes" toggle remembered per session
 - [ ] **`[Heavy]`** Agent mode in Workshop — high-level instruction loop ("Write Act 2 — three chapters, ~2000 words each"); AI autonomously calls manuscript tools in sequence; streams progress notifications; author can Stop at any point; requires Steps 2–3 above
 
 ### C3 — Collaboration (last, largest)
@@ -272,4 +272,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-04-16: C2 fully complete (incl. prompt history browser); C2.5 Step 1 (Continue + Insert into scene) shipped. Next: C2.5 Steps 2–4 (manuscript tool definitions, execution loop, agent mode).*
+*Last updated 2026-04-16: C2.5 Steps 1–2 shipped (Continue button, Insert-into-scene, manuscript tool definitions + agentic loop). Next: C2.5 Step 3 (live scene refresh + undo on tool writes), then C2.5 Step 4 (full agent mode), then C3 (collaboration).*
