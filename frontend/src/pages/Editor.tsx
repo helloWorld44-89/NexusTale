@@ -7,6 +7,7 @@ import type { Act, Chapter, Scene } from '@/services/api'
 import TopBar from '@/components/layout/TopBar'
 import StatusBar from '@/components/layout/StatusBar'
 import ChatBar from '@/components/ai/ChatBar'
+import ContextPanel from '@/components/ai/ContextPanel'
 import GitPanel from '@/components/editor/GitPanel'
 import WikiPanel from '@/components/wiki/WikiPanel'
 import ScribeEditor from '@/components/editor/ScribeEditor'
@@ -15,7 +16,7 @@ import ProjectExplorer from '@/components/project/ProjectExplorer'
 import type { ActItem } from '@/components/project/ProjectExplorer'
 import ActivityBar from '@/components/layout/ActivityBar'
 
-export type LeftPanel = 'chat' | 'git' | 'wiki' | 'none'
+export type LeftPanel = 'chat' | 'context' | 'git' | 'wiki' | 'none'
 
 // Chapter augmented with its scenes for the explorer tree.
 interface ChapterWithScenes extends Chapter {
@@ -281,6 +282,7 @@ export default function Editor() {
           <ActivityBar
             activePanel={leftPanel}
             onToggleChat={() => toggleLeftPanel('chat')}
+            onToggleContext={() => toggleLeftPanel('context')}
             onToggleGit={() => toggleLeftPanel('git')}
             onToggleWiki={() => toggleLeftPanel('wiki')}
           />
@@ -292,6 +294,11 @@ export default function Editor() {
             sceneId={selectedSceneId ?? undefined}
             branch={currentBranch}
           />
+        )}
+        {!focusMode && leftPanel === 'context' && projectId && accessToken && (
+          <div className="w-72 shrink-0 flex flex-col border-r border-brand-border bg-brand-bg overflow-hidden">
+            <ContextPanel token={accessToken} projectId={projectId} />
+          </div>
         )}
         {!focusMode && leftPanel === 'git' && projectId && accessToken && (
           <GitPanel

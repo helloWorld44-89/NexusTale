@@ -19,17 +19,19 @@ import (
 const epubExpiry = 24 * time.Hour
 
 // Service handles project export operations — synchronous Markdown zip streaming
-// and asynchronous EPUB generation via a background worker pool.
+// and asynchronous EPUB/DOCX generation via a background worker pool.
 type Service struct {
 	queries *sqlcgen.Queries
 	store   *storage.Client
-	workCh  chan epubJob
+	workCh  chan asyncJob
 }
 
-type epubJob struct {
+// asyncJob carries everything the background worker needs to build any async format.
+type asyncJob struct {
 	jobID     uuid.UUID
 	projectID uuid.UUID
 	title     string
+	format    string // "epub" | "docx"
 }
 
 // JobResponse is the API-facing representation of an export job.
@@ -48,7 +50,7 @@ func NewService(queries *sqlcgen.Queries, store *storage.Client) *Service {
 	return &Service{
 		queries: queries,
 		store:   store,
-		workCh:  make(chan epubJob, 64),
+		workCh:  make(chan asyncJob, 64),
 	}
 }
 
@@ -61,21 +63,30 @@ func (s *Service) ExportMarkdown(ctx context.Context, projectID uuid.UUID, w io.
 // EnqueueEPUB inserts a pending export job and sends it to the background worker
 // pool. Returns the job ID for the caller to surface as a 202 response.
 func (s *Service) EnqueueEPUB(ctx context.Context, projectID, userID uuid.UUID, title string) (uuid.UUID, error) {
+	return s.enqueueAsync(ctx, projectID, userID, title, "epub")
+}
+
+// EnqueueDOCX inserts a pending DOCX export job and sends it to the worker pool.
+func (s *Service) EnqueueDOCX(ctx context.Context, projectID, userID uuid.UUID, title string) (uuid.UUID, error) {
+	return s.enqueueAsync(ctx, projectID, userID, title, "docx")
+}
+
+// enqueueAsync is the shared implementation for all async export formats.
+func (s *Service) enqueueAsync(ctx context.Context, projectID, userID uuid.UUID, title, format string) (uuid.UUID, error) {
 	job, err := s.queries.InsertExportJob(ctx, sqlcgen.InsertExportJobParams{
 		ProjectID: projectID,
 		UserID:    userID,
-		Format:    "epub",
+		Format:    format,
 	})
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("insert export job: %w", err)
 	}
 
 	select {
-	case s.workCh <- epubJob{jobID: job.ID, projectID: projectID, title: title}:
+	case s.workCh <- asyncJob{jobID: job.ID, projectID: projectID, title: title, format: format}:
 	default:
-		// Buffer full — the job row exists in the DB with status=pending.
-		// At this scale (single-writer dev tool) this should never happen.
-		slog.Warn("export worker channel full; job remains pending", "job_id", job.ID)
+		// Buffer full — job row exists in the DB with status=pending.
+		slog.Warn("export worker channel full; job remains pending", "job_id", job.ID, "format", format)
 	}
 
 	return job.ID, nil
@@ -117,11 +128,12 @@ func (s *Service) StartWorkers(n int) {
 
 func (s *Service) runWorker() {
 	for job := range s.workCh {
-		s.processEPUB(job)
+		s.processAsync(job)
 	}
 }
 
-func (s *Service) processEPUB(job epubJob) {
+// processAsync dispatches a background export job to the appropriate builder.
+func (s *Service) processAsync(job asyncJob) {
 	ctx := context.Background()
 
 	if err := s.queries.UpdateExportJobProcessing(ctx, job.jobID); err != nil {
@@ -129,9 +141,29 @@ func (s *Service) processEPUB(job epubJob) {
 		return
 	}
 
-	tmpPath, err := BuildEPUB(ctx, s.queries, job.projectID, job.title)
+	var (
+		tmpPath     string
+		contentType string
+		ext         string
+		err         error
+	)
+
+	switch job.format {
+	case "epub":
+		tmpPath, err = BuildEPUB(ctx, s.queries, job.projectID, job.title)
+		contentType = "application/epub+zip"
+		ext = "epub"
+	case "docx":
+		tmpPath, err = BuildDOCX(ctx, s.queries, job.projectID, job.title)
+		contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		ext = "docx"
+	default:
+		s.markFailed(ctx, job.jobID, "unknown format: "+job.format)
+		return
+	}
+
 	if err != nil {
-		slog.Error("epub build failed", "job_id", job.jobID, "error", err)
+		slog.Error("export build failed", "format", job.format, "job_id", job.jobID, "error", err)
 		s.markFailed(ctx, job.jobID, err.Error())
 		return
 	}
@@ -150,8 +182,8 @@ func (s *Service) processEPUB(job epubJob) {
 		return
 	}
 
-	key := fmt.Sprintf("exports/%s/%s.epub", job.projectID, job.jobID)
-	if err := s.store.PutObject(ctx, key, "application/epub+zip", f, info.Size()); err != nil {
+	key := fmt.Sprintf("exports/%s/%s.%s", job.projectID, job.jobID, ext)
+	if err := s.store.PutObject(ctx, key, contentType, f, info.Size()); err != nil {
 		s.markFailed(ctx, job.jobID, "upload to storage: "+err.Error())
 		return
 	}
@@ -165,7 +197,7 @@ func (s *Service) processEPUB(job epubJob) {
 		slog.Error("failed to mark export job done", "job_id", job.jobID, "error", err)
 	}
 
-	slog.Info("epub export complete", "job_id", job.jobID, "key", key)
+	slog.Info("export complete", "format", job.format, "job_id", job.jobID, "key", key)
 }
 
 func (s *Service) markFailed(ctx context.Context, jobID uuid.UUID, msg string) {

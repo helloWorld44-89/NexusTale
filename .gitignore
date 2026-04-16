@@ -17,6 +17,7 @@ frontend/build/
 frontend/.vite/
 frontend/coverage/
 frontend/*.local
+frontend/*.tsbuildinfo
 
 # ── Environment & secrets ─────────────────────────────────────────────────────
 .env

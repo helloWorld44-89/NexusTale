@@ -20,7 +20,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | **AI context** | `BuildContext`: project identity + AI Bible + chapter summaries (raw content fallback) + current scene + @[Entity] refs + story structure; Nexus identity system prompt on every chat |
 | **AI Bible** | `projects.ai_instructions` (migration 016); auto-generated from guide steps on completion; editable on ProjectHome; 3 API routes |
 | **Writing styles** | `internal/prompts`: `project_prompts` table; CRUD routes; style applied to AI calls via `prompt_id` |
-| **Export** | Markdown (sync zip) + EPUB (async job, MinIO, presigned URL); `export_jobs` table; goroutine worker pool |
+| **Export** | Markdown (sync zip) + EPUB + DOCX (async jobs, MinIO, presigned URL); `export_jobs` table; goroutine worker pool (`asyncJob{format}`) |
 | **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene); side effects populate wiki + manuscript; guide steps auto-fill AI Bible |
 | **Story structures** | 12 seeded templates + scoring matrix; freeform option; structure badge on ProjectHome; phase banners in WikiHub timeline |
 | **Collaboration** | Package stubbed; no HTTP registration |
@@ -174,8 +174,8 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 ### B4 — Export ✓
 - [x] **B4.1** Backend — Markdown synchronous zip: acts → chapters → scenes as `.md` with YAML front matter; streamed response
 - [x] **B4.2** Backend — EPUB async job (Migration 013: `export_jobs`); 2-worker goroutine pool; go-epub → MinIO upload; presigned URL (1h TTL)
-- [x] **B4.3** Backend — `GET /projects/:id/export/:job_id` polling; `POST /projects/:id/export` body `{format}`
-- [x] **B4.4** Frontend — Export panel on ProjectHome: Markdown download (fetch → blob), EPUB trigger + 3s poll + download link
+- [x] **B4.3** Backend — `GET /projects/:id/export/:job_id` polling; `POST /projects/:id/export` body `{format: "markdown"|"epub"|"docx"}`
+- [x] **B4.4** Frontend — Export panel on ProjectHome: Markdown download (fetch → blob), EPUB + DOCX trigger + 3s poll + download link
 
 ### B5 — Novel guide ✓
 - [x] **B5.1** Backend — Migration 014: `guide_steps` table; `GET /projects/:id/guide`; `POST /projects/:id/guide/:step` (save); `POST .../complete` (side effects)
@@ -205,15 +205,16 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 - [x] **`[Light]`** StreamChat Nexus identity — always prepends "You are Nexus…" system prompt; context appended
 - [x] **`[Heavy]`** AI Bible — migration 016 `projects.ai_instructions`; guide auto-fills on step completion (only when empty); `GET/PUT /projects/:id/ai-instructions` + `POST .../generate`; injected as `## Story bible` in every AI call; ProjectHome card with autosave textarea + Regenerate button
 
-### C1 — Export depth ← next
-- [ ] **`[Medium]`** DOCX export — add to existing export worker (reuse job table + MinIO path); clean manuscript formatting (headings, scene breaks, front matter)
-- [ ] **`[Medium]`** Wiki image upload — presigned MinIO upload for entity portrait images; stored URL displayed in entity detail panel
+### C1 — Export depth ✅ complete
+- [x] **`[Medium]`** DOCX export — raw OOXML builder (`internal/export/docx.go`); Times New Roman 12pt double-spaced; page breaks between chapters; `# # #` scene breaks; no new dependency (2026-04-15)
+- [x] **`[Medium]`** Wiki image upload — migration 017 `wiki_entities.image_key TEXT`; multipart upload → backend → MinIO (`PutObject`/`DeleteObject`); `PresignedGetURL` (4 hr TTL) in `EntityResponse.image_url`; portrait display + upload/remove in `EntityDetail`; OpenAPI spec updated + types regenerated (2026-04-15)
 
 ### C2 — AI depth
-- [ ] **`[Heavy]`** Explicit AI context panel — writer-curated additions to the AI context window: pin wiki entities by name or tag, include specific chapters/scenes as full text or summary
+- [x] **`[Heavy]`** Explicit AI context panel — writer-curated additions to the AI context window: pin wiki entities by name or tag, include specific chapters/scenes as full text or summary
 - [ ] **`[Heavy]`** Multi-session Workshop — named persistent chat sessions per project (`workshop_sessions` table); each session stores `[{role, content, timestamp}]`; sidebar panel; exportable to Markdown
+- [ ] **`[Medium]`** Research notes — freeform per-project scratchpad (`research_notes` table: title, body, source_url, tags); accessible from WikiHub "Research" tab and injectable into AI context; designed for web quotes, worldbuilding references, and craft notes
 - [ ] **`[Medium]`** Prompt history browser — store first 500 chars of assembled prompt + beat text in `ai_usage`; UI panel to browse and re-apply previous beats
-- [ ] **`[Light]`** Import/export writing styles — download project style presets as JSON; import into another project
+- [x] **`[Light]`** Import/export writing styles — download project style presets as JSON; import into another project
 
 ### C3 — Collaboration (last, largest)
 - [ ] **`[Heaviest]`** WebSocket + CRDT — real-time co-editing per scene; CRDT library choice (Yjs vs Automerge — lock before starting); Redis pub/sub fan-out; presence indicators; roles (editor/commenter/viewer) + invite flow; Git snapshot on idle
@@ -225,6 +226,7 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 - Series-level continuity management
 - Multi-region, scale-out collaboration tuning
 - **OpenAPI catch-up** — bring `docs/openapi.yaml` current with all B1–C routes; regenerate `api-types.ts`; restore codegen for newer endpoints (schedule before C3)
+- **Customizable workspaces** — per-user, per-project saved panel layouts (which panels are open, their widths, which scene/chapter is active); named workspace presets ("drafting", "research", "editing") switchable from the TopBar; stored in `user_workspaces` table (JSONB layout blob); synced across sessions so the editor opens exactly where you left off
 
 ### D-Desktop — Native desktop app (optional, Tauri-based)
 
@@ -260,4 +262,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-04-14: Phase A, A+, and B fully complete. C0 (editor navigation, AI connection test, Nexus rename, Ollama model selector) and C0.5 (AI context enrichment, AI Bible) complete. Next: C1 — DOCX export + wiki image upload.*
+*Last updated 2026-04-15: Phase A, A+, B, C0, C0.5, C1, and C2 context panel complete. Next: C2 remainder — multi-session workshop, research notes, prompt history browser, import/export writing styles.*

@@ -136,7 +136,7 @@ func TestBuildContext_ProjectIdentity(t *testing.T) {
 	user, _ := q.CreateUser(ctx, sqlcgen.CreateUserParams{Email: "ctx-id@test.com", DisplayName: "T", PasswordHash: "x", Role: sqlcgen.UserRoleAuthor})
 	projectID := seedProject(t, ctx, q, user.ID, "The Starfall Accord", []string{"sci-fi", "thriller"}, "")
 
-	result := svc.BuildContext(ctx, projectID, "canon", "", uuid.Nil)
+	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", "", uuid.Nil)
 
 	if !strings.Contains(result, "The Starfall Accord") {
 		t.Error("context should include project title")
@@ -157,7 +157,7 @@ func TestBuildContext_AIBibleIncluded(t *testing.T) {
 	user, _ := q.CreateUser(ctx, sqlcgen.CreateUserParams{Email: "ctx-bible@test.com", DisplayName: "T", PasswordHash: "x", Role: sqlcgen.UserRoleAuthor})
 	projectID := seedProject(t, ctx, q, user.ID, "Ember Worlds", nil, "This story is set in a volcanic archipelago where fire magic is forbidden.")
 
-	result := svc.BuildContext(ctx, projectID, "canon", "", uuid.Nil)
+	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", "", uuid.Nil)
 
 	if !strings.Contains(result, "Story bible") {
 		t.Error("context should include Story bible header when ai_instructions is set")
@@ -181,7 +181,7 @@ func TestBuildContext_RawSceneFallback(t *testing.T) {
 	chapterID := seedChapter(t, ctx, q, projectID, actID, "Chapter One: The Arrival")
 	seedScene(t, ctx, q, chapterID, "Scene 1", "The ship descended through cloud cover. Captain Mira checked her instruments for the third time.")
 
-	result := svc.BuildContext(ctx, projectID, "canon", "", uuid.Nil)
+	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", "", uuid.Nil)
 
 	if !strings.Contains(result, "Story so far") {
 		t.Error("context should include Story so far block")
@@ -214,7 +214,7 @@ func TestBuildContext_RawFallbackTruncatedAt600Runes(t *testing.T) {
 	longContent := strings.Repeat("The ancient hall was quiet. ", 30) // ~810 runes
 	seedScene(t, ctx, q, chapterID, "Opening", longContent)
 
-	result := svc.BuildContext(ctx, projectID, "canon", "", uuid.Nil)
+	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", "", uuid.Nil)
 
 	if !strings.Contains(result, "…") {
 		t.Error("long raw content should be truncated with ellipsis")
@@ -244,7 +244,7 @@ func TestBuildContext_UsesSummaryWhenPresent(t *testing.T) {
 		t.Fatalf("upsert summary: %v", err)
 	}
 
-	result := svc.BuildContext(ctx, projectID, "canon", "", uuid.Nil)
+	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", "", uuid.Nil)
 
 	if !strings.Contains(result, summaryText) {
 		t.Error("context should use AI chapter summary when available")
@@ -272,7 +272,7 @@ func TestBuildContext_CurrentSceneBlock(t *testing.T) {
 	sceneContent := "She pushed open the iron gate and stepped into the garden."
 	sceneID := seedScene(t, ctx, q, chapterID, "The Garden Scene", sceneContent)
 
-	result := svc.BuildContext(ctx, projectID, "canon", sceneContent, sceneID)
+	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", sceneContent, sceneID)
 
 	if !strings.Contains(result, "Current scene") {
 		t.Error("context should include Current scene header")
@@ -305,7 +305,7 @@ func TestBuildContext_EntityReferenceInjected(t *testing.T) {
 	sceneContent := "@[Captain Rael] stepped onto the bridge."
 	sceneID := seedScene(t, ctx, q, chapterID, "Bridge", sceneContent)
 
-	result := svc.BuildContext(ctx, projectID, "canon", sceneContent, sceneID)
+	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", sceneContent, sceneID)
 
 	if !strings.Contains(result, "Referenced entities") {
 		t.Error("context should include Referenced entities section")
@@ -325,7 +325,7 @@ func TestBuildContext_EmptyProjectID_ReturnsEmpty(t *testing.T) {
 	authSvc := auth.NewService(q, testutil.TestJWTSecret, testutil.TestAccessExpiry, testutil.TestRefreshExpiry, testutil.TestBcryptCost, make([]byte, 32))
 	svc := newAIService(t, q, authSvc)
 
-	result := svc.BuildContext(context.Background(), uuid.Nil, "canon", "", uuid.Nil)
+	result := svc.BuildContext(context.Background(), uuid.Nil, uuid.Nil, "canon", "", uuid.Nil)
 	if result != "" {
 		t.Errorf("expected empty context for nil project, got: %q", result)
 	}
@@ -355,7 +355,7 @@ func TestBuildContext_BranchFallsBackToCanon(t *testing.T) {
 	}
 
 	// Request context on "dark-timeline" which has no summaries — expect canon fallback.
-	result := svc.BuildContext(ctx, projectID, "dark-timeline", "", uuid.Nil)
+	result := svc.BuildContext(ctx, projectID, uuid.Nil, "dark-timeline", "", uuid.Nil)
 
 	if !strings.Contains(result, canonSummary) {
 		t.Error("context on branchless timeline should fall back to canon summary")

@@ -2,13 +2,14 @@
 import type { LeftPanel } from '@/pages/Editor'
 
 interface ActivityBarProps {
-  activePanel: LeftPanel
-  onToggleChat: () => void
-  onToggleGit: () => void
-  onToggleWiki: () => void
+  activePanel:    LeftPanel
+  onToggleChat:    () => void
+  onToggleGit:     () => void
+  onToggleWiki:    () => void
+  onToggleContext: () => void
 }
 
-export default function ActivityBar({ activePanel, onToggleChat, onToggleGit, onToggleWiki }: ActivityBarProps) {
+export default function ActivityBar({ activePanel, onToggleChat, onToggleGit, onToggleWiki, onToggleContext }: ActivityBarProps) {
   return (
     <div className="w-12 flex flex-col items-center py-2 gap-1 bg-brand-bg border-r border-brand-border shrink-0">
       <ActivityButton
@@ -17,6 +18,14 @@ export default function ActivityBar({ activePanel, onToggleChat, onToggleGit, on
         onClick={onToggleChat}
       >
         <ChatIcon />
+      </ActivityButton>
+
+      <ActivityButton
+        active={activePanel === 'context'}
+        title="Context Pins"
+        onClick={onToggleContext}
+      >
+        <PinIcon />
       </ActivityButton>
 
       <ActivityButton
@@ -71,6 +80,14 @@ function ChatIcon() {
   return (
     <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
       <path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v7a2 2 0 01-2 2H6l-4 3V5z" />
+    </svg>
+  )
+}
+
+function PinIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l-1.5 5.5L16 9l-6 9-1.5-5.5L3 11l9-9z" />
     </svg>
   )
 }

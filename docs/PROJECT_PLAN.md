@@ -368,7 +368,7 @@ Hierarchy is now **Project → Act → Chapter → Scene**. Acts are required; a
 **Full spec:** [specs/phase-b.md](./specs/phase-b.md)  
 **Sub-specs:** [specs/phase-b-ai.md](./specs/phase-b-ai.md) · [specs/phase-b-export.md](./specs/phase-b-export.md) · [specs/phase-b-guide.md](./specs/phase-b-guide.md)
 
-#### B1 — AI proxy + adapters
+#### B1 — AI proxy + adapters ✅ complete
 Wire the existing `internal/ai` package to HTTP routes. Adapters must implement a common interface so model providers are interchangeable.
 
 - Adapter interface: `Complete`, `Chat`, `Summarize`, `StreamComplete`, `StreamChat`, `IsThinkingModel`
@@ -380,10 +380,10 @@ Wire the existing `internal/ai` package to HTTP routes. Adapters must implement 
 - Routes: `POST /projects/:id/ai/complete` (with `mode`, `beat`, `prompt_id`), `/ai/chat`, `/ai/summarize`
 - Frontend: ChatBar wired to `/ai/chat` with SSE streaming
 
-#### B1.5 — Writing styles (prose prompts)
+#### B1.5 — Writing styles (prose prompts) ✅ complete
 Named AI style presets stored per project. Writers can switch between "gritty noir" and "epic fantasy voice" without changing any settings.
 
-- Migration 014: `project_prompts` table (`id, project_id, name, category, content, system_content, sort_order`); `user_api_keys.force_non_streaming BOOL`
+- Migration 010: `project_prompts` table (`id, project_id, name, category, content, system_content, sort_order`); `user_api_keys.force_non_streaming BOOL`
 - `category`: `prose` (for complete/beat) or `workshop` (for chat)
 - `system_content` overrides the system prompt (template placeholders still substituted); `content` appended as style guidance to user turn
 - Routes: `GET/POST /projects/:id/prompts`, `PUT/DELETE /projects/:id/prompts/:promptId`
@@ -410,18 +410,18 @@ Track cost per project so writers understand AI spend before it becomes a surpri
 - ✅ `GET /projects/:id/ai/usage` → aggregate (total tokens, estimated cost this month)
 - ✅ Frontend: usage summary on ProjectHome stat cards
 
-#### B4 — Export
-Two export modes: fast synchronous Markdown for quick backup; async EPUB for finished drafts.
+#### B4 — Export ✅ complete
+Two export modes: fast synchronous Markdown for quick backup; async EPUB/DOCX for finished drafts.
 
 - Markdown: walk acts → chapters → scenes, render `.md` with YAML front matter, zip and stream as `application/zip`
-- EPUB: async job queued to a goroutine pool; result uploaded to MinIO; polling endpoint returns signed URL
+- EPUB + DOCX: async jobs queued to a goroutine pool; results uploaded to MinIO; polling endpoint returns presigned URL
 - Migration 013: `export_jobs` table (`id, project_id, user_id, format, status, minio_key, error_msg, expires_at, created_at`)
 - `status` enum: `pending | processing | done | failed`
-- Routes: `POST /projects/:id/export` (body: `{format:"markdown"|"epub"}`) → `{job_id}`; `GET /projects/:id/export/:job_id` → status + signed URL when done
-- Markdown is synchronous (streamed zip response, no job row); EPUB uses the async path
-- Frontend: Export panel on ProjectHome — Markdown "Download" button (direct fetch), EPUB "Generate" → poll every 3 s → download link
+- Routes: `POST /projects/:id/export` (body: `{format:"markdown"|"epub"|"docx"}`) → `{job_id}`; `GET /projects/:id/export/:job_id` → status + signed URL when done
+- Markdown is synchronous (streamed zip response, no job row); EPUB and DOCX use the async path
+- Frontend: Export panel on ProjectHome — Markdown "Download" button (direct fetch), EPUB/DOCX "Generate" → poll every 3 s → download link
 
-#### B5 — Novel guide
+#### B5 — Novel guide ✅ complete
 A 5-step onboarding wizard that scaffolds a project from premise to first scene, pre-filling wiki and manuscript data. All steps are skippable.
 
 - Steps: Premise → Core Characters → World Basics → Chapter Outline → First Scene
@@ -461,15 +461,16 @@ These fixes were prerequisite to AI being genuinely useful for writers — block
 - ✅ **`[Light]` StreamChat identity** — Chat now always prepends a Nexus identity system prompt ("You are Nexus, an AI co-author…") so the model has role + project context even on the first message; context block appended to the identity prompt.
 - ✅ **`[Heavy]` AI Bible (migration 016)** — `projects.ai_instructions TEXT` column; guide service `GenerateAIInstructions()` builds prose story bible (title, premise, theme, characters, world, magic systems) from completed guide steps; `AutoFillAIInstructions()` saves it when field is empty on any step completion. Three routes: `GET/PUT /projects/:id/ai-instructions` + `POST /projects/:id/ai-instructions/generate` (force-regenerate from guide, overwrites). `BuildContext` injects bible as `## Story bible` block above chapter content. ProjectHome AI Bible card: autosaving textarea (1.2s debounce) + "Regenerate from Guide" button.
 
-#### C1 — Export depth
+#### C1 — Export depth ✅ complete
 
-- **`[Medium]` DOCX export** — add DOCX to the existing export worker (reuse job table + MinIO path); target: clean manuscript formatting (headings, scene breaks, front matter)
-- **`[Medium]` Wiki image upload** — presigned MinIO upload for entity portrait images; stored URL displayed in entity detail panel
+- ✅ **`[Medium]` DOCX export** — raw OOXML zip builder (`internal/export/docx.go`); Times New Roman 12pt double-spaced manuscript formatting; page breaks between chapters; italic centered scene headings; `# # #` scene breaks; no new dependency; `asyncJob{format}` generalizes the worker pool for EPUB + DOCX
+- ✅ **`[Medium]` Wiki image upload** — migration 017 adds `image_key TEXT` to `wiki_entities`; multipart upload to backend → MinIO; `PresignedGetURL` returned in `EntityResponse.image_url` (4 hr TTL); `DeleteObject` cleans up on replace/remove/entity-delete; portrait display + upload/remove in `EntityDetail`; OpenAPI spec + types regenerated
 
 #### C2 — AI depth
 
 - **`[Heavy]` Explicit AI context panel** — writer-curated additions to the AI context window: pin wiki entities by name or tag, include specific chapters/scenes as full text or summary; rendered as an extra context block appended to `BuildContext`; power-user complement to automatic summarisation
 - **`[Heavy]` Multi-session Workshop** — named persistent chat sessions per project (`workshop_sessions` table); each session stores `[{role, content, timestamp}]`; uses `category: "workshop"` system prompt; sessions listed in a sidebar panel; exportable to Markdown
+- **`[Medium]` Research notes** — freeform per-project scratchpad (`research_notes` table: `id, project_id, title, body TEXT, source_url, tags TEXT[], created_at, updated_at`); "Research" tab in WikiHub; CRUD routes behind `RequireAuth`; notes can be pinned into AI context (via the explicit context panel) so pasted references become part of the model's knowledge during a session; designed for web quotes, worldbuilding facts, craft references
 - **`[Medium]` Prompt history browser** — store first 500 chars of assembled prompt + beat text in `ai_usage`; settings-adjacent UI panel to browse, copy, and re-apply previous beats
 - **`[Light]` Import/export writing styles** — download project style presets as JSON; import into another project from the same panel
 
@@ -483,6 +484,7 @@ These fixes were prerequisite to AI being genuinely useful for writers — block
 - Scrivener/Fountain; advanced Git branching UX
 - Multi-region, scale-out collab tuning
 - **Keyboard shortcuts** — writer-defined hotkeys for common editing actions (bold, italic, scene save, beat trigger, focus mode, etc.); shortcut map to be specified before implementation
+- **Customizable workspaces** — per-user, per-project saved panel layouts (open panels, widths, active scene/chapter); named presets ("drafting", "research", "editing") switchable from the TopBar; `user_workspaces` table (JSONB layout blob); synced across sessions so the editor reopens exactly where the writer left off
 
 ---
 
@@ -512,7 +514,7 @@ These fixes were prerequisite to AI being genuinely useful for writers — block
 - ✅ A+2 — Secure AI key storage (migration 008, AES-256-GCM, `/users/me/api-keys`, `/settings` page)
 - ✅ A+3 — Autolink wired in editor (debounced wiki entity match badges in WikiPanel)
 
-**In progress / next up** ([full spec](./specs/phase-aplus.md)):
+**All complete** ([full spec](./specs/phase-aplus.md)):
 - ✅ **Act Phase 2** — Complete (see Phase A section above)
 - ✅ **Act Phase 3** — Complete (see Phase A section above)
 - ✅ **Act Phase 3.5** — Complete (TypeScript clean, PROJECT_PLAN + ROADMAP updated)
@@ -529,10 +531,10 @@ These fixes were prerequisite to AI being genuinely useful for writers — block
 - ✅ **B2** — AI memory + context window (2026-04-13)
 - ✅ **B3** — Token tracking
 - ✅ **B4** — Export (2026-04-13)
-  - `internal/export`: `markdown.go` (zip stream), `epub.go` (go-epub → MinIO), `service.go` (2-worker pool), `handler.go`
+  - `internal/export`: `markdown.go` (zip stream), `epub.go` (go-epub → MinIO), `docx.go` (raw OOXML), `service.go` (worker pool, `asyncJob{format}`), `handler.go`
   - Migration 013: `export_jobs` table; `pkg/storage` MinIO client
-  - Routes: `POST /projects/:id/export`, `GET /projects/:id/export`, `GET /projects/:id/export/:job_id`
-  - Frontend: Export panel on ProjectHome — Markdown download (direct fetch → blob), EPUB async with 3 s polling
+  - Routes: `POST /projects/:id/export` (format: `"markdown"|"epub"|"docx"`), `GET /projects/:id/export`, `GET /projects/:id/export/:job_id`
+  - Frontend: Export panel on ProjectHome — Markdown download (direct fetch → blob), EPUB + DOCX async with 3 s polling; DOCX added 2026-04-15
 - ✅ **Ollama Docker fix** — per-user configurable base URL stored in `user_api_keys(provider="ollama")`; Settings page "Local AI (Ollama)" section
 
 - ✅ **B5** — Novel guide wizard
@@ -544,13 +546,14 @@ These fixes were prerequisite to AI being genuinely useful for writers — block
 
 **Remaining (Phase C — in order):**
 
-**C1 — Export depth** ← next up
-- `[Medium]` **DOCX export** — add to existing export worker; clean manuscript formatting
-- `[Medium]` **Wiki image upload** — entity portrait presigned upload → MinIO; display in entity detail
+**C1 — Export depth** ✅ complete
+- ✅ `[Medium]` **DOCX export** — raw OOXML builder (`internal/export/docx.go`); Times New Roman 12pt double-spaced; page breaks between chapters; scene headings italic centered; `# # #` scene breaks; no new dependency; worker pool generalized to `asyncJob{format}`; "Export DOCX" button + polling in ProjectHome
+- ✅ `[Medium]` **Wiki image upload** — migration 017 (`image_key TEXT`); multipart upload handler; MinIO `PutObject`/`DeleteObject`; `PresignedGetURL` in `EntityResponse.image_url`; portrait + upload/remove UI in `EntityDetail`
 
 **C2 — AI depth**
 - `[Heavy]` **Explicit AI context panel** — writer-curated context window (pin entities, chapters, scenes)
 - `[Heavy]` **Multi-session Workshop** — named persistent chat sessions; workshop prompt variant; Markdown export
+- `[Medium]` **Research notes** — `research_notes` table; WikiHub "Research" tab; CRUD routes; pinnable into AI context
 - `[Medium]` **Prompt history browser** — browse and re-apply previous beats from `ai_usage`
 - `[Light]` **Import/export writing styles** — JSON round-trip for prose presets across projects
 

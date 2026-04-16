@@ -104,7 +104,9 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 		gitSvc = project.NewGitService(reposPath)
 	}
 	projectService := project.NewService(queries, gitSvc)
-	wikiService := wiki.NewService(queries)
+	// storage is nil in tests — image upload routes will return 500 if exercised,
+	// but existing wiki integration tests don't exercise image upload.
+	wikiService := wiki.NewService(queries, nil)
 
 	authHandler := auth.NewHandler(authService)
 	projectHandler := project.NewHandler(projectService)

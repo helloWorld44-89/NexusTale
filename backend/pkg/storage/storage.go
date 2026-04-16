@@ -74,3 +74,12 @@ func (c *Client) PresignedGetURL(ctx context.Context, key string, expiry time.Du
 	}
 	return u.String(), nil
 }
+
+// DeleteObject removes the object at key. A missing key is not an error.
+func (c *Client) DeleteObject(ctx context.Context, key string) error {
+	err := c.mc.RemoveObject(ctx, c.bucket, key, minio.RemoveObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("minio delete %s: %w", key, err)
+	}
+	return nil
+}

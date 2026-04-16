@@ -366,6 +366,7 @@ components:
         name:             { type: string }
         summary:          { type: string }
         attributes:       { type: object, additionalProperties: { type: string } }
+        image_url:        { type: string, nullable: true, description: "Presigned MinIO URL valid for ~4 hours; absent when no image is stored." }
         created_at:       { type: string, format: date-time }
         updated_at:       { type: string, format: date-time }
 
@@ -1413,6 +1414,55 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/EntityResponse' }
         "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/wiki/entities/{entityId}/image:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: entityId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: uploadEntityImage
+      summary: Upload or replace an entity portrait image
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Entity with updated image_url.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteEntityImage
+      summary: Remove an entity's portrait image
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Entity with image_url cleared.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityResponse' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "404": { $ref: '#/components/responses/NotFound' }
 

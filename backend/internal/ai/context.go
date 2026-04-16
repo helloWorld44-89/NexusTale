@@ -209,10 +209,12 @@ const contentFallbackLimit = 600
 //     labelled clearly so the model understands which part of the story is in scope.
 //  4. Wiki entity snippets — for any @[Entity Name] refs in the current scene.
 //  5. Story structure — name + phases when the project has one selected.
+//  6. Pinned context — writer-curated entities, chapters, and scenes pinned via
+//     the Context Pins panel; injected verbatim so writers control what Nexus knows.
 //
 // The returned string is never empty: the project identity block is always
 // present so the model always knows the project it is working on.
-func (s *Service) BuildContext(ctx context.Context, projectID uuid.UUID, branchName, sceneContent string, currentSceneID uuid.UUID) string {
+func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID, branchName, sceneContent string, currentSceneID uuid.UUID) string {
 	var sb strings.Builder
 
 	// ── 1. Project identity + AI bible ───────────────────────────────────
@@ -353,6 +355,18 @@ func (s *Service) BuildContext(ctx context.Context, projectID uuid.UUID, branchN
 		sb.WriteString(structureCtx)
 	}
 
+	// ── 6. Pinned context (writer-curated) ────────────────────────────────
+	// Only injected when both projectID and userID are known, so that
+	// background summarize goroutines (which have no userID) are unaffected.
+	if userID != uuid.Nil {
+		if pinnedCtx := s.buildPinnedContext(ctx, projectID, userID, branchName); pinnedCtx != "" {
+			if sb.Len() > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(pinnedCtx)
+		}
+	}
+
 	return sb.String()
 }
 
@@ -415,4 +429,121 @@ func (s *Service) buildStructureContext(ctx context.Context, projectID uuid.UUID
 	}
 
 	return out.String()
+}
+
+// ── buildPinnedContext ────────────────────────────────────────────────────────
+
+// pinnedContentLimit is the maximum rune count of raw content included per pin
+// when include_mode is "full" (protects against very long scenes bloating the prompt).
+const pinnedContentLimit = 2000
+
+// buildPinnedContext returns the "## Pinned context" block for writer-curated pins.
+// Returns "" when the user has no pins for this project.
+func (s *Service) buildPinnedContext(ctx context.Context, projectID, userID uuid.UUID, branchName string) string {
+	pins, err := s.queries.ListContextPins(ctx, sqlcgen.ListContextPinsParams{
+		ProjectID: projectID,
+		UserID:    userID,
+	})
+	if err != nil || len(pins) == 0 {
+		return ""
+	}
+
+	var out strings.Builder
+	out.WriteString("## Pinned context\n")
+
+	for _, pin := range pins {
+		switch pin.PinType {
+		case "entity":
+			s.appendPinnedEntity(&out, ctx, pin.RefID, pin.IncludeMode)
+		case "chapter":
+			s.appendPinnedChapter(&out, ctx, pin.RefID, branchName, pin.IncludeMode)
+		case "scene":
+			s.appendPinnedScene(&out, ctx, pin.RefID, pin.IncludeMode)
+		}
+	}
+
+	if out.Len() == len("## Pinned context\n") {
+		return "" // all pins failed to resolve
+	}
+	return out.String()
+}
+
+func (s *Service) appendPinnedEntity(out *strings.Builder, ctx context.Context, id uuid.UUID, mode string) {
+	e, err := s.queries.GetEntity(ctx, id)
+	if err != nil || e.Name == "" {
+		return
+	}
+	out.WriteString(fmt.Sprintf("**%s** (%s)", e.Name, e.Type))
+	if e.Summary != "" {
+		out.WriteString(": " + e.Summary)
+	}
+	if mode == "full" {
+		// Append attribute JSON if present and non-trivial.
+		if len(e.Attributes) > 2 { // "{}" is 2 bytes
+			out.WriteString("\nAttributes: " + string(e.Attributes))
+		}
+	}
+	out.WriteString("\n")
+}
+
+func (s *Service) appendPinnedChapter(out *strings.Builder, ctx context.Context, id uuid.UUID, branchName, mode string) {
+	ch, err := s.queries.GetChapter(ctx, id)
+	if err != nil {
+		return
+	}
+
+	out.WriteString("**Chapter: " + ch.Title + "**\n")
+
+	if mode == "summary" {
+		// Use the AI summary when available; fall back to raw excerpt.
+		row, err := s.queries.GetChapterSummary(ctx, sqlcgen.GetChapterSummaryParams{
+			ChapterID:  id,
+			BranchName: branchName,
+		})
+		if err == nil && row.AiSummary != "" {
+			out.WriteString(row.AiSummary + "\n")
+			return
+		}
+		// No summary — fall through to scene content with the content limit.
+	}
+
+	scenes, _ := s.queries.ListScenesByChapter(ctx, id)
+	var combined strings.Builder
+	for i, sc := range scenes {
+		if i > 0 {
+			combined.WriteString("\n\n")
+		}
+		combined.WriteString(sc.Content)
+	}
+	content := []rune(combined.String())
+	if mode == "summary" && len(content) > contentFallbackLimit {
+		content = append(content[:contentFallbackLimit], []rune("…")...)
+	} else if mode == "full" && len(content) > pinnedContentLimit {
+		content = append(content[:pinnedContentLimit], []rune("…")...)
+	}
+	if len(content) > 0 {
+		out.WriteString(string(content) + "\n")
+	}
+}
+
+func (s *Service) appendPinnedScene(out *strings.Builder, ctx context.Context, id uuid.UUID, mode string) {
+	sc, err := s.queries.GetScene(ctx, id)
+	if err != nil {
+		return
+	}
+	label := "Scene"
+	if sc.Title != "" {
+		label = "Scene: " + sc.Title
+	}
+	out.WriteString("**" + label + "**\n")
+
+	content := []rune(sc.Content)
+	if mode == "summary" && len(content) > contentFallbackLimit {
+		content = append(content[:contentFallbackLimit], []rune("…")...)
+	} else if mode == "full" && len(content) > pinnedContentLimit {
+		content = append(content[:pinnedContentLimit], []rune("…")...)
+	}
+	if len(content) > 0 {
+		out.WriteString(string(content) + "\n")
+	}
 }

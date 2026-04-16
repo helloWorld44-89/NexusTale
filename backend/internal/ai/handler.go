@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jconder44/nexustale/internal/ai/adapters"
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/pkg/apperror"
+	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
 // Handler exposes Gin route handlers for AI-assisted writing.
@@ -31,6 +33,11 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	ai.POST("/summarize", h.Summarize)
 	ai.GET("/usage", h.Usage)
 	ai.GET("/context-preview", h.ContextPreview)
+
+	// Context pins (C2): writer-curated additions to the AI context window.
+	ai.GET("/context-pins", h.ListContextPins)
+	ai.POST("/context-pins", h.CreateContextPin)
+	ai.DELETE("/context-pins/:pin_id", h.DeleteContextPin)
 
 	// Chapter summary endpoints (B2): mounted under the project group.
 	rg.GET("/chapters/:cid/summary", h.GetChapterSummary)
@@ -400,7 +407,7 @@ func (h *Handler) ContextPreview(c *gin.Context) {
 		}
 	}
 
-	ctxBlock := h.svc.BuildContext(c.Request.Context(), projectID, branch, sceneContent, sceneID)
+	ctxBlock := h.svc.BuildContext(c.Request.Context(), projectID, userID, branch, sceneContent, sceneID)
 
 	// Rough token estimate: ~4 characters per token (safe for English prose).
 	estimatedTokens := len([]rune(ctxBlock)) / 4
@@ -442,4 +449,160 @@ func (h *Handler) RegenerateChapterSummary(c *gin.Context) {
 		"stale":       false,
 		"project_id":  projectID,
 	})
+}
+
+// ── Context pins (C2) ─────────────────────────────────────────────────────────
+
+// contextPinResponse is the wire format for a single context pin.
+type contextPinResponse struct {
+	ID          string    `json:"id"`
+	ProjectID   string    `json:"project_id"`
+	PinType     string    `json:"pin_type"`
+	RefID       string    `json:"ref_id"`
+	IncludeMode string    `json:"include_mode"`
+	Label       string    `json:"label"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// contextPinFromRow converts a DB row to the wire response.
+// label is resolved by the caller to avoid extra queries here.
+func contextPinFromRow(row sqlcgen.AiContextPin, label string) contextPinResponse {
+	return contextPinResponse{
+		ID:          row.ID.String(),
+		ProjectID:   row.ProjectID.String(),
+		PinType:     row.PinType,
+		RefID:       row.RefID.String(),
+		IncludeMode: row.IncludeMode,
+		Label:       label,
+		CreatedAt:   row.CreatedAt.Time,
+	}
+}
+
+// ListContextPins returns all context pins for the project+user.
+//
+// GET /projects/:id/ai/context-pins
+func (h *Handler) ListContextPins(c *gin.Context) {
+	projectID, userID, ok := resolveIDs(c)
+	if !ok {
+		return
+	}
+
+	pins, err := h.svc.queries.ListContextPins(c.Request.Context(), sqlcgen.ListContextPinsParams{
+		ProjectID: projectID,
+		UserID:    userID,
+	})
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	resp := make([]contextPinResponse, 0, len(pins))
+	for _, p := range pins {
+		label := h.resolveLabel(c, p.PinType, p.RefID)
+		resp = append(resp, contextPinFromRow(p, label))
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// CreateContextPin pins an entity, chapter, or scene into the AI context window.
+//
+// POST /projects/:id/ai/context-pins
+//
+//	{ "pin_type": "entity"|"chapter"|"scene", "ref_id": "<uuid>", "include_mode": "summary"|"full" }
+func (h *Handler) CreateContextPin(c *gin.Context) {
+	projectID, userID, ok := resolveIDs(c)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		PinType     string `json:"pin_type"     binding:"required"`
+		RefID       string `json:"ref_id"        binding:"required"`
+		IncludeMode string `json:"include_mode"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "detail": err.Error()})
+		return
+	}
+
+	if req.PinType != "entity" && req.PinType != "chapter" && req.PinType != "scene" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "pin_type must be entity, chapter, or scene"})
+		return
+	}
+
+	refID, err := uuid.Parse(req.RefID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid ref_id"})
+		return
+	}
+
+	mode := req.IncludeMode
+	if mode != "full" {
+		mode = "summary"
+	}
+
+	row, err := h.svc.queries.CreateContextPin(c.Request.Context(), sqlcgen.CreateContextPinParams{
+		ProjectID:   projectID,
+		UserID:      userID,
+		PinType:     req.PinType,
+		RefID:       refID,
+		IncludeMode: mode,
+	})
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	label := h.resolveLabel(c, row.PinType, row.RefID)
+	c.JSON(http.StatusCreated, contextPinFromRow(row, label))
+}
+
+// DeleteContextPin removes a context pin.
+//
+// DELETE /projects/:id/ai/context-pins/:pin_id
+func (h *Handler) DeleteContextPin(c *gin.Context) {
+	projectID, userID, ok := resolveIDs(c)
+	if !ok {
+		return
+	}
+
+	pinID, err := uuid.Parse(c.Param("pin_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid pin_id"})
+		return
+	}
+
+	if err := h.svc.queries.DeleteContextPin(c.Request.Context(), sqlcgen.DeleteContextPinParams{
+		ID:        pinID,
+		ProjectID: projectID,
+		UserID:    userID,
+	}); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// resolveLabel looks up the display name for a pinned ref so the frontend
+// can render the pin without additional API calls.
+func (h *Handler) resolveLabel(c *gin.Context, pinType string, refID uuid.UUID) string {
+	ctx := c.Request.Context()
+	switch pinType {
+	case "entity":
+		if e, err := h.svc.queries.GetEntity(ctx, refID); err == nil {
+			return e.Name
+		}
+	case "chapter":
+		if ch, err := h.svc.queries.GetChapter(ctx, refID); err == nil {
+			return ch.Title
+		}
+	case "scene":
+		if sc, err := h.svc.queries.GetScene(ctx, refID); err == nil {
+			if sc.Title != "" {
+				return sc.Title
+			}
+			return "Untitled scene"
+		}
+	}
+	return ""
 }

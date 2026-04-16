@@ -71,7 +71,6 @@ func main() {
 	authService := auth.NewService(queries, cfg.Auth.JWTSecret, accessExpiry, refreshExpiry, cfg.Auth.BcryptCost, encKey)
 	gitService := project.NewGitService(cfg.Git.ReposPath)
 	projectService := project.NewService(queries, gitService)
-	wikiService := wiki.NewService(queries)
 	aiService := ai.NewService(authService, queries, ai.AIConfig{
 		OllamaURL:     cfg.AI.OllamaURL,
 		OllamaModel:   cfg.AI.OllamaModel,
@@ -96,6 +95,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	wikiService := wiki.NewService(queries, storageClient)
 	exportService := export.NewService(queries, storageClient)
 	exportService.StartWorkers(2)
 
