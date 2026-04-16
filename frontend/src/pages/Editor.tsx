@@ -221,6 +221,12 @@ export default function Editor() {
     setLeftPanel((prev) => (prev === panel ? 'none' : panel))
   }, [])
 
+  // ── Derived display values ──────────────────────────────────────────────────
+
+  const activeAct     = acts.find((a) => a.chapters.some((c) => c.id === selectedChapterId))
+  const activeChapter = activeAct?.chapters.find((c) => c.id === selectedChapterId)
+  const activeScene   = activeChapter?.scenes.find((s) => s.id === selectedSceneId)
+
   // Append AI-generated text from any panel into the active scene.
   const handleInsertToScene = useCallback((text: string) => {
     if (!activeScene) return
@@ -228,12 +234,6 @@ export default function Editor() {
     const next = current + (current.endsWith('\n') ? '\n' : '\n\n') + text
     handleContentChange(activeScene.id, next)
   }, [activeScene, sceneContents, handleContentChange])
-
-  // ── Derived display values ──────────────────────────────────────────────────
-
-  const activeAct     = acts.find((a) => a.chapters.some((c) => c.id === selectedChapterId))
-  const activeChapter = activeAct?.chapters.find((c) => c.id === selectedChapterId)
-  const activeScene   = activeChapter?.scenes.find((s) => s.id === selectedSceneId)
   const content       = activeScene ? (sceneContents[activeScene.id] ?? '') : ''
   const wordCount     = content.trim() === '' ? 0 : content.trim().split(/\s+/).length
 
