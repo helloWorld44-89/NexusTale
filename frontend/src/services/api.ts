@@ -68,7 +68,7 @@ export type ProjectStructure    = components['schemas']['ProjectStructureRespons
 export interface ExportJob {
   id:           string
   project_id:   string
-  format:       'markdown' | 'epub'
+  format:       'markdown' | 'epub' | 'docx'
   status:       'pending' | 'processing' | 'done' | 'failed'
   download_url?: string  // presigned URL; only when status=done
   error_msg?:   string   // only when status=failed
