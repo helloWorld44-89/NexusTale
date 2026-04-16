@@ -6,6 +6,8 @@ package wiki
 //	GET|POST         /entities               list (filter ?type=) or create entity
 //	GET|PATCH|DELETE /entities/:eid          get, update, or delete entity
 //	GET|POST         /entities/:eid/children list or create child entities (e.g. lore under a location)
+//	POST             /entities/:eid/image    upload portrait image (multipart/form-data, field "image")
+//	DELETE           /entities/:eid/image    remove portrait image
 //	GET|POST         /relationships          list or create relationships
 //	DELETE           /relationships/:rid     delete relationship
 //	GET              /graph                  all entities + relationships for diagram rendering
@@ -16,7 +18,10 @@ package wiki
 //	GET              /autolink?text=         return entities whose names appear in the given text
 
 import (
+	"mime"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -40,6 +45,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.DELETE("/entities/:eid", h.DeleteEntity)
 	rg.GET("/entities/:eid/children", h.ListChildEntities)
 	rg.POST("/entities/:eid/children", h.CreateChildEntity)
+	rg.POST("/entities/:eid/image", h.UploadEntityImage)
+	rg.DELETE("/entities/:eid/image", h.DeleteEntityImage)
 
 	rg.GET("/relationships", h.ListRelationships)
 	rg.POST("/relationships", h.CreateRelationship)
@@ -175,6 +182,68 @@ func (h *Handler) CreateChildEntity(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, resp)
+}
+
+// UploadEntityImage accepts a multipart file in the "image" field,
+// validates the MIME type, and stores it as the entity's portrait in MinIO.
+// Max file size is enforced by Gin's multipart memory limit (set in main.go).
+func (h *Handler) UploadEntityImage(c *gin.Context) {
+	id, err := parseUUID(c, "eid")
+	if err != nil {
+		return
+	}
+
+	fh, err := c.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "image field is required"})
+		return
+	}
+
+	// Validate MIME type — allow common web image formats only.
+	ext := strings.ToLower(filepath.Ext(fh.Filename))
+	allowed := map[string]string{
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".png":  "image/png",
+		".gif":  "image/gif",
+		".webp": "image/webp",
+	}
+	contentType, ok := allowed[ext]
+	if !ok {
+		// Fall back to MIME detection from the extension header.
+		contentType = mime.TypeByExtension(ext)
+		if !strings.HasPrefix(contentType, "image/") {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "unsupported image type"})
+			return
+		}
+	}
+
+	f, err := fh.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "could not read upload"})
+		return
+	}
+	defer f.Close()
+
+	resp, err := h.svc.UploadEntityImage(c.Request.Context(), id, fh.Filename, contentType, f, fh.Size)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) DeleteEntityImage(c *gin.Context) {
+	id, err := parseUUID(c, "eid")
+	if err != nil {
+		return
+	}
+	resp, err := h.svc.DeleteEntityImage(c.Request.Context(), id)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // ========================

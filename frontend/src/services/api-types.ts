@@ -489,6 +489,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}/wiki/entities/{entityId}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload or replace an entity portrait image */
+        post: operations["uploadEntityImage"];
+        /** Remove an entity's portrait image */
+        delete: operations["deleteEntityImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectId}/wiki/relationships": {
         parameters: {
             query?: never;
@@ -1056,6 +1077,8 @@ export interface components {
             attributes: {
                 [key: string]: string;
             };
+            /** @description Presigned MinIO URL valid for ~4 hours; absent when no image is stored. */
+            image_url?: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2303,6 +2326,64 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadEntityImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    image: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Entity with updated image_url. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteEntityImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entity with image_url cleared. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityResponse"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };

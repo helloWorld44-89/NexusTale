@@ -2,7 +2,7 @@
 // and writing style selector for the active scene.
 import { useState, useEffect, useRef } from 'react'
 import { api } from '@/services/api'
-import type { Scene, PromptResponse } from '@/services/api'
+import type { Scene, PromptResponse, PortableStyle } from '@/services/api'
 
 interface SceneMetadataPanelProps {
   token:           string
@@ -30,8 +30,10 @@ export default function SceneMetadataPanel({
   const [tense, setTense]       = useState(scene.tense ?? '')
   const [tags, setTags]         = useState((scene.tags ?? []).join(', '))
   const [summary, setSummary]   = useState(scene.summary ?? '')
-  const [prompts, setPrompts]   = useState<PromptResponse[]>([])
-  const saveTimer               = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [prompts, setPrompts]         = useState<PromptResponse[]>([])
+  const [importStatus, setImportStatus] = useState<string | null>(null)
+  const saveTimer                       = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const importInputRef                  = useRef<HTMLInputElement | null>(null)
 
   // Sync fields when the active scene changes.
   useEffect(() => {
@@ -76,6 +78,44 @@ export default function SceneMetadataPanel({
 
   const handleSummaryBlur = () => {
     scheduleSave({ summary, summary_stale: false })
+  }
+
+  const handleExport = async () => {
+    try {
+      const data = await api.prompts.export(token, projectId)
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `nexustale-styles.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setImportStatus('Export failed')
+    }
+  }
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = '' // allow re-import of same file
+    try {
+      const text = await file.text()
+      const json = JSON.parse(text) as { styles?: PortableStyle[] }
+      const styles = json.styles
+      if (!Array.isArray(styles) || styles.length === 0) {
+        setImportStatus('No styles found in file')
+        return
+      }
+      const result = await api.prompts.import(token, projectId, styles)
+      setImportStatus(`Imported ${result.imported}${result.skipped ? `, ${result.skipped} skipped` : ''}`)
+      // Reload the prompts list so new styles appear immediately.
+      const updated = await api.prompts.list(token, projectId)
+      setPrompts(updated)
+    } catch {
+      setImportStatus('Import failed — invalid file')
+    }
+    setTimeout(() => setImportStatus(null), 4000)
   }
 
   const wordCount = scene.word_count ?? 0
@@ -137,15 +177,33 @@ export default function SceneMetadataPanel({
           <div className="col-span-2 flex flex-col gap-1">
             <div className="flex items-center justify-between">
               <label className="text-brand-text-muted uppercase tracking-wider">Writing Style</label>
-              <a
-                href={`/projects/${projectId}/prompts`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-brand-cyan/70 hover:text-brand-cyan transition-colors"
-              >
-                Manage styles ↗
-              </a>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExport}
+                  title="Export styles as JSON"
+                  className="text-brand-muted hover:text-brand-text transition-colors text-[10px]"
+                >
+                  ↓ Export
+                </button>
+                <button
+                  onClick={() => importInputRef.current?.click()}
+                  title="Import styles from JSON"
+                  className="text-brand-muted hover:text-brand-text transition-colors text-[10px]"
+                >
+                  ↑ Import
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={handleImportFile}
+                />
+              </div>
             </div>
+            {importStatus && (
+              <p className="text-[10px] text-brand-cyan">{importStatus}</p>
+            )}
             <select
               value={selectedPromptId ?? ''}
               onChange={(e) => onPromptChange(e.target.value || null)}
@@ -158,11 +216,7 @@ export default function SceneMetadataPanel({
             </select>
             {prompts.length === 0 && (
               <p className="text-brand-text-muted/60 text-[10px]">
-                No styles yet —{' '}
-                <a href={`/projects/${projectId}/prompts`} target="_blank" rel="noreferrer" className="text-brand-cyan/60 hover:text-brand-cyan">
-                  create one
-                </a>{' '}
-                to shape the AI's voice.
+                No styles yet — create one or import a styles file.
               </p>
             )}
           </div>

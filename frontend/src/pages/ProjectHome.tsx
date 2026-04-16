@@ -18,9 +18,12 @@ export default function ProjectHome() {
   const [loading,    setLoading]    = useState(true)
   const [epubJobId,  setEpubJobId]  = useState<string | null>(null)
   const [epubJob,    setEpubJob]    = useState<ExportJob | null>(null)
+  const [docxJobId,  setDocxJobId]  = useState<string | null>(null)
+  const [docxJob,    setDocxJob]    = useState<ExportJob | null>(null)
   const [exporting,  setExporting]  = useState(false)
   const [exportErr,  setExportErr]  = useState<string | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null)
+  const docxPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // AI Bible state
   const [aiBible,         setAiBible]         = useState('')
@@ -87,6 +90,32 @@ export default function ProjectHome() {
     }
   }, [epubJobId, accessToken, id])
 
+  // Poll for DOCX job completion every 3 seconds.
+  useEffect(() => {
+    if (!docxJobId || !accessToken || !id) return
+    if (docxPollRef.current) clearInterval(docxPollRef.current)
+
+    docxPollRef.current = setInterval(async () => {
+      try {
+        const job = await api.export.getJob(accessToken, id, docxJobId)
+        setDocxJob(job)
+        if (job.status === 'done' || job.status === 'failed') {
+          clearInterval(docxPollRef.current!)
+          docxPollRef.current = null
+          setExporting(false)
+        }
+      } catch {
+        clearInterval(docxPollRef.current!)
+        docxPollRef.current = null
+        setExporting(false)
+      }
+    }, 3000)
+
+    return () => {
+      if (docxPollRef.current) { clearInterval(docxPollRef.current); docxPollRef.current = null }
+    }
+  }, [docxJobId, accessToken, id])
+
   const handleAiBibleChange = (value: string) => {
     setAiBible(value)
     setAiBibleOk(false)
@@ -145,6 +174,21 @@ export default function ProjectHome() {
       const { job_id } = await api.export.startEpub(accessToken, id)
       setEpubJobId(job_id)
       setEpubJob({ id: job_id, project_id: id, format: 'epub', status: 'pending', created_at: new Date().toISOString() })
+    } catch (e) {
+      setExportErr(e instanceof Error ? e.message : 'Export failed')
+      setExporting(false)
+    }
+  }
+
+  const handleDocxExport = async () => {
+    if (!accessToken || !id) return
+    setExporting(true)
+    setExportErr(null)
+    setDocxJob(null)
+    try {
+      const { job_id } = await api.export.startDocx(accessToken, id)
+      setDocxJobId(job_id)
+      setDocxJob({ id: job_id, project_id: id, format: 'docx', status: 'pending', created_at: new Date().toISOString() })
     } catch (e) {
       setExportErr(e instanceof Error ? e.message : 'Export failed')
       setExporting(false)
@@ -327,7 +371,7 @@ export default function ProjectHome() {
               disabled={exporting}
               className="px-4 py-2 rounded-lg bg-brand-cyan/10 text-brand-cyan text-sm font-medium hover:bg-brand-cyan/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {exporting && !epubJobId ? 'Exporting…' : 'Download Markdown (.zip)'}
+              {exporting && !epubJobId && !docxJobId ? 'Exporting…' : 'Download Markdown (.zip)'}
             </button>
             <button
               onClick={handleEpubExport}
@@ -335,6 +379,13 @@ export default function ProjectHome() {
               className="px-4 py-2 rounded-lg bg-brand-purple/10 text-brand-purple text-sm font-medium hover:bg-brand-purple/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {exporting && epubJobId ? 'Generating EPUB…' : 'Export EPUB'}
+            </button>
+            <button
+              onClick={handleDocxExport}
+              disabled={exporting}
+              className="px-4 py-2 rounded-lg bg-brand-gold/10 text-brand-gold text-sm font-medium hover:bg-brand-gold/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exporting && docxJobId ? 'Generating DOCX…' : 'Export DOCX'}
             </button>
           </div>
 
@@ -344,7 +395,13 @@ export default function ProjectHome() {
 
           {epubJob && (
             <div className="mt-4">
-              <EpubJobStatus job={epubJob} />
+              <AsyncJobStatus job={epubJob} label="EPUB" />
+            </div>
+          )}
+
+          {docxJob && (
+            <div className="mt-4">
+              <AsyncJobStatus job={docxJob} label="DOCX" />
             </div>
           )}
         </div>
@@ -400,17 +457,17 @@ function ActionCard({
   )
 }
 
-function EpubJobStatus({ job }: { job: ExportJob }) {
+function AsyncJobStatus({ job, label }: { job: ExportJob; label: string }) {
   const statusColor =
     job.status === 'done'       ? 'text-green-400' :
     job.status === 'failed'     ? 'text-red-400'   :
     job.status === 'processing' ? 'text-brand-cyan' :
                                   'text-brand-muted'
 
-  const label =
-    job.status === 'done'       ? 'EPUB ready' :
+  const statusLabel =
+    job.status === 'done'       ? `${label} ready` :
     job.status === 'failed'     ? 'Export failed' :
-    job.status === 'processing' ? 'Building EPUB…' :
+    job.status === 'processing' ? `Building ${label}…` :
                                   'Queued…'
 
   return (
@@ -421,14 +478,14 @@ function EpubJobStatus({ job }: { job: ExportJob }) {
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
         </svg>
       )}
-      <span className={statusColor}>{label}</span>
+      <span className={statusColor}>{statusLabel}</span>
       {job.status === 'done' && job.download_url && (
         <a
           href={job.download_url}
           download
           className="px-3 py-1 rounded bg-brand-purple/20 text-brand-purple text-xs font-medium hover:bg-brand-purple/30 transition-colors"
         >
-          Download EPUB
+          Download {label}
         </a>
       )}
       {job.status === 'failed' && job.error_msg && (

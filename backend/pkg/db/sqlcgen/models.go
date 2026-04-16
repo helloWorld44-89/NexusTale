@@ -66,6 +66,17 @@ type Act struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type AiContextPin struct {
+	ID          uuid.UUID          `json:"id"`
+	ProjectID   uuid.UUID          `json:"project_id"`
+	UserID      uuid.UUID          `json:"user_id"`
+	PinType     string             `json:"pin_type"`
+	RefID       uuid.UUID          `json:"ref_id"`
+	IncludeMode string             `json:"include_mode"`
+	SortOrder   int32              `json:"sort_order"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type AiUsage struct {
 	ID               uuid.UUID          `json:"id"`
 	UserID           uuid.UUID          `json:"user_id"`
@@ -149,6 +160,7 @@ type Project struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 	StructureID     pgtype.UUID        `json:"structure_id"`
 	StructureCustom []byte             `json:"structure_custom"`
+	AiInstructions  string             `json:"ai_instructions"`
 }
 
 type ProjectActiveBranch struct {
@@ -232,6 +244,7 @@ type WikiEntity struct {
 	Attributes     json.RawMessage    `json:"attributes"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
 }
 
 type WikiMagicRule struct {

@@ -35,8 +35,10 @@ type EntityResponse struct {
 	Name           string          `json:"name"`
 	Summary        string          `json:"summary"`
 	Attributes     json.RawMessage `json:"attributes"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
+	// ImageURL is a short-lived presigned MinIO URL; nil when no image is stored.
+	ImageURL  *string   `json:"image_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ========================

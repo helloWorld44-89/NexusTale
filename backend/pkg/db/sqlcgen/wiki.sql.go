@@ -13,11 +13,37 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearEntityImage = `-- name: ClearEntityImage :one
+UPDATE wiki_entities
+SET image_key  = NULL,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+`
+
+func (q *Queries) ClearEntityImage(ctx context.Context, id uuid.UUID) (WikiEntity, error) {
+	row := q.db.QueryRow(ctx, clearEntityImage, id)
+	var i WikiEntity
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.ParentEntityID,
+		&i.Type,
+		&i.Name,
+		&i.Summary,
+		&i.Attributes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ImageKey,
+	)
+	return i, err
+}
+
 const createEntity = `-- name: CreateEntity :one
 
 INSERT INTO wiki_entities (project_id, parent_entity_id, type, name, summary, attributes)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
 `
 
 type CreateEntityParams struct {
@@ -52,6 +78,7 @@ func (q *Queries) CreateEntity(ctx context.Context, arg CreateEntityParams) (Wik
 		&i.Attributes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ImageKey,
 	)
 	return i, err
 }
@@ -226,7 +253,7 @@ func (q *Queries) DeleteTimelineEvent(ctx context.Context, id uuid.UUID) error {
 }
 
 const getEntity = `-- name: GetEntity :one
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at FROM wiki_entities WHERE id = $1
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key FROM wiki_entities WHERE id = $1
 `
 
 func (q *Queries) GetEntity(ctx context.Context, id uuid.UUID) (WikiEntity, error) {
@@ -242,6 +269,7 @@ func (q *Queries) GetEntity(ctx context.Context, id uuid.UUID) (WikiEntity, erro
 		&i.Attributes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ImageKey,
 	)
 	return i, err
 }
@@ -311,7 +339,7 @@ func (q *Queries) GetTimelineEvent(ctx context.Context, id uuid.UUID) (WikiTimel
 }
 
 const listEntitiesByParent = `-- name: ListEntitiesByParent :many
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key FROM wiki_entities
 WHERE parent_entity_id = $1
 ORDER BY name ASC
 `
@@ -335,6 +363,7 @@ func (q *Queries) ListEntitiesByParent(ctx context.Context, parentEntityID pgtyp
 			&i.Attributes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ImageKey,
 		); err != nil {
 			return nil, err
 		}
@@ -347,7 +376,7 @@ func (q *Queries) ListEntitiesByParent(ctx context.Context, parentEntityID pgtyp
 }
 
 const listEntitiesByProject = `-- name: ListEntitiesByProject :many
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key FROM wiki_entities
 WHERE project_id = $1
   AND ($2::text IS NULL OR type = $2::text)
 ORDER BY name ASC
@@ -377,6 +406,7 @@ func (q *Queries) ListEntitiesByProject(ctx context.Context, arg ListEntitiesByP
 			&i.Attributes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ImageKey,
 		); err != nil {
 			return nil, err
 		}
@@ -503,7 +533,7 @@ SET name       = COALESCE($2, name),
     summary    = COALESCE($3, summary),
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
 `
 
 type UpdateEntityParams struct {
@@ -525,6 +555,7 @@ func (q *Queries) UpdateEntity(ctx context.Context, arg UpdateEntityParams) (Wik
 		&i.Attributes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ImageKey,
 	)
 	return i, err
 }
@@ -534,7 +565,7 @@ UPDATE wiki_entities
 SET attributes = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
 `
 
 type UpdateEntityAttributesParams struct {
@@ -555,6 +586,38 @@ func (q *Queries) UpdateEntityAttributes(ctx context.Context, arg UpdateEntityAt
 		&i.Attributes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ImageKey,
+	)
+	return i, err
+}
+
+const updateEntityImage = `-- name: UpdateEntityImage :one
+UPDATE wiki_entities
+SET image_key  = $2,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+`
+
+type UpdateEntityImageParams struct {
+	ID       uuid.UUID   `json:"id"`
+	ImageKey pgtype.Text `json:"image_key"`
+}
+
+func (q *Queries) UpdateEntityImage(ctx context.Context, arg UpdateEntityImageParams) (WikiEntity, error) {
+	row := q.db.QueryRow(ctx, updateEntityImage, arg.ID, arg.ImageKey)
+	var i WikiEntity
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.ParentEntityID,
+		&i.Type,
+		&i.Name,
+		&i.Summary,
+		&i.Attributes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ImageKey,
 	)
 	return i, err
 }

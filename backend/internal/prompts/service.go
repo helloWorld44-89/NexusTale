@@ -132,6 +132,80 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 	return &p, nil
 }
 
+// ── import / export ───────────────────────────────────────────────────────────
+
+// PortableStyle is the transfer format used for import/export.
+// It intentionally omits IDs and timestamps so a file exported from one
+// project can be imported cleanly into any other project.
+type PortableStyle struct {
+	Name          string `json:"name"`
+	Category      string `json:"category"`
+	Content       string `json:"content"`
+	SystemContent string `json:"system_content"`
+	SortOrder     int32  `json:"sort_order"`
+}
+
+// Export returns all writing styles as a portable slice (no IDs/timestamps).
+func (s *Service) Export(ctx context.Context, projectID uuid.UUID) ([]PortableStyle, error) {
+	rows, err := s.queries.ListProjectPrompts(ctx, projectID)
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("export prompts: %v", err))
+	}
+	out := make([]PortableStyle, len(rows))
+	for i, r := range rows {
+		out[i] = PortableStyle{
+			Name:          r.Name,
+			Category:      r.Category,
+			Content:       r.Content,
+			SystemContent: r.SystemContent,
+			SortOrder:     r.SortOrder,
+		}
+	}
+	return out, nil
+}
+
+// Import bulk-creates styles that do not already exist in the project (matched
+// by name). Returns the number of styles created and the number skipped.
+func (s *Service) Import(ctx context.Context, projectID uuid.UUID, styles []PortableStyle) (imported, skipped int, err error) {
+	// Build a set of existing names to avoid duplicates.
+	existing, err := s.queries.ListProjectPrompts(ctx, projectID)
+	if err != nil {
+		return 0, 0, apperror.Internal(fmt.Sprintf("import prompts: list existing: %v", err))
+	}
+	existingNames := make(map[string]bool, len(existing))
+	for _, r := range existing {
+		existingNames[r.Name] = true
+	}
+
+	for _, style := range styles {
+		if style.Name == "" {
+			skipped++
+			continue
+		}
+		if existingNames[style.Name] {
+			skipped++
+			continue
+		}
+		cat := style.Category
+		if cat == "" {
+			cat = "prose"
+		}
+		if _, createErr := s.queries.CreateProjectPrompt(ctx, sqlcgen.CreateProjectPromptParams{
+			ProjectID:     projectID,
+			Name:          style.Name,
+			Category:      cat,
+			Content:       style.Content,
+			SystemContent: style.SystemContent,
+			SortOrder:     style.SortOrder,
+		}); createErr != nil {
+			return imported, skipped, apperror.Internal(fmt.Sprintf("import prompts: create %q: %v", style.Name, createErr))
+		}
+		existingNames[style.Name] = true // prevent duplicates within the same import batch
+		imported++
+	}
+	return imported, skipped, nil
+}
+
 // Delete removes a writing style preset by ID.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	// Verify existence before delete so we can return 404.

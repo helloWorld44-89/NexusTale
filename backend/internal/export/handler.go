@@ -51,8 +51,8 @@ func (h *Handler) Export(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request body"})
 		return
 	}
-	if req.Format != "markdown" && req.Format != "epub" {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "format must be 'markdown' or 'epub'"})
+	if req.Format != "markdown" && req.Format != "epub" && req.Format != "docx" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "format must be 'markdown', 'epub', or 'docx'"})
 		return
 	}
 
@@ -76,6 +76,14 @@ func (h *Handler) Export(c *gin.Context) {
 
 	case "epub":
 		jobID, err := h.svc.EnqueueEPUB(c.Request.Context(), projectID, userID, proj.Title)
+		if err != nil {
+			handleError(c, err)
+			return
+		}
+		c.JSON(http.StatusAccepted, gin.H{"job_id": jobID})
+
+	case "docx":
+		jobID, err := h.svc.EnqueueDOCX(c.Request.Context(), projectID, userID, proj.Title)
 		if err != nil {
 			handleError(c, err)
 			return

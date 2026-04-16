@@ -76,6 +76,14 @@ export interface ExportJob {
   created_at:   string
 }
 
+export interface PortableStyle {
+  name:           string
+  category:       string
+  content:        string
+  system_content: string
+  sort_order:     number
+}
+
 export interface PromptResponse {
   id:             string
   project_id:     string
@@ -86,6 +94,19 @@ export interface PromptResponse {
   sort_order:     number
   created_at:     string
   updated_at:     string
+}
+
+export type ContextPinType = 'entity' | 'chapter' | 'scene'
+export type ContextPinMode = 'summary' | 'full'
+
+export interface ContextPin {
+  id:           string
+  project_id:   string
+  pin_type:     ContextPinType
+  ref_id:       string
+  include_mode: ContextPinMode
+  label:        string
+  created_at:   string
 }
 
 // ── Error class ───────────────────────────────────────────────────────────────
@@ -257,6 +278,24 @@ export const api = {
     deleteEntity: (token: string, projectId: string, entityId: string) =>
       request<void>('DELETE', `/projects/${projectId}/wiki/entities/${entityId}`, undefined, token),
 
+    uploadEntityImage: async (token: string, projectId: string, entityId: string, file: File): Promise<WikiEntity> => {
+      const fd = new FormData()
+      fd.append('image', file)
+      const res = await fetch(`${BASE}/projects/${projectId}/wiki/entities/${entityId}/image`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as { message?: string }).message ?? `Upload failed: ${res.status}`)
+      }
+      return res.json() as Promise<WikiEntity>
+    },
+
+    deleteEntityImage: (token: string, projectId: string, entityId: string) =>
+      request<WikiEntity>('DELETE', `/projects/${projectId}/wiki/entities/${entityId}/image`, undefined, token),
+
     // Relationships — field names match the backend: from_entity_id / to_entity_id / type
     listRelationships: (token: string, projectId: string) =>
       request<WikiRelationship[]>('GET', `/projects/${projectId}/wiki/relationships`, undefined, token),
@@ -340,6 +379,12 @@ export const api = {
 
     delete: (token: string, projectId: string, promptId: string) =>
       request<void>('DELETE', `/projects/${projectId}/prompts/${promptId}`, undefined, token),
+
+    export: (token: string, projectId: string) =>
+      request<{ version: number; styles: PortableStyle[] }>('GET', `/projects/${projectId}/prompts/export`, undefined, token),
+
+    import: (token: string, projectId: string, styles: PortableStyle[]) =>
+      request<{ imported: number; skipped: number }>('POST', `/projects/${projectId}/prompts/import`, { styles }, token),
   },
 
   ai: {
@@ -478,6 +523,17 @@ export const api = {
         }
       }
     },
+
+    contextPins: {
+      list: (token: string, projectId: string) =>
+        request<ContextPin[]>('GET', `/projects/${projectId}/ai/context-pins`, undefined, token),
+
+      create: (token: string, projectId: string, pinType: ContextPinType, refId: string, includeMode: ContextPinMode) =>
+        request<ContextPin>('POST', `/projects/${projectId}/ai/context-pins`, { pin_type: pinType, ref_id: refId, include_mode: includeMode }, token),
+
+      delete: (token: string, projectId: string, pinId: string) =>
+        request<void>('DELETE', `/projects/${projectId}/ai/context-pins/${pinId}`, undefined, token),
+    },
   },
 
   // ── ai.testConnection ──────────────────────────────────────────────────────
@@ -574,6 +630,10 @@ export const api = {
     /** Start an async EPUB export — returns the job ID immediately (HTTP 202). */
     startEpub: (token: string, projectId: string): Promise<{ job_id: string }> =>
       request<{ job_id: string }>('POST', `/projects/${projectId}/export`, { format: 'epub' }, token),
+
+    /** Start an async DOCX export — returns the job ID immediately (HTTP 202). */
+    startDocx: (token: string, projectId: string): Promise<{ job_id: string }> =>
+      request<{ job_id: string }>('POST', `/projects/${projectId}/export`, { format: 'docx' }, token),
 
     /** Poll a single export job for status + presigned download URL. */
     getJob: (token: string, projectId: string, jobId: string): Promise<ExportJob> =>

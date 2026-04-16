@@ -222,8 +222,8 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 	adapterReq.Mode = req.Mode
 	adapterReq.MaxTokens = maxTok
 
-	// Build the AI context window (project identity + chapter content + @[entity] snippets).
-	ctxBlock := s.BuildContext(ctx, req.ProjectID, req.BranchName, scene.Content, req.SceneID)
+	// Build the AI context window (project identity + chapter content + @[entity] snippets + pins).
+	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, scene.Content, req.SceneID)
 
 	switch req.Mode {
 	case adapters.CompleteModeBeat:
@@ -283,8 +283,8 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 
 	messages := req.Messages
 
-	// Build the context window (project identity + chapter content + @[entity] snippets).
-	ctxBlock := s.BuildContext(ctx, req.ProjectID, req.BranchName, sceneContent, req.SceneID)
+	// Build the context window (project identity + chapter content + @[entity] snippets + pins).
+	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, sceneContent, req.SceneID)
 
 	// Always prepend a system message so the model has an identity and story context.
 	// The context block already includes the project title and all chapter content,

@@ -36,6 +36,20 @@ SET attributes = $2,
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateEntityImage :one
+UPDATE wiki_entities
+SET image_key  = $2,
+    updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: ClearEntityImage :one
+UPDATE wiki_entities
+SET image_key  = NULL,
+    updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: DeleteEntity :exec
 DELETE FROM wiki_entities WHERE id = $1;
 

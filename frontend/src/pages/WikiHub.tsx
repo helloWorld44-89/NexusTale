@@ -283,6 +283,16 @@ function EntityDetail({
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
+
+  // Keep edit fields in sync when entity is refreshed externally (e.g. after image upload).
+  useEffect(() => {
+    if (!editing) {
+      setName(entity.name)
+      setSummary(entity.summary)
+    }
+  }, [entity.id, entity.name, entity.summary, editing])
 
   const handleSave = async () => {
     setSaving(true)
@@ -310,6 +320,35 @@ function EntityDetail({
       setError(e instanceof Error ? e.message : 'Delete failed')
       setDeleting(false)
       setConfirmDelete(false)
+    }
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImageUploading(true)
+    setImageError(null)
+    try {
+      const updated = await api.wiki.uploadEntityImage(token, projectId, entity.id, file)
+      onUpdated(updated)
+    } catch (err: unknown) {
+      setImageError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setImageUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleImageRemove = async () => {
+    setImageUploading(true)
+    setImageError(null)
+    try {
+      const updated = await api.wiki.deleteEntityImage(token, projectId, entity.id)
+      onUpdated(updated)
+    } catch (err: unknown) {
+      setImageError(err instanceof Error ? err.message : 'Remove failed')
+    } finally {
+      setImageUploading(false)
     }
   }
 
@@ -350,6 +389,49 @@ function EntityDetail({
           >
             {editing ? <XIcon /> : <EditIcon />}
           </button>
+        </div>
+
+        {/* Portrait image */}
+        <div className="flex items-start gap-4">
+          {entity.image_url ? (
+            <div className="relative shrink-0 group">
+              <img
+                src={entity.image_url}
+                alt={entity.name}
+                className="w-24 h-24 rounded-xl object-cover border border-brand-border"
+              />
+              <button
+                onClick={handleImageRemove}
+                disabled={imageUploading}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-brand-bg-card border border-brand-border text-brand-muted hover:text-red-400 hover:border-red-500/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Remove image"
+              >
+                <XIcon />
+              </button>
+            </div>
+          ) : (
+            <div className="w-24 h-24 rounded-xl border border-dashed border-brand-border flex items-center justify-center text-brand-muted bg-brand-bg shrink-0">
+              <ImageIcon />
+            </div>
+          )}
+          <div className="flex flex-col gap-1.5 justify-center">
+            <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
+              imageUploading
+                ? 'border-brand-border text-brand-muted opacity-50 cursor-not-allowed'
+                : 'border-brand-border text-brand-muted hover:text-brand-text hover:border-brand-border/60'
+            }`}>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                className="hidden"
+                onChange={handleImageUpload}
+                disabled={imageUploading}
+              />
+              {imageUploading ? 'Uploading…' : entity.image_url ? 'Replace Image' : 'Upload Image'}
+            </label>
+            <p className="text-[10px] text-brand-muted">JPG, PNG, GIF or WebP</p>
+            {imageError && <p className="text-[10px] text-red-400">{imageError}</p>}
+          </div>
         </div>
 
         {/* Summary */}
@@ -640,6 +722,16 @@ function SpinIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  )
+}
+
+function ImageIcon() {
+  return (
+    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="M21 15l-5-5L5 21" />
     </svg>
   )
 }
