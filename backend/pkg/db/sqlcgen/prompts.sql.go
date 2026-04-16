@@ -84,6 +84,34 @@ func (q *Queries) GetProjectPrompt(ctx context.Context, id uuid.UUID) (ProjectPr
 	return i, err
 }
 
+const getWorkshopPrompt = `-- name: GetWorkshopPrompt :one
+SELECT id, project_id, name, category, content, system_content, sort_order, created_at, updated_at
+FROM   project_prompts
+WHERE  project_id = $1
+  AND  category   = 'workshop'
+ORDER  BY sort_order ASC, created_at ASC
+LIMIT  1
+`
+
+// Returns the first workshop-category prompt for a project (by sort_order then created_at).
+// Used by the Workshop chat handler to optionally override the default system prompt.
+func (q *Queries) GetWorkshopPrompt(ctx context.Context, projectID uuid.UUID) (ProjectPrompt, error) {
+	row := q.db.QueryRow(ctx, getWorkshopPrompt, projectID)
+	var i ProjectPrompt
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Category,
+		&i.Content,
+		&i.SystemContent,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listProjectPrompts = `-- name: ListProjectPrompts :many
 SELECT id, project_id, name, category, content, system_content, sort_order, created_at, updated_at
 FROM project_prompts

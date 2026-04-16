@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -190,12 +191,13 @@ type CompleteRequest struct {
 
 // ChatRequest is the public request type for chat operations.
 type ChatRequest struct {
-	ProjectID  uuid.UUID
-	SceneID    uuid.UUID
-	BranchName string // active Timeline
-	Messages   []adapters.Message
-	Provider   string
-	MaxTokens  int
+	ProjectID            uuid.UUID
+	SceneID              uuid.UUID
+	BranchName           string // active Timeline
+	Messages             []adapters.Message
+	Provider             string
+	MaxTokens            int
+	SystemPromptOverride string // if non-empty, replaces the default Nexus identity prompt
 }
 
 // StreamComplete streams the AI response for scene continuation or beat expansion.
@@ -255,7 +257,7 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 	}
 
 	usage, err := adapter.StreamComplete(ctx, adapterReq, w)
-	s.recordUsage(req.ProjectID, userID, adapter.Provider(), usage)
+	s.recordUsage(req.ProjectID, userID, adapter.Provider(), usage, string(req.Mode), req.Beat, req.SceneID)
 	return usage, err
 }
 
@@ -286,13 +288,18 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 	// Build the context window (project identity + chapter content + @[entity] snippets + pins).
 	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, sceneContent, req.SceneID)
 
-	// Always prepend a system message so the model has an identity and story context.
-	// The context block already includes the project title and all chapter content,
-	// so no further project metadata fetch is needed here.
-	nexusSystem := "You are Nexus, an AI co-author and story intelligence embedded in NexusTale. " +
-		"You have full access to this project's chapters, wiki, and timeline. " +
-		"Answer questions about the story accurately, help develop the narrative, suggest improvements, " +
-		"and assist with writing. Be concise unless the user asks for detail.\n\n" + ctxBlock
+	// Build the identity+context system prompt.
+	// SystemPromptOverride lets callers (e.g. Workshop) substitute a different
+	// persona or craft focus without changing the context block.
+	var nexusSystem string
+	if req.SystemPromptOverride != "" {
+		nexusSystem = req.SystemPromptOverride + "\n\n" + ctxBlock
+	} else {
+		nexusSystem = "You are Nexus, an AI co-author and story intelligence embedded in NexusTale. " +
+			"You have full access to this project's chapters, wiki, and timeline. " +
+			"Answer questions about the story accurately, help develop the narrative, suggest improvements, " +
+			"and assist with writing. Be concise unless the user asks for detail.\n\n" + ctxBlock
+	}
 
 	messages = append([]adapters.Message{{Role: "system", Content: nexusSystem}}, messages...)
 
@@ -300,8 +307,113 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 		Messages:  messages,
 		MaxTokens: maxTok,
 	}, w)
-	s.recordUsage(req.ProjectID, userID, adapter.Provider(), usage)
+	s.recordUsage(req.ProjectID, userID, adapter.Provider(), usage, "chat", "", req.SceneID)
 	return usage, err
+}
+
+// StreamChatWithTools streams an agentic workshop response with manuscript tool use.
+//
+// The AI may call ManuscriptTools (append/replace scenes, create scenes/chapters/acts)
+// before returning its final natural-language reply. Each tool invocation is:
+//
+//  1. Executed against the database.
+//  2. Emitted as an SSE event: data: {"tool":"name","result":"..."}\n\n
+//     (the frontend SSE parser ignores events without a "delta" key, so these
+//     pass through safely without any frontend changes.)
+//  3. Fed back to the model as a tool result.
+//
+// The loop runs for at most 10 rounds. The final text is streamed as normal
+// delta + [DONE] events. Falls back to StreamChat if the adapter does not
+// implement ToolAdapter (Ollama).
+func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req ChatRequest, w io.Writer) (adapters.Usage, error) {
+	adapter, err := s.getAdapter(ctx, userID, req.Provider)
+	if err != nil {
+		return adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
+	}
+
+	ta, ok := adapter.(adapters.ToolAdapter)
+	if !ok {
+		// Ollama or future adapter without tool support — degrade gracefully.
+		return s.StreamChat(ctx, userID, req, w)
+	}
+
+	maxTok := req.MaxTokens
+	if maxTok == 0 {
+		maxTok = s.cfg.MaxTokens
+	}
+
+	sceneContent := ""
+	if req.SceneID != uuid.Nil {
+		if sc, err := s.queries.GetScene(ctx, req.SceneID); err == nil {
+			sceneContent = sc.Content
+		}
+	}
+
+	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, sceneContent, req.SceneID)
+
+	var nexusSystem string
+	if req.SystemPromptOverride != "" {
+		nexusSystem = req.SystemPromptOverride + "\n\n" + ctxBlock
+	} else {
+		nexusSystem = "You are Nexus, an AI co-author and story intelligence embedded in NexusTale. " +
+			"You have full access to this project's chapters, wiki, and timeline. " +
+			"You may use tools to write directly to the manuscript — appending to scenes, " +
+			"replacing their content, or creating new scenes, chapters, and acts. " +
+			"When the author asks you to write, expand, or create story content, use the appropriate tool. " +
+			"After each tool call, briefly confirm what you did and what comes next.\n\n" + ctxBlock
+	}
+
+	messages := append([]adapters.Message{{Role: "system", Content: nexusSystem}}, req.Messages...)
+
+	var extraMsgs []json.RawMessage
+	var totalUsage adapters.Usage
+	const maxRounds = 10
+	finalText := ""
+
+	for round := 0; round < maxRounds; round++ {
+		resp, err := ta.ChatTools(ctx, messages, extraMsgs, ManuscriptTools, maxTok)
+		if err != nil {
+			return totalUsage, fmt.Errorf("tool chat round %d: %w", round, err)
+		}
+
+		totalUsage.PromptTokens += resp.Usage.PromptTokens
+		totalUsage.CompletionTokens += resp.Usage.CompletionTokens
+		totalUsage.CostUSD += resp.Usage.CostUSD
+
+		if resp.StopReason != "tool_use" || len(resp.ToolCalls) == 0 {
+			finalText = resp.Text
+			break
+		}
+
+		// Append the assistant's tool-use turn to the conversation history.
+		extraMsgs = append(extraMsgs, resp.RawAssistantMsg)
+
+		// Execute each tool and collect results.
+		toolResults := make([]adapters.ToolResult, 0, len(resp.ToolCalls))
+		for _, tc := range resp.ToolCalls {
+			result := s.executeToolCall(ctx, req.ProjectID, tc)
+			toolResults = append(toolResults, result)
+
+			// Emit a tool SSE event so the frontend can show progress.
+			// The existing SSE parsers check for "delta" before calling onDelta,
+			// so this event is silently ignored by parsers that don't handle it.
+			evtPayload, _ := json.Marshal(map[string]string{"tool": tc.Name, "result": result.Content})
+			fmt.Fprintf(w, "data: %s\n\n", evtPayload)
+		}
+
+		// Append tool results to the conversation history for the next round.
+		extraMsgs = append(extraMsgs, ta.BuildToolResultMessages(toolResults)...)
+	}
+
+	// Stream the final text as delta SSE events.
+	if finalText != "" {
+		encoded, _ := json.Marshal(map[string]string{"delta": finalText})
+		fmt.Fprintf(w, "data: %s\n\n", encoded)
+	}
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+
+	s.recordUsage(req.ProjectID, userID, adapter.Provider(), totalUsage, "chat_tools", "", req.SceneID)
+	return totalUsage, nil
 }
 
 // Summarize generates a 2–3 sentence summary of the provided text.
@@ -312,7 +424,7 @@ func (s *Service) Summarize(ctx context.Context, userID uuid.UUID, provider, tex
 		return "", adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
 	}
 	summary, usage, err := adapter.Summarize(ctx, text)
-	s.recordUsage(uuid.Nil, userID, adapter.Provider(), usage)
+	s.recordUsage(uuid.Nil, userID, adapter.Provider(), usage, "summarize", "", uuid.Nil)
 	return summary, usage, err
 }
 
@@ -414,6 +526,37 @@ func (s *Service) RegenerateChapterSummary(ctx context.Context, userID, chapterI
 	return summary, nil
 }
 
+// BeatHistoryEntry is a single entry in the prompt history browser.
+type BeatHistoryEntry struct {
+	ID        string `json:"id"`
+	BeatText  string `json:"beat_text"`
+	SceneID   string `json:"scene_id,omitempty"`
+	Model     string `json:"model"`
+	CreatedAt string `json:"created_at"`
+}
+
+// GetBeatHistory returns deduplicated recent beats for the project, newest first per unique text.
+func (s *Service) GetBeatHistory(ctx context.Context, projectID uuid.UUID) ([]BeatHistoryEntry, error) {
+	rows, err := s.queries.ListBeatHistory(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list beat history: %w", err)
+	}
+	out := make([]BeatHistoryEntry, 0, len(rows))
+	for _, r := range rows {
+		entry := BeatHistoryEntry{
+			ID:        r.ID.String(),
+			BeatText:  r.BeatText,
+			Model:     r.Model,
+			CreatedAt: r.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		}
+		if r.SceneID.Valid {
+			entry.SceneID = uuid.UUID(r.SceneID.Bytes).String()
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
 // GetUsageSummary returns aggregate token usage for a project.
 func (s *Service) GetUsageSummary(ctx context.Context, projectID uuid.UUID) (UsageSummary, error) {
 	row, err := s.queries.GetProjectUsageSummary(ctx, projectID)
@@ -443,7 +586,10 @@ func numericToFloat64(v interface{}) float64 {
 
 // recordUsage inserts a usage row non-blocking. Errors are logged and discarded
 // so they never block or fail the parent AI call.
-func (s *Service) recordUsage(projectID, userID uuid.UUID, model string, usage adapters.Usage) {
+// mode is one of: "beat", "continue", "chat", "summarize".
+// beatText is the writer's beat sentence (mode=beat only; empty otherwise).
+// sceneID is the scene in focus at call time (uuid.Nil when not applicable).
+func (s *Service) recordUsage(projectID, userID uuid.UUID, model string, usage adapters.Usage, mode, beatText string, sceneID uuid.UUID) {
 	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
 		return // nothing to record (e.g. streaming aborted before tokens known)
 	}
@@ -451,8 +597,11 @@ func (s *Service) recordUsage(projectID, userID uuid.UUID, model string, usage a
 		// Build a pgtype.Numeric from the float64 cost via string scan.
 		var cost pgtype.Numeric
 		if err := cost.Scan(fmt.Sprintf("%.8f", usage.CostUSD)); err != nil {
-			// Fallback: zero cost rather than dropping the record entirely.
 			_ = cost.Scan("0")
+		}
+		pgSceneID := pgtype.UUID{Valid: false}
+		if sceneID != uuid.Nil {
+			pgSceneID = pgtype.UUID{Bytes: [16]byte(sceneID), Valid: true}
 		}
 		if err := s.queries.InsertUsage(context.Background(), sqlcgen.InsertUsageParams{
 			UserID:           userID,
@@ -461,6 +610,9 @@ func (s *Service) recordUsage(projectID, userID uuid.UUID, model string, usage a
 			PromptTokens:     int32(usage.PromptTokens),
 			CompletionTokens: int32(usage.CompletionTokens),
 			CostUsd:          cost,
+			Mode:             mode,
+			BeatText:         beatText,
+			SceneID:          pgSceneID,
 		}); err != nil {
 			slog.Warn("ai: failed to record usage", "error", err)
 		}

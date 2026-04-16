@@ -288,6 +288,161 @@ func (a *OpenAIAdapter) Summarize(ctx context.Context, text string) (string, Usa
 	return a.Complete(ctx, req)
 }
 
+// ── tool use ──────────────────────────────────────────────────────────────────
+
+// openAIToolCall is one tool invocation in an OpenAI tool-calling response.
+type openAIToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+// openAIToolsResponse is the non-streaming API response when tools are present.
+type openAIToolsResponse struct {
+	Choices []struct {
+		Message struct {
+			Role      string           `json:"role"`
+			Content   *string          `json:"content"`
+			ToolCalls []openAIToolCall  `json:"tool_calls"`
+		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
+}
+
+// postJSON sends an arbitrary JSON body to the OpenAI chat completions endpoint.
+func (a *OpenAIAdapter) postJSON(ctx context.Context, body []byte) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		openAIBaseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+a.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	return a.client.Do(req)
+}
+
+// ChatTools implements ToolAdapter. It runs one non-streaming function-calling
+// round using the OpenAI tools API and returns the model's response.
+func (a *OpenAIAdapter) ChatTools(ctx context.Context, msgs []Message, extraMsgs []json.RawMessage, tools []ToolDefinition, maxTokens int) (ToolChatResponse, error) {
+	if maxTokens == 0 {
+		maxTokens = 1024
+	}
+
+	// Build the message array: normal messages first, then extra (tool history).
+	rawMsgs := make([]json.RawMessage, 0, len(msgs)+len(extraMsgs))
+	for _, m := range msgs {
+		raw, _ := json.Marshal(map[string]string{"role": m.Role, "content": m.Content})
+		rawMsgs = append(rawMsgs, raw)
+	}
+	rawMsgs = append(rawMsgs, extraMsgs...)
+
+	// Convert ToolDefinitions to OpenAI's {type:"function", function:{...}} shape.
+	oaiTools := make([]map[string]interface{}, len(tools))
+	for i, t := range tools {
+		oaiTools[i] = map[string]interface{}{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        t.Name,
+				"description": t.Description,
+				"parameters":  t.InputSchema,
+			},
+		}
+	}
+
+	reqMap := map[string]interface{}{
+		"model":      a.model,
+		"messages":   rawMsgs,
+		"tools":      oaiTools,
+		"max_tokens": maxTokens,
+		"stream":     false,
+	}
+
+	data, err := json.Marshal(reqMap)
+	if err != nil {
+		return ToolChatResponse{}, err
+	}
+
+	resp, err := a.postJSON(ctx, data)
+	if err != nil {
+		return ToolChatResponse{}, fmt.Errorf("openai tools: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return ToolChatResponse{}, fmt.Errorf("openai %d: %s", resp.StatusCode, string(b))
+	}
+
+	var result openAIToolsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return ToolChatResponse{}, fmt.Errorf("openai tools decode: %w", err)
+	}
+	if len(result.Choices) == 0 {
+		return ToolChatResponse{}, fmt.Errorf("openai tools: no choices")
+	}
+
+	choice := result.Choices[0]
+	out := ToolChatResponse{
+		Usage: Usage{
+			PromptTokens:     result.Usage.PromptTokens,
+			CompletionTokens: result.Usage.CompletionTokens,
+		},
+	}
+	out.Usage.CostUSD = a.estimateCost(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+
+	if choice.FinishReason == "tool_calls" {
+		out.StopReason = "tool_use"
+		for _, tc := range choice.Message.ToolCalls {
+			out.ToolCalls = append(out.ToolCalls, ToolCall{
+				ID:    tc.ID,
+				Name:  tc.Function.Name,
+				Input: json.RawMessage(tc.Function.Arguments),
+			})
+		}
+	} else {
+		out.StopReason = "end_turn"
+		if choice.Message.Content != nil {
+			out.Text = *choice.Message.Content
+		}
+	}
+
+	// Preserve the assistant message for replay — OpenAI requires the full
+	// tool_calls array in the history or the next round will reject it.
+	assistantMsg := map[string]interface{}{
+		"role":       choice.Message.Role,
+		"content":    choice.Message.Content,
+		"tool_calls": choice.Message.ToolCalls,
+	}
+	if len(choice.Message.ToolCalls) == 0 {
+		delete(assistantMsg, "tool_calls")
+	}
+	out.RawAssistantMsg, _ = json.Marshal(assistantMsg)
+
+	return out, nil
+}
+
+// BuildToolResultMessages converts ToolResults into OpenAI tool-role messages —
+// one per result (OpenAI requires individual tool messages, not a batch).
+func (a *OpenAIAdapter) BuildToolResultMessages(results []ToolResult) []json.RawMessage {
+	msgs := make([]json.RawMessage, len(results))
+	for i, r := range results {
+		msg := map[string]interface{}{
+			"role":         "tool",
+			"tool_call_id": r.ID,
+			"content":      r.Content,
+		}
+		msgs[i], _ = json.Marshal(msg)
+	}
+	return msgs
+}
+
 // ── SSE parser ────────────────────────────────────────────────────────────────
 
 // parseOpenAIStream reads the OpenAI SSE response and writes NexusTale SSE format.

@@ -82,6 +82,10 @@ jobs:
           docker push ghcr.io/helloworld44-89/nexustale/frontend:dev
           docker push ghcr.io/helloworld44-89/nexustale/frontend:${{ github.sha }}
 
+      - name: Prune Docker images
+        if: always()
+        run: docker image prune -af
+
   # ── Job 2: Deploy via Ansible ───────────────────────────────────────────────
   deploy:
     name: Deploy to Dev VM

@@ -86,6 +86,9 @@ type AiUsage struct {
 	CompletionTokens int32              `json:"completion_tokens"`
 	CostUsd          pgtype.Numeric     `json:"cost_usd"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	Mode             string             `json:"mode"`
+	BeatText         string             `json:"beat_text"`
+	SceneID          pgtype.UUID        `json:"scene_id"`
 }
 
 type Chapter struct {
@@ -197,6 +200,18 @@ type RefreshToken struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type ResearchNote struct {
+	ID        uuid.UUID          `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Title     string             `json:"title"`
+	Body      string             `json:"body"`
+	SourceUrl string             `json:"source_url"`
+	Tags      []string           `json:"tags"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Scene struct {
 	ID           uuid.UUID          `json:"id"`
 	ChapterID    uuid.UUID          `json:"chapter_id"`
@@ -282,4 +297,14 @@ type WikiTimelineEvent struct {
 	AnchorOffsetYear  pgtype.Int4        `json:"anchor_offset_year"`
 	AnchorOffsetMonth pgtype.Int4        `json:"anchor_offset_month"`
 	AnchorOffsetDay   pgtype.Int4        `json:"anchor_offset_day"`
+}
+
+type WorkshopSession struct {
+	ID        uuid.UUID          `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Title     string             `json:"title"`
+	Messages  json.RawMessage    `json:"messages"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }

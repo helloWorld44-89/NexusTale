@@ -32,12 +32,22 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	ai.POST("/chat", h.Chat)
 	ai.POST("/summarize", h.Summarize)
 	ai.GET("/usage", h.Usage)
+	ai.GET("/beat-history", h.BeatHistory)
 	ai.GET("/context-preview", h.ContextPreview)
 
 	// Context pins (C2): writer-curated additions to the AI context window.
 	ai.GET("/context-pins", h.ListContextPins)
 	ai.POST("/context-pins", h.CreateContextPin)
 	ai.DELETE("/context-pins/:pin_id", h.DeleteContextPin)
+
+	// Workshop sessions (C2): named persistent chat sessions per project.
+	workshop := ai.Group("/workshop")
+	workshop.GET("", h.ListWorkshopSessions)
+	workshop.POST("", h.CreateWorkshopSession)
+	workshop.GET("/:sid", h.GetWorkshopSession)
+	workshop.PUT("/:sid", h.UpdateWorkshopSession)
+	workshop.DELETE("/:sid", h.DeleteWorkshopSession)
+	workshop.POST("/:sid/chat", h.WorkshopChat)
 
 	// Chapter summary endpoints (B2): mounted under the project group.
 	rg.GET("/chapters/:cid/summary", h.GetChapterSummary)
@@ -279,6 +289,22 @@ func (h *Handler) Usage(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, summary)
+}
+
+// BeatHistory returns the writer's deduplicated beat history for this project.
+//
+// GET /projects/:id/ai/beat-history
+func (h *Handler) BeatHistory(c *gin.Context) {
+	projectID, _, ok := resolveIDs(c)
+	if !ok {
+		return
+	}
+	entries, err := h.svc.GetBeatHistory(c.Request.Context(), projectID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, entries)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -525,8 +551,8 @@ func (h *Handler) CreateContextPin(c *gin.Context) {
 		return
 	}
 
-	if req.PinType != "entity" && req.PinType != "chapter" && req.PinType != "scene" {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "pin_type must be entity, chapter, or scene"})
+	if req.PinType != "entity" && req.PinType != "chapter" && req.PinType != "scene" && req.PinType != "note" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "pin_type must be entity, chapter, scene, or note"})
 		return
 	}
 
@@ -602,6 +628,10 @@ func (h *Handler) resolveLabel(c *gin.Context, pinType string, refID uuid.UUID) 
 				return sc.Title
 			}
 			return "Untitled scene"
+		}
+	case "note":
+		if n, err := h.svc.queries.GetResearchNoteByID(ctx, refID); err == nil {
+			return n.Title
 		}
 	}
 	return ""

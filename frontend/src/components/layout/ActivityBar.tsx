@@ -2,14 +2,15 @@
 import type { LeftPanel } from '@/pages/Editor'
 
 interface ActivityBarProps {
-  activePanel:    LeftPanel
-  onToggleChat:    () => void
-  onToggleGit:     () => void
-  onToggleWiki:    () => void
-  onToggleContext: () => void
+  activePanel:      LeftPanel
+  onToggleChat:     () => void
+  onToggleGit:      () => void
+  onToggleWiki:     () => void
+  onToggleContext:  () => void
+  onToggleWorkshop: () => void
 }
 
-export default function ActivityBar({ activePanel, onToggleChat, onToggleGit, onToggleWiki, onToggleContext }: ActivityBarProps) {
+export default function ActivityBar({ activePanel, onToggleChat, onToggleGit, onToggleWiki, onToggleContext, onToggleWorkshop }: ActivityBarProps) {
   return (
     <div className="w-12 flex flex-col items-center py-2 gap-1 bg-brand-bg border-r border-brand-border shrink-0">
       <ActivityButton
@@ -26,6 +27,14 @@ export default function ActivityBar({ activePanel, onToggleChat, onToggleGit, on
         onClick={onToggleContext}
       >
         <PinIcon />
+      </ActivityButton>
+
+      <ActivityButton
+        active={activePanel === 'workshop'}
+        title="Workshop"
+        onClick={onToggleWorkshop}
+      >
+        <WorkshopIcon />
       </ActivityButton>
 
       <ActivityButton
@@ -88,6 +97,17 @@ function PinIcon() {
   return (
     <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2l-1.5 5.5L16 9l-6 9-1.5-5.5L3 11l9-9z" />
+    </svg>
+  )
+}
+
+function WorkshopIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="6" height="6" rx="1" />
+      <rect x="11" y="3" width="6" height="6" rx="1" />
+      <rect x="3" y="11" width="6" height="6" rx="1" />
+      <path d="M11 14h6M14 11v6" />
     </svg>
   )
 }

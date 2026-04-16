@@ -47,6 +47,14 @@ export interface ChapterSummaryResponse {
   stale:       boolean
 }
 
+export interface BeatHistoryEntry {
+  id:          string
+  beat_text:   string
+  scene_id?:   string
+  model:       string
+  created_at:  string
+}
+
 export interface GuideStep {
   step_key:     string
   label:        string
@@ -96,7 +104,7 @@ export interface PromptResponse {
   updated_at:     string
 }
 
-export type ContextPinType = 'entity' | 'chapter' | 'scene'
+export type ContextPinType = 'entity' | 'chapter' | 'scene' | 'note'
 export type ContextPinMode = 'summary' | 'full'
 
 export interface ContextPin {
@@ -107,6 +115,33 @@ export interface ContextPin {
   include_mode: ContextPinMode
   label:        string
   created_at:   string
+}
+
+export interface ResearchNote {
+  id:         string
+  project_id: string
+  user_id:    string
+  title:      string
+  body:       string
+  source_url: string
+  tags:       string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkshopMessage {
+  role:      'user' | 'assistant'
+  content:   string
+  timestamp: string
+}
+
+export interface WorkshopSession {
+  id:         string
+  project_id: string
+  title:      string
+  messages:   WorkshopMessage[]
+  created_at: string
+  updated_at: string
 }
 
 // ── Error class ───────────────────────────────────────────────────────────────
@@ -391,6 +426,9 @@ export const api = {
     usage: (token: string, projectId: string) =>
       request<AIUsageSummary>('GET', `/projects/${projectId}/ai/usage`, undefined, token),
 
+    beatHistory: (token: string, projectId: string) =>
+      request<BeatHistoryEntry[]>('GET', `/projects/${projectId}/ai/beat-history`, undefined, token),
+
     /**
      * Stream a scene completion from POST /projects/:id/ai/complete.
      * Supports "continue" and "beat" modes.
@@ -534,6 +572,86 @@ export const api = {
       delete: (token: string, projectId: string, pinId: string) =>
         request<void>('DELETE', `/projects/${projectId}/ai/context-pins/${pinId}`, undefined, token),
     },
+
+    workshop: {
+      list: (token: string, projectId: string) =>
+        request<WorkshopSession[]>('GET', `/projects/${projectId}/ai/workshop`, undefined, token),
+
+      create: (token: string, projectId: string, title: string) =>
+        request<WorkshopSession>('POST', `/projects/${projectId}/ai/workshop`, { title }, token),
+
+      get: (token: string, projectId: string, sessionId: string) =>
+        request<WorkshopSession>('GET', `/projects/${projectId}/ai/workshop/${sessionId}`, undefined, token),
+
+      update: (token: string, projectId: string, sessionId: string, data: { title?: string; messages?: WorkshopMessage[] }) =>
+        request<WorkshopSession>('PUT', `/projects/${projectId}/ai/workshop/${sessionId}`, data, token),
+
+      delete: (token: string, projectId: string, sessionId: string) =>
+        request<void>('DELETE', `/projects/${projectId}/ai/workshop/${sessionId}`, undefined, token),
+
+      /**
+       * Stream a workshop chat response as SSE.
+       * Messages should include all prior conversation turns plus the new user message.
+       */
+      streamChat: async (
+        token: string,
+        projectId: string,
+        sessionId: string,
+        messages: { role: string; content: string }[],
+        sceneId: string | undefined,
+        onDelta: (text: string) => void,
+        signal?: AbortSignal,
+        branch?: string,
+        toolsEnabled?: boolean,
+        onToolCall?: (name: string, result: string) => void,
+      ): Promise<void> => {
+        const res = await fetch(`${BASE}/projects/${projectId}/ai/workshop/${sessionId}/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            ...(branch ? { 'X-NexusTale-Branch': branch } : {}),
+          },
+          body: JSON.stringify({ messages, scene_id: sceneId ?? '', tools_enabled: toolsEnabled ?? false }),
+          signal,
+        })
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error((data as { message?: string }).message ?? `AI error ${res.status}`)
+        }
+
+        const reader = res.body?.getReader()
+        if (!reader) throw new Error('No response body')
+
+        const decoder = new TextDecoder()
+        let buf = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          const lines = buf.split('\n')
+          buf = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const payload = line.slice(6)
+            if (payload === '[DONE]') return
+            try {
+              const evt = JSON.parse(payload) as { delta?: string; error?: string }
+              if (evt.error) throw new Error(evt.error)
+              if (evt.delta) onDelta(evt.delta)
+              if ((evt as { tool?: string; result?: string }).tool && onToolCall) {
+                const te = evt as { tool: string; result: string }
+                onToolCall(te.tool, te.result)
+              }
+            } catch {
+              // skip malformed chunks
+            }
+          }
+        }
+      },
+    },
   },
 
   // ── ai.testConnection ──────────────────────────────────────────────────────
@@ -642,6 +760,20 @@ export const api = {
     /** List the 20 most recent export jobs for the project. */
     listJobs: (token: string, projectId: string): Promise<{ jobs: ExportJob[] }> =>
       request<{ jobs: ExportJob[] }>('GET', `/projects/${projectId}/export`, undefined, token),
+  },
+
+  research: {
+    list: (token: string, projectId: string) =>
+      request<ResearchNote[]>('GET', `/projects/${projectId}/research-notes`, undefined, token),
+
+    create: (token: string, projectId: string, data: { title?: string; body?: string; source_url?: string; tags?: string[] }) =>
+      request<ResearchNote>('POST', `/projects/${projectId}/research-notes`, data, token),
+
+    update: (token: string, projectId: string, noteId: string, data: { title?: string; body?: string; source_url?: string; tags?: string[] }) =>
+      request<ResearchNote>('PATCH', `/projects/${projectId}/research-notes/${noteId}`, data, token),
+
+    delete: (token: string, projectId: string, noteId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/research-notes/${noteId}`, undefined, token),
   },
 
   users: {

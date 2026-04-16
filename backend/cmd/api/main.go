@@ -18,6 +18,7 @@ import (
 	"github.com/jconder44/nexustale/internal/guide"
 	"github.com/jconder44/nexustale/internal/project"
 	"github.com/jconder44/nexustale/internal/prompts"
+	"github.com/jconder44/nexustale/internal/research"
 	"github.com/jconder44/nexustale/internal/wiki"
 	"github.com/jconder44/nexustale/pkg/db"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
@@ -111,6 +112,9 @@ func main() {
 	guideHandler := guide.NewHandler(guideService)
 	promptsHandler := prompts.NewHandler(promptsService)
 
+	researchService := research.NewService(queries)
+	researchHandler := research.NewHandler(researchService)
+
 	// Router
 	gin.SetMode(cfg.Server.Mode)
 	router := gin.Default()
@@ -150,6 +154,9 @@ func main() {
 
 		promptsGroup := v1.Group("/projects/:id/prompts", auth.RequireAuth(authService))
 		promptsHandler.RegisterRoutes(promptsGroup)
+
+		researchGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		researchHandler.RegisterRoutes(researchGroup)
 	}
 
 	// Server with graceful shutdown
