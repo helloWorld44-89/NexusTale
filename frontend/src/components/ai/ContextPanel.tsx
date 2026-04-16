@@ -3,7 +3,7 @@
 // specific information in scope during every AI call in this session.
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/services/api'
-import type { ContextPin, ContextPinType, ContextPinMode, WikiEntity, Act, Chapter } from '@/services/api'
+import type { ContextPin, ContextPinType, ContextPinMode, WikiEntity, Chapter } from '@/services/api'
 
 interface ContextPanelProps {
   token:     string
