@@ -278,6 +278,158 @@ func (a *AnthropicAdapter) Summarize(ctx context.Context, text string) (string, 
 	return a.Complete(ctx, req)
 }
 
+// ── tool use ──────────────────────────────────────────────────────────────────
+
+// anthropicTool is the wire format for a tool definition sent to the API.
+type anthropicTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"input_schema"`
+}
+
+// anthropicContentBlock represents one item in the content array of a response.
+// When the model calls a tool, type == "tool_use". For normal text, type == "text".
+type anthropicContentBlock struct {
+	Type  string          `json:"type"`
+	Text  string          `json:"text,omitempty"`
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Input json.RawMessage `json:"input,omitempty"`
+}
+
+// anthropicToolResponse is the non-streaming API response when tools are enabled.
+type anthropicToolResponse struct {
+	Content    []anthropicContentBlock `json:"content"`
+	StopReason string                  `json:"stop_reason"`
+	Usage      struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
+}
+
+// postJSON sends an arbitrary JSON body to the Anthropic messages endpoint.
+// Used for tool-use requests that require a different message shape than post().
+func (a *AnthropicAdapter) postJSON(ctx context.Context, body []byte) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		anthropicBaseURL+"/messages", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("x-api-key", a.apiKey)
+	req.Header.Set("anthropic-version", anthropicVersion)
+	req.Header.Set("Content-Type", "application/json")
+	return a.client.Do(req)
+}
+
+// ChatTools implements ToolAdapter. It runs one non-streaming tool-use round using
+// Anthropic's tools API and returns the model's response (tool calls or final text).
+func (a *AnthropicAdapter) ChatTools(ctx context.Context, msgs []Message, extraMsgs []json.RawMessage, tools []ToolDefinition, maxTokens int) (ToolChatResponse, error) {
+	if maxTokens == 0 {
+		maxTokens = 1024
+	}
+
+	// Separate system message; convert the rest to raw JSON (string content).
+	var system string
+	rawMsgs := make([]json.RawMessage, 0, len(msgs)+len(extraMsgs))
+	for _, m := range msgs {
+		if m.Role == "system" {
+			system = m.Content
+			continue
+		}
+		raw, _ := json.Marshal(map[string]string{"role": m.Role, "content": m.Content})
+		rawMsgs = append(rawMsgs, raw)
+	}
+	rawMsgs = append(rawMsgs, extraMsgs...)
+
+	anthropicTools := make([]anthropicTool, len(tools))
+	for i, t := range tools {
+		anthropicTools[i] = anthropicTool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema}
+	}
+
+	reqMap := map[string]interface{}{
+		"model":      a.model,
+		"max_tokens": maxTokens,
+		"messages":   rawMsgs,
+		"tools":      anthropicTools,
+		"stream":     false,
+	}
+	if system != "" {
+		reqMap["system"] = system
+	}
+
+	data, err := json.Marshal(reqMap)
+	if err != nil {
+		return ToolChatResponse{}, err
+	}
+
+	resp, err := a.postJSON(ctx, data)
+	if err != nil {
+		return ToolChatResponse{}, fmt.Errorf("anthropic tools: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return ToolChatResponse{}, fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
+	}
+
+	var result anthropicToolResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return ToolChatResponse{}, fmt.Errorf("anthropic tools decode: %w", err)
+	}
+
+	out := ToolChatResponse{
+		StopReason: result.StopReason,
+		Usage: Usage{
+			PromptTokens:     result.Usage.InputTokens,
+			CompletionTokens: result.Usage.OutputTokens,
+		},
+	}
+	out.Usage.CostUSD = a.estimateCost(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+
+	for _, block := range result.Content {
+		switch block.Type {
+		case "text":
+			out.Text += block.Text
+		case "tool_use":
+			out.ToolCalls = append(out.ToolCalls, ToolCall{
+				ID:    block.ID,
+				Name:  block.Name,
+				Input: block.Input,
+			})
+		}
+	}
+
+	// Preserve the full assistant message (with all content blocks) for replay.
+	assistantMsg := map[string]interface{}{
+		"role":    "assistant",
+		"content": result.Content,
+	}
+	out.RawAssistantMsg, _ = json.Marshal(assistantMsg)
+
+	return out, nil
+}
+
+// BuildToolResultMessages converts ToolResults into the Anthropic tool-result
+// user message (a single user turn with a content array of tool_result blocks).
+func (a *AnthropicAdapter) BuildToolResultMessages(results []ToolResult) []json.RawMessage {
+	blocks := make([]map[string]interface{}, len(results))
+	for i, r := range results {
+		block := map[string]interface{}{
+			"type":        "tool_result",
+			"tool_use_id": r.ID,
+			"content":     r.Content,
+		}
+		if r.IsError {
+			block["is_error"] = true
+		}
+		blocks[i] = block
+	}
+	msg := map[string]interface{}{"role": "user", "content": blocks}
+	raw, _ := json.Marshal(msg)
+	return []json.RawMessage{raw}
+}
+
 // ── SSE parser ────────────────────────────────────────────────────────────────
 
 type anthropicStreamEvent struct {

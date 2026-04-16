@@ -47,8 +47,8 @@ func (q *Queries) GetProjectUsageSummary(ctx context.Context, projectID uuid.UUI
 }
 
 const insertUsage = `-- name: InsertUsage :exec
-INSERT INTO ai_usage (user_id, project_id, model, prompt_tokens, completion_tokens, cost_usd)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO ai_usage (user_id, project_id, model, prompt_tokens, completion_tokens, cost_usd, mode, beat_text, scene_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type InsertUsageParams struct {
@@ -58,6 +58,9 @@ type InsertUsageParams struct {
 	PromptTokens     int32          `json:"prompt_tokens"`
 	CompletionTokens int32          `json:"completion_tokens"`
 	CostUsd          pgtype.Numeric `json:"cost_usd"`
+	Mode             string         `json:"mode"`
+	BeatText         string         `json:"beat_text"`
+	SceneID          pgtype.UUID    `json:"scene_id"`
 }
 
 func (q *Queries) InsertUsage(ctx context.Context, arg InsertUsageParams) error {
@@ -68,6 +71,55 @@ func (q *Queries) InsertUsage(ctx context.Context, arg InsertUsageParams) error 
 		arg.PromptTokens,
 		arg.CompletionTokens,
 		arg.CostUsd,
+		arg.Mode,
+		arg.BeatText,
+		arg.SceneID,
 	)
 	return err
+}
+
+const listBeatHistory = `-- name: ListBeatHistory :many
+SELECT DISTINCT ON (beat_text) id, beat_text, scene_id, model, created_at
+FROM ai_usage
+WHERE project_id = $1
+  AND mode = 'beat'
+  AND beat_text != ''
+ORDER BY beat_text, created_at DESC
+LIMIT 50
+`
+
+type ListBeatHistoryRow struct {
+	ID        uuid.UUID          `json:"id"`
+	BeatText  string             `json:"beat_text"`
+	SceneID   pgtype.UUID        `json:"scene_id"`
+	Model     string             `json:"model"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+// Returns the 50 most recent beat-mode calls for a project, deduplicated by beat text.
+// Used by the prompt history browser to let writers re-apply previous beats.
+func (q *Queries) ListBeatHistory(ctx context.Context, projectID uuid.UUID) ([]ListBeatHistoryRow, error) {
+	rows, err := q.db.Query(ctx, listBeatHistory, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBeatHistoryRow{}
+	for rows.Next() {
+		var i ListBeatHistoryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BeatText,
+			&i.SceneID,
+			&i.Model,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

@@ -468,11 +468,37 @@ These fixes were prerequisite to AI being genuinely useful for writers — block
 
 #### C2 — AI depth
 
-- **`[Heavy]` Explicit AI context panel** — writer-curated additions to the AI context window: pin wiki entities by name or tag, include specific chapters/scenes as full text or summary; rendered as an extra context block appended to `BuildContext`; power-user complement to automatic summarisation
-- **`[Heavy]` Multi-session Workshop** — named persistent chat sessions per project (`workshop_sessions` table); each session stores `[{role, content, timestamp}]`; uses `category: "workshop"` system prompt; sessions listed in a sidebar panel; exportable to Markdown
-- **`[Medium]` Research notes** — freeform per-project scratchpad (`research_notes` table: `id, project_id, title, body TEXT, source_url, tags TEXT[], created_at, updated_at`); "Research" tab in WikiHub; CRUD routes behind `RequireAuth`; notes can be pinned into AI context (via the explicit context panel) so pasted references become part of the model's knowledge during a session; designed for web quotes, worldbuilding facts, craft references
-- **`[Medium]` Prompt history browser** — store first 500 chars of assembled prompt + beat text in `ai_usage`; settings-adjacent UI panel to browse, copy, and re-apply previous beats
-- **`[Light]` Import/export writing styles** — download project style presets as JSON; import into another project from the same panel
+- ✅ **`[Heavy]` Explicit AI context panel** — migration 018 `ai_context_pins`; pin wiki entities/chapters/scenes/notes by name; `buildPinnedContext` section 6 in `BuildContext`; `ContextPanel.tsx` with entity/chapter/scene/note search tabs + mode toggle (summary/full); ActivityBar "Pin" button in Editor (2026-04-15)
+- ✅ **`[Heavy]` Multi-session Workshop** — migration 019 `workshop_sessions`; `workshop_handler.go` (6 routes: CRUD + SSE chat); `SystemPromptOverride` field in `ChatRequest`; `workshopSystemPrompt()` falls back to `defaultWorkshopSystem`; `WorkshopPanel.tsx` (session sidebar, inline title editing, SSE streaming, Markdown export); ActivityBar "Workshop" button in Editor (2026-04-16)
+- ✅ **`[Medium]` Research notes** — migration 020 `research_notes`; `internal/research` package (service + handler, 5 routes); notes listed by `project_id` (project-wide artifact); `ResearchNotesTab.tsx` in WikiHub "Research" tab (card grid, NoteDetail with auto-save); pinnable into AI context via `ContextPanel` notes tab + `appendPinnedNote` in `context.go` (2026-04-16)
+- ✅ **`[Medium]` Prompt history browser** — migration 021 adds `mode TEXT`, `beat_text TEXT`, `scene_id UUID NULL` to `ai_usage`; `recordUsage` threads mode/beat/sceneID through from all call sites; `ListBeatHistory` sqlc query (DISTINCT ON beat_text, ordered by recency); `GET /projects/:id/ai/beat-history`; "Recent beats" list inside `BeatInput` (lazy-loaded on beat mode open; shown when input is empty; click to pre-fill; max 10 shown, max 32px tall scrollable) (2026-04-16)
+- ✅ **`[Light]` Import/export writing styles** — download project style presets as JSON; import into another project from the same panel (2026-04-15)
+
+#### C2.5 — AI manuscript tools (agent write access)
+
+The author opts in to giving Nexus direct write access to the manuscript — the "Claude Code for your novel" layer. Gated by an explicit per-session toggle so it never surprises the writer.
+
+**Step 1 — Quick wins, no backend changes** ✅ complete (2026-04-16)
+- ✅ **`[Light]` Continue button** — "Continue →" pill in ScribeEditor toolbar alongside Beat; calls existing `api.ai.streamComplete(mode: 'continue')`; same Accept/Retry/Discard flow as BeatInput; `ContinueIcon` added; `openContinue()` auto-starts streaming on open
+- ✅ **`[Light]` Insert into scene** — hover-reveal "insert into scene" button on every completed assistant message in Nexus chat (`ChatBar`) and Workshop (`WorkshopPanel`); `onInsertToScene?: (text: string) => void` prop on both panels; `handleInsertToScene` in `Editor.tsx` appends to active scene content + triggers autosave; button hidden when no scene is active
+
+**Step 2 — Manuscript tool definitions** `[Medium]`
+- Define a `ManuscriptTool` interface in `internal/ai`: `append_to_scene(scene_id, content)`, `replace_scene_content(scene_id, content)`, `create_scene(chapter_id, title, content?)`, `create_chapter(act_id, title)`, `create_act(project_id, title)`
+- Register tool schemas with OpenAI (function calling) and Anthropic (tool use) adapters; tool calls execute **server-side** (AI service already has `queries` + access to project/chapter/scene services via injected dependencies)
+- AI service emits `[TOOL:name:json]` SSE events after each execution so the frontend can display them without being the executor
+- `StreamChat` extended to run the tool-use loop: stream → detect tool call → execute → feed result back → continue streaming
+
+**Step 3 — Author control + frontend feedback** `[Medium]`
+- `WorkshopPanel`: "Allow AI writes" toggle in session header (off by default); when off, tool call events are displayed as informational only ("Nexus suggested: append to Scene 3 — enable writes to apply")
+- Inline event rows in panel chat: `↳ Created scene "The Crossing"` / `↳ Appended 312 words to Chapter 2, Scene 1` with per-action Undo button
+- Undo: scene writes restore previous content via a local undo stack (before/after snapshots stored client-side); chapter/act creates call the delete endpoint
+- Live scene refresh: when a scene currently open in `ScribeEditor` is written to by a tool call, `handleContentChange` is called so the editor reflects the new content immediately
+
+**Step 4 — Agent mode in Workshop** `[Heavy]`
+- High-level instruction loop: writer types "Draft Act 2 — three chapters, noir tone, ~1500 words each"; Nexus plans then executes `create_chapter` + `create_scene` + `append_to_scene` calls in sequence
+- Progress stream: each tool execution emits a notification row so the author watches the manuscript grow in real time
+- Stop button aborts the loop mid-execution; already-written content is kept
+- Requires Steps 2–3 to be stable; CRDT library decision not needed (sequential writes, no concurrency)
 
 #### C3 — Collaboration (last, largest)
 
@@ -551,11 +577,18 @@ These fixes were prerequisite to AI being genuinely useful for writers — block
 - ✅ `[Medium]` **Wiki image upload** — migration 017 (`image_key TEXT`); multipart upload handler; MinIO `PutObject`/`DeleteObject`; `PresignedGetURL` in `EntityResponse.image_url`; portrait + upload/remove UI in `EntityDetail`
 
 **C2 — AI depth**
-- `[Heavy]` **Explicit AI context panel** — writer-curated context window (pin entities, chapters, scenes)
-- `[Heavy]` **Multi-session Workshop** — named persistent chat sessions; workshop prompt variant; Markdown export
-- `[Medium]` **Research notes** — `research_notes` table; WikiHub "Research" tab; CRUD routes; pinnable into AI context
-- `[Medium]` **Prompt history browser** — browse and re-apply previous beats from `ai_usage`
-- `[Light]` **Import/export writing styles** — JSON round-trip for prose presets across projects
+- ✅ `[Heavy]` **Explicit AI context panel** — migration 018; `ContextPanel.tsx`; entity/chapter/scene/note search tabs; `buildPinnedContext` in `BuildContext`
+- ✅ `[Heavy]` **Multi-session Workshop** — migration 019 `workshop_sessions`; `workshop_handler.go`; `WorkshopPanel.tsx`; SSE chat; Markdown export; `SystemPromptOverride` in `ChatRequest`
+- ✅ `[Medium]` **Research notes** — migration 020 `research_notes`; `internal/research`; `ResearchNotesTab.tsx` in WikiHub; pinnable via context panel; `appendPinnedNote` in `context.go`
+- ✅ `[Medium]` **Prompt history browser** — migration 021; `mode/beat_text/scene_id` on `ai_usage`; `ListBeatHistory` query; `GET /ai/beat-history`; "Recent beats" in BeatInput
+- ✅ `[Light]` **Import/export writing styles** — JSON round-trip for prose presets across projects
+
+**C2.5 — AI manuscript tools**
+- ✅ `[Light]` **Continue button** — "Continue →" in ScribeEditor; streams `mode=continue`; Accept/Retry/Discard
+- ✅ `[Light]` **Insert into scene** — hover-reveal on Nexus + Workshop messages; `onInsertToScene` prop wired in Editor
+- `[Medium]` **Manuscript tool definitions** — `append_to_scene/replace/create_scene/create_chapter/create_act`; server-side execution; `[TOOL:...]` SSE events; OpenAI + Anthropic adapter support
+- `[Medium]` **Author control + feedback** — "Allow AI writes" toggle; inline event rows + Undo; live scene refresh
+- `[Heavy]` **Agent mode** — high-level instruction loop; sequential tool execution; Stop button; requires Steps 2–3
 
 **C3 — Collaboration (last)**
 - `[Heaviest]` **WebSocket + CRDT** — real-time co-editing, presence, roles/invites, Redis fan-out; CRDT library choice must be locked before starting

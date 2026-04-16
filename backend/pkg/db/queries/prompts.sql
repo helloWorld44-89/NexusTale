@@ -28,3 +28,13 @@ RETURNING id, project_id, name, category, content, system_content, sort_order, c
 -- name: DeleteProjectPrompt :exec
 DELETE FROM project_prompts
 WHERE id = $1;
+
+-- name: GetWorkshopPrompt :one
+-- Returns the first workshop-category prompt for a project (by sort_order then created_at).
+-- Used by the Workshop chat handler to optionally override the default system prompt.
+SELECT id, project_id, name, category, content, system_content, sort_order, created_at, updated_at
+FROM   project_prompts
+WHERE  project_id = $1
+  AND  category   = 'workshop'
+ORDER  BY sort_order ASC, created_at ASC
+LIMIT  1;

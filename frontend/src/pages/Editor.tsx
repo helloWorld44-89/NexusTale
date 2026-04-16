@@ -8,6 +8,7 @@ import TopBar from '@/components/layout/TopBar'
 import StatusBar from '@/components/layout/StatusBar'
 import ChatBar from '@/components/ai/ChatBar'
 import ContextPanel from '@/components/ai/ContextPanel'
+import WorkshopPanel from '@/components/ai/WorkshopPanel'
 import GitPanel from '@/components/editor/GitPanel'
 import WikiPanel from '@/components/wiki/WikiPanel'
 import ScribeEditor from '@/components/editor/ScribeEditor'
@@ -16,7 +17,7 @@ import ProjectExplorer from '@/components/project/ProjectExplorer'
 import type { ActItem } from '@/components/project/ProjectExplorer'
 import ActivityBar from '@/components/layout/ActivityBar'
 
-export type LeftPanel = 'chat' | 'context' | 'git' | 'wiki' | 'none'
+export type LeftPanel = 'chat' | 'context' | 'workshop' | 'git' | 'wiki' | 'none'
 
 // Chapter augmented with its scenes for the explorer tree.
 interface ChapterWithScenes extends Chapter {
@@ -220,6 +221,14 @@ export default function Editor() {
     setLeftPanel((prev) => (prev === panel ? 'none' : panel))
   }, [])
 
+  // Append AI-generated text from any panel into the active scene.
+  const handleInsertToScene = useCallback((text: string) => {
+    if (!activeScene) return
+    const current = sceneContents[activeScene.id] ?? ''
+    const next = current + (current.endsWith('\n') ? '\n' : '\n\n') + text
+    handleContentChange(activeScene.id, next)
+  }, [activeScene, sceneContents, handleContentChange])
+
   // ── Derived display values ──────────────────────────────────────────────────
 
   const activeAct     = acts.find((a) => a.chapters.some((c) => c.id === selectedChapterId))
@@ -283,6 +292,7 @@ export default function Editor() {
             activePanel={leftPanel}
             onToggleChat={() => toggleLeftPanel('chat')}
             onToggleContext={() => toggleLeftPanel('context')}
+            onToggleWorkshop={() => toggleLeftPanel('workshop')}
             onToggleGit={() => toggleLeftPanel('git')}
             onToggleWiki={() => toggleLeftPanel('wiki')}
           />
@@ -293,12 +303,22 @@ export default function Editor() {
             projectId={projectId}
             sceneId={selectedSceneId ?? undefined}
             branch={currentBranch}
+            onInsertToScene={activeScene ? handleInsertToScene : undefined}
           />
         )}
         {!focusMode && leftPanel === 'context' && projectId && accessToken && (
           <div className="w-72 shrink-0 flex flex-col border-r border-brand-border bg-brand-bg overflow-hidden">
             <ContextPanel token={accessToken} projectId={projectId} />
           </div>
+        )}
+        {!focusMode && leftPanel === 'workshop' && projectId && accessToken && (
+          <WorkshopPanel
+            token={accessToken}
+            projectId={projectId}
+            sceneId={selectedSceneId ?? undefined}
+            branch={currentBranch}
+            onInsertToScene={activeScene ? handleInsertToScene : undefined}
+          />
         )}
         {!focusMode && leftPanel === 'git' && projectId && accessToken && (
           <GitPanel

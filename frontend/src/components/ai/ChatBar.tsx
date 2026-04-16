@@ -16,6 +16,7 @@ interface ChatBarProps {
   projectId: string
   sceneId?: string
   branch?: string
+  onInsertToScene?: (text: string) => void
 }
 
 const NEXUS_INTRO: Message = {
@@ -30,7 +31,7 @@ const NO_CONNECTION_MSG: Message = {
   text: "No AI connection configured. Add a provider key or Ollama URL in Settings to activate Nexus.",
 }
 
-export default function ChatBar({ token, projectId, sceneId, branch }: ChatBarProps) {
+export default function ChatBar({ token, projectId, sceneId, branch, onInsertToScene }: ChatBarProps) {
   const [messages, setMessages]     = useState<Message[]>([])
   const [input, setInput]           = useState('')
   const [streaming, setStreaming]   = useState(false)
@@ -165,7 +166,7 @@ export default function ChatBar({ token, projectId, sceneId, branch }: ChatBarPr
           messages.map((m) => (
             <div
               key={m.id}
-              className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}
+              className={`group flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}
             >
               {/* Avatar */}
               <div
@@ -178,17 +179,34 @@ export default function ChatBar({ token, projectId, sceneId, branch }: ChatBarPr
                 {m.role === 'assistant' ? 'N' : 'U'}
               </div>
 
-              {/* Bubble */}
-              <div
-                className={`max-w-[200px] rounded-lg px-3 py-2 leading-relaxed whitespace-pre-wrap ${
-                  m.role === 'assistant'
-                    ? 'bg-brand-bg text-brand-muted'
-                    : 'bg-brand-purple/20 text-brand-text'
-                }`}
-              >
-                {m.text}
-                {m.streaming && (
-                  <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-brand-cyan/70 animate-pulse align-middle" />
+              {/* Bubble + insert action */}
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <div
+                  className={`max-w-[200px] rounded-lg px-3 py-2 leading-relaxed whitespace-pre-wrap ${
+                    m.role === 'assistant'
+                      ? 'bg-brand-bg text-brand-muted'
+                      : 'bg-brand-purple/20 text-brand-text'
+                  }`}
+                >
+                  {m.text}
+                  {m.streaming && (
+                    <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-brand-cyan/70 animate-pulse align-middle" />
+                  )}
+                </div>
+                {m.role === 'assistant'
+                  && !m.streaming
+                  && m.id !== 'm-nexus-intro'
+                  && m.id !== 'm-no-connection'
+                  && onInsertToScene
+                  && (
+                  <button
+                    onClick={() => onInsertToScene(m.text)}
+                    className="self-start opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 ml-1 text-[10px] text-brand-muted hover:text-brand-cyan"
+                    title="Append to active scene"
+                  >
+                    <InsertIcon />
+                    insert into scene
+                  </button>
                 )}
               </div>
             </div>
@@ -250,6 +268,15 @@ function SpinIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  )
+}
+
+function InsertIcon() {
+  return (
+    <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 1v7M3 5l3 3 3-3" />
+      <path d="M2 10h8" />
     </svg>
   )
 }

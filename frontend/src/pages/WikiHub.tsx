@@ -6,9 +6,10 @@ import { api } from '@/services/api'
 import type { WikiEntity, EntityType, ProjectStructure } from '@/services/api'
 import TimelineView from '@/components/wiki/TimelineView'
 import RelationshipGraph from '@/components/wiki/RelationshipGraph'
+import ResearchNotesTab from '@/components/wiki/ResearchNotesTab'
 import { useAuthStore } from '@/app/store/authStore'
 
-type Tab = 'entities' | 'timeline' | 'graph'
+type Tab = 'entities' | 'timeline' | 'graph' | 'research'
 
 export default function WikiHub() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -61,10 +62,15 @@ export default function WikiHub() {
           <GraphIcon />
           Graph
         </TabButton>
+        <TabButton active={tab === 'research'} onClick={() => setTab('research')}>
+          <NoteIcon />
+          Research
+        </TabButton>
       </div>
 
       {/* Content */}
       <main className={`flex-1 overflow-y-auto ${tab === 'graph' ? 'px-4 py-4' : 'px-6 py-6 max-w-5xl w-full mx-auto'}`}>
+
         {tab === 'entities' && (
           <EntitiesTab
             token={token}
@@ -90,6 +96,9 @@ export default function WikiHub() {
               setTab('entities')
             }}
           />
+        )}
+        {tab === 'research' && (
+          <ResearchNotesTab token={token} projectId={projectId} />
         )}
       </main>
     </div>
@@ -713,6 +722,15 @@ function GraphIcon() {
       <circle cx="15" cy="5"  r="2.5" />
       <circle cx="15" cy="15" r="2.5" />
       <path d="M7.5 9L12.5 6.5M7.5 11L12.5 13.5" />
+    </svg>
+  )
+}
+
+function NoteIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="3" width="12" height="14" rx="2" />
+      <path d="M7 7h6M7 10h6M7 13h4" />
     </svg>
   )
 }

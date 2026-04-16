@@ -11,7 +11,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | Area | Status |
 |------|--------|
 | **API shell** | Go 1.25 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens |
-| **Database** | PostgreSQL migrations **(016)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
+| **Database** | PostgreSQL migrations **(020)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
 | **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; act layer hidden in UI for single default act; full CRUD + integration tests + Bruno |
 | **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; 21 handler integration tests; fast-forward merge; Paradox detection |
 | **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints; relationship graph (d3 force) |
@@ -24,7 +24,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene); side effects populate wiki + manuscript; guide steps auto-fill AI Bible |
 | **Story structures** | 12 seeded templates + scoring matrix; freeform option; structure badge on ProjectHome; phase banners in WikiHub timeline |
 | **Collaboration** | Package stubbed; no HTTP registration |
-| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub (entities/timeline/graph), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats** |
+| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub (entities/timeline/graph/research notes), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats, context pins panel, multi-session Workshop panel** |
 | **Navigation** | TopBar: left nav (logo → Dashboard, Home, Wiki, Guide) + breadcrumb + right area (panel toggles, username, Settings, logout); editor fully navigable |
 | **Settings** | AI provider keys (add/remove/test), Ollama URL + model selector, appearance (dark/light), account deletion |
 | **OpenAPI + types** | `docs/openapi.yaml` (45+ routes incl. acts); `frontend/src/services/api-types.ts` generated; inline types for AI/prompts/usage/guide/structures |
@@ -211,10 +211,20 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 
 ### C2 — AI depth
 - [x] **`[Heavy]`** Explicit AI context panel — writer-curated additions to the AI context window: pin wiki entities by name or tag, include specific chapters/scenes as full text or summary
-- [ ] **`[Heavy]`** Multi-session Workshop — named persistent chat sessions per project (`workshop_sessions` table); each session stores `[{role, content, timestamp}]`; sidebar panel; exportable to Markdown
-- [ ] **`[Medium]`** Research notes — freeform per-project scratchpad (`research_notes` table: title, body, source_url, tags); accessible from WikiHub "Research" tab and injectable into AI context; designed for web quotes, worldbuilding references, and craft notes
-- [ ] **`[Medium]`** Prompt history browser — store first 500 chars of assembled prompt + beat text in `ai_usage`; UI panel to browse and re-apply previous beats
+- [x] **`[Heavy]`** Multi-session Workshop — named persistent chat sessions per project (`workshop_sessions` table); each session stores `[{role, content, timestamp}]`; sidebar panel; exportable to Markdown
+- [x] **`[Medium]`** Research notes — freeform per-project scratchpad (`research_notes` table: title, body, source_url, tags); accessible from WikiHub "Research" tab and injectable into AI context; designed for web quotes, worldbuilding references, and craft notes
+- [x] **`[Medium]`** Prompt history browser — migration 021 adds `mode/beat_text/scene_id` to `ai_usage`; `GET /ai/beat-history` (deduplicated by beat text); "Recent beats" list inside BeatInput (lazy-loaded, shown when input empty, click to re-fill)
 - [x] **`[Light]`** Import/export writing styles — download project style presets as JSON; import into another project
+
+### C2.5 — AI manuscript tools (agent write access)
+
+The author opts in to letting Nexus write directly to the manuscript — appending prose, creating scenes, chapters, and acts — from any AI panel. Modelled after Claude Code's file-write tools.
+
+- [x] **`[Light]`** Continue button — "Continue →" in the ScribeEditor toolbar; streams `/ai/complete?mode=continue`; same Accept/Retry/Discard flow as BeatInput; no backend changes needed
+- [x] **`[Light]`** Insert into scene — hover-reveal "insert into scene" button on every completed assistant message in Nexus chat and Workshop; appends text to active scene with autosave; only shown when a scene is active
+- [ ] **`[Medium]`** Manuscript tool definitions — define backend tool schema (`append_to_scene`, `replace_scene_content`, `create_scene`, `create_chapter`, `create_act`); register as callable functions in the AI service; extend OpenAI + Anthropic adapters to emit tool-call events in the SSE stream
+- [ ] **`[Medium]`** Tool execution + author control — frontend intercepts `[TOOL:...]` SSE events; executes the corresponding API call; emits an inline event row in the panel ("↳ Appended 3 paragraphs to Chapter 2, Scene 1") with an Undo button; live scene content refresh if the active scene was written to; "Allow AI writes" toggle per Workshop session (opt-in, off by default)
+- [ ] **`[Heavy]`** Agent mode in Workshop — high-level instruction loop ("Write Act 2 — three chapters, ~2000 words each"); AI autonomously calls manuscript tools in sequence; streams progress notifications; author can Stop at any point; requires Steps 2–3 above
 
 ### C3 — Collaboration (last, largest)
 - [ ] **`[Heaviest]`** WebSocket + CRDT — real-time co-editing per scene; CRDT library choice (Yjs vs Automerge — lock before starting); Redis pub/sub fan-out; presence indicators; roles (editor/commenter/viewer) + invite flow; Git snapshot on idle
@@ -262,4 +272,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-04-15: Phase A, A+, B, C0, C0.5, C1, and C2 context panel complete. Next: C2 remainder — multi-session workshop, research notes, prompt history browser, import/export writing styles.*
+*Last updated 2026-04-16: C2 fully complete (incl. prompt history browser); C2.5 Step 1 (Continue + Insert into scene) shipped. Next: C2.5 Steps 2–4 (manuscript tool definitions, execution loop, agent mode).*

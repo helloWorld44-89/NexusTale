@@ -3,7 +3,7 @@
 // specific information in scope during every AI call in this session.
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/services/api'
-import type { ContextPin, ContextPinType, ContextPinMode, WikiEntity, Chapter } from '@/services/api'
+import type { ContextPin, ContextPinType, ContextPinMode, WikiEntity, Chapter, ResearchNote } from '@/services/api'
 
 interface ContextPanelProps {
   token:     string
@@ -15,12 +15,14 @@ const TYPE_BADGE: Record<ContextPinType, string> = {
   entity:  'bg-brand-cyan/15 text-brand-cyan',
   chapter: 'bg-brand-purple/15 text-brand-purple',
   scene:   'bg-brand-gold/15 text-brand-gold',
+  note:    'bg-emerald-400/15 text-emerald-400',
 }
 
 const TYPE_LABEL: Record<ContextPinType, string> = {
   entity:  'Entity',
   chapter: 'Chapter',
   scene:   'Scene',
+  note:    'Note',
 }
 
 // ── search tab ────────────────────────────────────────────────────────────────
@@ -68,6 +70,7 @@ export default function ContextPanel({ token, projectId }: ContextPanelProps) {
   const [entities,  setEntities]  = useState<WikiEntity[]>([])
   const [chapters,  setChapters]  = useState<Chapter[]>([])
   const [scenes,    setScenes]    = useState<{ id: string; title: string; chapterTitle: string }[]>([])
+  const [notes,     setNotes]     = useState<ResearchNote[]>([])
   const [listsLoaded, setListsLoaded] = useState(false)
 
   // ── load pins ───────────────────────────────────────────────────────────────
@@ -90,10 +93,12 @@ export default function ContextPanel({ token, projectId }: ContextPanelProps) {
   const loadCandidates = useCallback(async () => {
     if (listsLoaded) return
     try {
-      const [rawEntities, rawActs] = await Promise.all([
+      const [rawEntities, rawActs, rawNotes] = await Promise.all([
         api.wiki.listEntities(token, projectId),
         api.acts.list(token, projectId),
+        api.research.list(token, projectId),
       ])
+      setNotes(rawNotes)
       setEntities(rawEntities)
 
       // Flatten acts → chapters, and chapters → scenes
@@ -170,6 +175,9 @@ export default function ContextPanel({ token, projectId }: ContextPanelProps) {
   )
   const filteredScenes = scenes.filter(
     (s) => !q || s.title.toLowerCase().includes(q) || s.chapterTitle.toLowerCase().includes(q),
+  )
+  const filteredNotes = notes.filter(
+    (n) => !q || n.title.toLowerCase().includes(q) || n.tags.some((t) => t.includes(q)),
   )
 
   const isPinned = (pinType: ContextPinType, refId: string) =>
@@ -257,7 +265,7 @@ export default function ContextPanel({ token, projectId }: ContextPanelProps) {
           <div className="flex flex-col h-full">
             {/* type tabs */}
             <div className="flex border-b border-brand-border shrink-0">
-              {(['entity', 'chapter', 'scene'] as SearchTab[]).map((tab) => (
+              {(['entity', 'chapter', 'scene', 'note'] as SearchTab[]).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => { setSearchTab(tab); setSearchQ('') }}
@@ -314,9 +322,20 @@ export default function ContextPanel({ token, projectId }: ContextPanelProps) {
                 />
               ))}
 
+              {searchTab === 'note' && filteredNotes.map((n) => (
+                <SearchRow
+                  key={n.id}
+                  label={n.title}
+                  sub={n.tags.slice(0, 3).join(', ') || undefined}
+                  pinned={isPinned('note', n.id)}
+                  onAdd={() => handleAdd('note', n.id)}
+                />
+              ))}
+
               {searchTab === 'entity'  && filteredEntities.length  === 0 && <Empty />}
               {searchTab === 'chapter' && filteredChapters.length  === 0 && <Empty />}
               {searchTab === 'scene'   && filteredScenes.length    === 0 && <Empty />}
+              {searchTab === 'note'    && filteredNotes.length     === 0 && <Empty />}
             </div>
           </div>
         )}

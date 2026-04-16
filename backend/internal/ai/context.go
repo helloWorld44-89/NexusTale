@@ -459,6 +459,8 @@ func (s *Service) buildPinnedContext(ctx context.Context, projectID, userID uuid
 			s.appendPinnedChapter(&out, ctx, pin.RefID, branchName, pin.IncludeMode)
 		case "scene":
 			s.appendPinnedScene(&out, ctx, pin.RefID, pin.IncludeMode)
+		case "note":
+			s.appendPinnedNote(&out, ctx, pin.RefID, pin.IncludeMode)
 		}
 	}
 
@@ -523,6 +525,28 @@ func (s *Service) appendPinnedChapter(out *strings.Builder, ctx context.Context,
 	}
 	if len(content) > 0 {
 		out.WriteString(string(content) + "\n")
+	}
+}
+
+func (s *Service) appendPinnedNote(out *strings.Builder, ctx context.Context, id uuid.UUID, mode string) {
+	n, err := s.queries.GetResearchNoteByID(ctx, id)
+	if err != nil {
+		return
+	}
+	out.WriteString("**Research note: " + n.Title + "**\n")
+	body := []rune(n.Body)
+	limit := pinnedContentLimit
+	if mode == "summary" {
+		limit = contentFallbackLimit
+	}
+	if len(body) > limit {
+		body = append(body[:limit], []rune("…")...)
+	}
+	if len(body) > 0 {
+		out.WriteString(string(body) + "\n")
+	}
+	if n.SourceUrl != "" {
+		out.WriteString("Source: " + n.SourceUrl + "\n")
 	}
 }
 
