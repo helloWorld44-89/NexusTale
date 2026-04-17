@@ -316,16 +316,15 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 // The AI may call ManuscriptTools (append/replace scenes, create scenes/chapters/acts)
 // before returning its final natural-language reply. Each tool invocation is:
 //
-//  1. Executed against the database.
-//  2. Emitted as an SSE event: data: {"tool":"name","result":"..."}\n\n
-//     (the frontend SSE parser ignores events without a "delta" key, so these
-//     pass through safely without any frontend changes.)
-//  3. Fed back to the model as a tool result.
+//  1. Emitted as an SSE planning event: data: {"agent_planning":true,"round":N}\n\n
+//  2. Executed against the database.
+//  3. Emitted as a ToolEvent SSE payload with undo metadata.
+//  4. Fed back to the model as a tool result.
 //
-// The loop runs for at most 10 rounds. The final text is streamed as normal
-// delta + [DONE] events. Falls back to StreamChat if the adapter does not
-// implement ToolAdapter (Ollama).
-func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req ChatRequest, w io.Writer) (adapters.Usage, error) {
+// The loop runs for at most maxRounds rounds (caller sets; 0 → default 25).
+// The final text is streamed as normal delta + [DONE] events. Falls back to
+// StreamChat if the adapter does not implement ToolAdapter (Ollama).
+func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req ChatRequest, w io.Writer, maxRounds int) (adapters.Usage, error) {
 	adapter, err := s.getAdapter(ctx, userID, req.Provider)
 	if err != nil {
 		return adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
@@ -367,10 +366,17 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 
 	var extraMsgs []json.RawMessage
 	var totalUsage adapters.Usage
-	const maxRounds = 10
+	if maxRounds <= 0 {
+		maxRounds = 25
+	}
 	finalText := ""
 
 	for round := 0; round < maxRounds; round++ {
+		// Emit a planning event so the frontend can show "Nexus is planning..."
+		// before the model responds.  The round number lets the UI show progress.
+		planningPayload, _ := json.Marshal(map[string]any{"agent_planning": true, "round": round + 1})
+		fmt.Fprintf(w, "data: %s\n\n", planningPayload)
+
 		resp, err := ta.ChatTools(ctx, messages, extraMsgs, ManuscriptTools, maxTok)
 		if err != nil {
 			return totalUsage, fmt.Errorf("tool chat round %d: %w", round, err)
@@ -391,13 +397,13 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 		// Execute each tool and collect results.
 		toolResults := make([]adapters.ToolResult, 0, len(resp.ToolCalls))
 		for _, tc := range resp.ToolCalls {
-			result := s.executeToolCall(ctx, req.ProjectID, tc)
+			result, evt := s.executeToolCall(ctx, req.ProjectID, tc)
 			toolResults = append(toolResults, result)
 
-			// Emit a tool SSE event so the frontend can show progress.
-			// The existing SSE parsers check for "delta" before calling onDelta,
-			// so this event is silently ignored by parsers that don't handle it.
-			evtPayload, _ := json.Marshal(map[string]string{"tool": tc.Name, "result": result.Content})
+			// Emit a ToolEvent SSE payload so the frontend can show progress
+			// and offer per-action Undo.  Parsers that only check for "delta"
+			// safely ignore these events.
+			evtPayload, _ := json.Marshal(evt)
 			fmt.Fprintf(w, "data: %s\n\n", evtPayload)
 		}
 

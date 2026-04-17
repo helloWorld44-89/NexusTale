@@ -281,6 +281,7 @@ func (h *Handler) WorkshopChat(c *gin.Context) {
 		Provider     string             `json:"provider"`
 		MaxTokens    int                `json:"max_tokens"`
 		ToolsEnabled bool               `json:"tools_enabled"` // C2.5: let AI write directly to manuscript
+		MaxRounds    int                `json:"max_rounds"`    // 0 → service default (25)
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "detail": err.Error()})
@@ -321,7 +322,7 @@ func (h *Handler) WorkshopChat(c *gin.Context) {
 		var streamErr error
 		if req.ToolsEnabled {
 			// Agentic mode: AI may call manuscript tools before replying.
-			_, streamErr = h.svc.StreamChatWithTools(c.Request.Context(), userID, svcReq, pw)
+			_, streamErr = h.svc.StreamChatWithTools(c.Request.Context(), userID, svcReq, pw, req.MaxRounds)
 		} else {
 			_, streamErr = h.svc.StreamChat(c.Request.Context(), userID, svcReq, pw)
 		}

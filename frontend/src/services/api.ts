@@ -107,6 +107,23 @@ export interface PromptResponse {
 export type ContextPinType = 'entity' | 'chapter' | 'scene' | 'note'
 export type ContextPinMode = 'summary' | 'full'
 
+// ToolCallEvent — emitted by the backend when agent mode executes a manuscript tool.
+// Includes undo metadata so the frontend can restore state without extra fetches.
+export interface ToolCallEvent {
+  tool:           string
+  result:         string
+  is_error?:      boolean
+  // Scene write ops (append_to_scene, replace_scene_content)
+  scene_id?:      string
+  chapter_id?:    string
+  before_content?: string
+  // Create ops (create_scene, create_chapter, create_act)
+  created_id?:    string
+  created_type?:  'scene' | 'chapter' | 'act'
+  act_id?:        string   // for chapter delete endpoint
+  project_id?:    string   // for act/chapter delete endpoints
+}
+
 export interface ContextPin {
   id:           string
   project_id:   string
@@ -246,6 +263,9 @@ export const api = {
 
     create: (token: string, projectId: string, actId: string, title: string, sortOrder: number) =>
       request<Chapter>('POST', `/projects/${projectId}/acts/${actId}/chapters`, { title, sort_order: sortOrder }, token),
+
+    delete: (token: string, projectId: string, actId: string, chapterId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/acts/${actId}/chapters/${chapterId}`, undefined, token),
   },
 
   scenes: {
@@ -254,6 +274,9 @@ export const api = {
 
     create: (token: string, chapterId: string, title: string, sortOrder: number) =>
       request<Scene>('POST', `/chapters/${chapterId}/scenes`, { title, sort_order: sortOrder }, token),
+
+    get: (token: string, chapterId: string, sceneId: string) =>
+      request<Scene>('GET', `/chapters/${chapterId}/scenes/${sceneId}`, undefined, token),
 
     update: (token: string, chapterId: string, sceneId: string, data: {
       content?: string
@@ -267,6 +290,9 @@ export const api = {
     }, branch?: string) =>
       request<Scene>('PATCH', `/chapters/${chapterId}/scenes/${sceneId}`, data, token,
         branch ? { 'X-NexusTale-Branch': branch } : undefined),
+
+    delete: (token: string, chapterId: string, sceneId: string) =>
+      request<void>('DELETE', `/chapters/${chapterId}/scenes/${sceneId}`, undefined, token),
   },
 
   git: {
@@ -603,7 +629,9 @@ export const api = {
         signal?: AbortSignal,
         branch?: string,
         toolsEnabled?: boolean,
-        onToolCall?: (name: string, result: string) => void,
+        onToolCall?: (event: ToolCallEvent) => void,
+        onAgentPlanning?: (round: number) => void,
+        maxRounds?: number,
       ): Promise<void> => {
         const res = await fetch(`${BASE}/projects/${projectId}/ai/workshop/${sessionId}/chat`, {
           method: 'POST',
@@ -612,7 +640,12 @@ export const api = {
             Authorization: `Bearer ${token}`,
             ...(branch ? { 'X-NexusTale-Branch': branch } : {}),
           },
-          body: JSON.stringify({ messages, scene_id: sceneId ?? '', tools_enabled: toolsEnabled ?? false }),
+          body: JSON.stringify({
+            messages,
+            scene_id:     sceneId ?? '',
+            tools_enabled: toolsEnabled ?? false,
+            max_rounds:   maxRounds ?? 0,
+          }),
           signal,
         })
 
@@ -641,9 +674,11 @@ export const api = {
               const evt = JSON.parse(payload) as { delta?: string; error?: string }
               if (evt.error) throw new Error(evt.error)
               if (evt.delta) onDelta(evt.delta)
-              if ((evt as { tool?: string; result?: string }).tool && onToolCall) {
-                const te = evt as { tool: string; result: string }
-                onToolCall(te.tool, te.result)
+              if ((evt as ToolCallEvent).tool && onToolCall) {
+                onToolCall(evt as ToolCallEvent)
+              }
+              if ((evt as { agent_planning?: boolean; round?: number }).agent_planning && onAgentPlanning) {
+                onAgentPlanning((evt as { round: number }).round)
               }
             } catch {
               // skip malformed chunks

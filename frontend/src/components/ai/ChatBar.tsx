@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '@/services/api'
+import NexusThinking from './NexusThinking'
 
 interface Message {
   id: string
@@ -188,8 +189,11 @@ export default function ChatBar({ token, projectId, sceneId, branch, onInsertToS
                       : 'bg-brand-purple/20 text-brand-text'
                   }`}
                 >
-                  {m.text}
-                  {m.streaming && (
+                  {m.streaming && !m.text
+                    ? <NexusThinking />
+                    : m.text
+                  }
+                  {m.streaming && m.text && (
                     <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-brand-cyan/70 animate-pulse align-middle" />
                   )}
                 </div>
