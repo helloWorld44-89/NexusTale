@@ -482,23 +482,24 @@ The author opts in to giving Nexus direct write access to the manuscript — the
 - ✅ **`[Light]` Continue button** — "Continue →" pill in ScribeEditor toolbar alongside Beat; calls existing `api.ai.streamComplete(mode: 'continue')`; same Accept/Retry/Discard flow as BeatInput; `ContinueIcon` added; `openContinue()` auto-starts streaming on open
 - ✅ **`[Light]` Insert into scene** — hover-reveal "insert into scene" button on every completed assistant message in Nexus chat (`ChatBar`) and Workshop (`WorkshopPanel`); `onInsertToScene?: (text: string) => void` prop on both panels; `handleInsertToScene` in `Editor.tsx` appends to active scene content + triggers autosave; button hidden when no scene is active
 
-**Step 2 — Manuscript tool definitions** `[Medium]`
-- Define a `ManuscriptTool` interface in `internal/ai`: `append_to_scene(scene_id, content)`, `replace_scene_content(scene_id, content)`, `create_scene(chapter_id, title, content?)`, `create_chapter(act_id, title)`, `create_act(project_id, title)`
-- Register tool schemas with OpenAI (function calling) and Anthropic (tool use) adapters; tool calls execute **server-side** (AI service already has `queries` + access to project/chapter/scene services via injected dependencies)
-- AI service emits `[TOOL:name:json]` SSE events after each execution so the frontend can display them without being the executor
-- `StreamChat` extended to run the tool-use loop: stream → detect tool call → execute → feed result back → continue streaming
+**Step 2 — Manuscript tool definitions** ✅ complete (2026-04-16)
+- ✅ `adapters/tools.go`: `ToolDefinition/ToolCall/ToolResult/ToolChatResponse/ToolAdapter` interface; Anthropic + OpenAI implement `ChatTools` + `BuildToolResultMessages`
+- ✅ `ai/tools.go`: `ManuscriptTools` (5 tools: append_to_scene, replace_scene_content, create_scene, create_chapter, create_act) + `executeToolCall` dispatcher
+- ✅ `StreamChatWithTools` in service.go: max-10-round agentic loop, tool SSE events; Ollama falls back to `StreamChat` via type assertion
+- ✅ WorkshopPanel Agent mode toggle; `tools_enabled` field in WorkshopChat request
 
-**Step 3 — Author control + frontend feedback** `[Medium]`
-- `WorkshopPanel`: "Allow AI writes" toggle in session header (off by default); when off, tool call events are displayed as informational only ("Nexus suggested: append to Scene 3 — enable writes to apply")
-- Inline event rows in panel chat: `↳ Created scene "The Crossing"` / `↳ Appended 312 words to Chapter 2, Scene 1` with per-action Undo button
-- Undo: scene writes restore previous content via a local undo stack (before/after snapshots stored client-side); chapter/act creates call the delete endpoint
-- Live scene refresh: when a scene currently open in `ScribeEditor` is written to by a tool call, `handleContentChange` is called so the editor reflects the new content immediately
+**Step 3 — Author control + frontend feedback** ✅ complete (2026-04-17)
+- ✅ `ToolEvent` struct in `tools.go` carries full undo metadata: `scene_id`, `chapter_id`, `before_content` for scene writes; `created_id`, `created_type`, `act_id`, `project_id` for creates — `executeToolCall` returns `(ToolResult, ToolEvent)`; `StreamChatWithTools` emits enriched SSE
+- ✅ `api.ts`: `ToolCallEvent` type exported; `scenes.get/delete` + `chapters.delete` added; `onToolCall` callback now receives typed event
+- ✅ WorkshopPanel: collapsible `AgentRunBlock` groups tool events per send() call with action count; per-action Undo button (scene write → restore content; creates → call delete endpoint); "Writes ON/OFF" toggle with agent-mode notice banner
+- ✅ Editor: `handleToolWrite` fetches latest scene content after agent write (live refresh); `handleTreeRefresh` increments `refreshKey` to reload explorer after create undo; both wired to WorkshopPanel via `onToolWrite`/`onStructureChange`
 
-**Step 4 — Agent mode in Workshop** `[Heavy]`
-- High-level instruction loop: writer types "Draft Act 2 — three chapters, noir tone, ~1500 words each"; Nexus plans then executes `create_chapter` + `create_scene` + `append_to_scene` calls in sequence
-- Progress stream: each tool execution emits a notification row so the author watches the manuscript grow in real time
-- Stop button aborts the loop mid-execution; already-written content is kept
-- Requires Steps 2–3 to be stable; CRDT library decision not needed (sequential writes, no concurrency)
+**Step 4 — Agent mode in Workshop** ✅ complete (2026-04-17)
+- ✅ `StreamChatWithTools` accepts `maxRounds int` (0 → default 25, up from const 10); emits `{agent_planning:true, round:N}` SSE event before each model round
+- ✅ `workshop_handler.go`: reads `max_rounds` from request body, passes through
+- ✅ `api.ts`: `onAgentPlanning` + `maxRounds` params on `workshop.streamChat`
+- ✅ WorkshopPanel: `AgentPhase` state (idle/planning/executing/replying); status bar switches copy per phase with spinner; Stop button always visible during agent run; round counter in planning state; agent-optimized 2-row input + `AgentSendIcon`; passes `max_rounds:25` when tools enabled
+- ✅ `NexusThinking` component: 18 general + 10 agent sci-fi/fantasy phrases, random start, 2.2s cycle with 0.3s fade, pulsing orb icon — wired into ChatBar, WorkshopPanel (agentMode when Writes ON), BeatInput (shown before first token arrives)
 
 #### C3 — Collaboration (last, largest)
 
@@ -583,12 +584,12 @@ The author opts in to giving Nexus direct write access to the manuscript — the
 - ✅ `[Medium]` **Prompt history browser** — migration 021; `mode/beat_text/scene_id` on `ai_usage`; `ListBeatHistory` query; `GET /ai/beat-history`; "Recent beats" in BeatInput
 - ✅ `[Light]` **Import/export writing styles** — JSON round-trip for prose presets across projects
 
-**C2.5 — AI manuscript tools**
+**C2.5 — AI manuscript tools** ✅ complete (2026-04-17)
 - ✅ `[Light]` **Continue button** — "Continue →" in ScribeEditor; streams `mode=continue`; Accept/Retry/Discard
 - ✅ `[Light]` **Insert into scene** — hover-reveal on Nexus + Workshop messages; `onInsertToScene` prop wired in Editor
-- `[Medium]` **Manuscript tool definitions** — `append_to_scene/replace/create_scene/create_chapter/create_act`; server-side execution; `[TOOL:...]` SSE events; OpenAI + Anthropic adapter support
-- `[Medium]` **Author control + feedback** — "Allow AI writes" toggle; inline event rows + Undo; live scene refresh
-- `[Heavy]` **Agent mode** — high-level instruction loop; sequential tool execution; Stop button; requires Steps 2–3
+- ✅ `[Medium]` **Manuscript tool definitions** — `append_to_scene/replace/create_scene/create_chapter/create_act`; server-side execution; `ToolEvent` SSE with undo metadata; OpenAI + Anthropic adapter support
+- ✅ `[Medium]` **Author control + feedback** — "Writes ON/OFF" toggle; collapsible AgentRunBlock with per-action Undo; live scene refresh; `onStructureChange` for create undos
+- ✅ `[Heavy]` **Agent mode** — max 25 rounds; `agent_planning` SSE events; AgentPhase state machine; NexusThinking cycling annotations
 
 **C3 — Collaboration (last)**
 - `[Heaviest]` **WebSocket + CRDT** — real-time co-editing, presence, roles/invites, Redis fan-out; CRDT library choice must be locked before starting
