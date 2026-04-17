@@ -570,7 +570,6 @@ export default function WorkshopPanel({
                 displayItems.map((item, di) => {
                   if (item.kind === 'run') {
                     const isCollapsed = collapsed.has(item.runId)
-                    const actionCount = item.events.length
                     return (
                       <AgentRunBlock
                         key={item.runId}
@@ -679,7 +678,7 @@ export default function WorkshopPanel({
 // ── AgentRunBlock — collapsible group of tool event rows ──────────────────────
 
 function AgentRunBlock({
-  runId,
+  runId: _runId,
   events,
   collapsed,
   onToggle,
