@@ -4,7 +4,8 @@ package ai
 //
 // ManuscriptTools is the full set of tools exposed to the AI in "agent mode".
 // executeToolCall dispatches a single ToolCall to the right DB operation and
-// returns a human-readable result string (or an error ToolResult).
+// returns both an adapters.ToolResult (for the model) and a ToolEvent (for the
+// frontend SSE stream, which includes undo metadata).
 
 import (
 	"context"
@@ -83,18 +84,42 @@ var ManuscriptTools = []adapters.ToolDefinition{
 	},
 }
 
-// executeToolCall dispatches a single tool invocation and returns a ToolResult.
-// All errors are returned as IsError=true results rather than propagated —
-// the AI can read the error and decide how to proceed.
-func (s *Service) executeToolCall(ctx context.Context, projectID uuid.UUID, tc adapters.ToolCall) adapters.ToolResult {
-	content, err := s.runTool(ctx, projectID, tc)
-	if err != nil {
-		return adapters.ToolResult{ID: tc.ID, Content: "Error: " + err.Error(), IsError: true}
-	}
-	return adapters.ToolResult{ID: tc.ID, Content: content}
+// ToolEvent carries the result and undo metadata for a single tool execution.
+// Emitted as an SSE event so the frontend can display progress and offer Undo.
+type ToolEvent struct {
+	Tool    string `json:"tool"`
+	Result  string `json:"result"`
+	IsError bool   `json:"is_error,omitempty"`
+
+	// Scene write ops (append_to_scene, replace_scene_content).
+	// BeforeContent lets the frontend restore the previous state without a
+	// round-trip.  ChapterID is needed for the PATCH endpoint.
+	SceneID       string `json:"scene_id,omitempty"`
+	ChapterID     string `json:"chapter_id,omitempty"`
+	BeforeContent string `json:"before_content,omitempty"`
+
+	// Create ops (create_scene, create_chapter, create_act).
+	// CreatedID + CreatedType identify what was made; ParentID and ProjectID
+	// are routing context so the frontend can call the right DELETE endpoint.
+	CreatedID   string `json:"created_id,omitempty"`
+	CreatedType string `json:"created_type,omitempty"` // "scene"|"chapter"|"act"
+	ActID       string `json:"act_id,omitempty"`        // for chapter delete: /projects/:pid/acts/:aid/chapters/:cid
+	ProjectID   string `json:"project_id,omitempty"`    // for act/chapter delete
 }
 
-func (s *Service) runTool(ctx context.Context, projectID uuid.UUID, tc adapters.ToolCall) (string, error) {
+// executeToolCall dispatches a single tool invocation and returns both the
+// model-facing ToolResult and the frontend-facing ToolEvent.
+func (s *Service) executeToolCall(ctx context.Context, projectID uuid.UUID, tc adapters.ToolCall) (adapters.ToolResult, ToolEvent) {
+	evt, err := s.runTool(ctx, projectID, tc)
+	evt.Tool = tc.Name
+	if err != nil {
+		evt.Result = "Error: " + err.Error()
+		evt.IsError = true
+	}
+	return adapters.ToolResult{ID: tc.ID, Content: evt.Result, IsError: evt.IsError}, evt
+}
+
+func (s *Service) runTool(ctx context.Context, projectID uuid.UUID, tc adapters.ToolCall) (ToolEvent, error) {
 	switch tc.Name {
 	case "append_to_scene":
 		return s.toolAppendToScene(ctx, tc.Input)
@@ -107,28 +132,30 @@ func (s *Service) runTool(ctx context.Context, projectID uuid.UUID, tc adapters.
 	case "create_act":
 		return s.toolCreateAct(ctx, projectID, tc.Input)
 	default:
-		return "", fmt.Errorf("unknown tool: %q", tc.Name)
+		return ToolEvent{}, fmt.Errorf("unknown tool: %q", tc.Name)
 	}
 }
 
 // ── tool implementations ───────────────────────────────────────────────────────
 
-func (s *Service) toolAppendToScene(ctx context.Context, input json.RawMessage) (string, error) {
+func (s *Service) toolAppendToScene(ctx context.Context, input json.RawMessage) (ToolEvent, error) {
 	var args struct {
 		SceneID string `json:"scene_id"`
 		Text    string `json:"text"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("invalid input: %w", err)
+		return ToolEvent{}, fmt.Errorf("invalid input: %w", err)
 	}
 	sceneID, err := uuid.Parse(args.SceneID)
 	if err != nil {
-		return "", fmt.Errorf("invalid scene_id: %w", err)
+		return ToolEvent{}, fmt.Errorf("invalid scene_id: %w", err)
 	}
 	scene, err := s.queries.GetScene(ctx, sceneID)
 	if err != nil {
-		return "", fmt.Errorf("scene not found: %w", err)
+		return ToolEvent{}, fmt.Errorf("scene not found: %w", err)
 	}
+
+	beforeContent := scene.Content
 
 	newContent := scene.Content
 	if newContent != "" {
@@ -143,48 +170,61 @@ func (s *Service) toolAppendToScene(ctx context.Context, input json.RawMessage) 
 		ID:      sceneID,
 		Content: pgtype.Text{String: newContent, Valid: true},
 	}); err != nil {
-		return "", fmt.Errorf("update scene: %w", err)
+		return ToolEvent{}, fmt.Errorf("update scene: %w", err)
 	}
-	return fmt.Sprintf("Appended %d characters to scene %q (ID: %s).", len(args.Text), scene.Title, scene.ID), nil
+	return ToolEvent{
+		Result:        fmt.Sprintf("Appended %d characters to scene %q (ID: %s).", len(args.Text), scene.Title, scene.ID),
+		SceneID:       scene.ID.String(),
+		ChapterID:     scene.ChapterID.String(),
+		BeforeContent: beforeContent,
+	}, nil
 }
 
-func (s *Service) toolReplaceSceneContent(ctx context.Context, input json.RawMessage) (string, error) {
+func (s *Service) toolReplaceSceneContent(ctx context.Context, input json.RawMessage) (ToolEvent, error) {
 	var args struct {
 		SceneID string `json:"scene_id"`
 		Content string `json:"content"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("invalid input: %w", err)
+		return ToolEvent{}, fmt.Errorf("invalid input: %w", err)
 	}
 	sceneID, err := uuid.Parse(args.SceneID)
 	if err != nil {
-		return "", fmt.Errorf("invalid scene_id: %w", err)
+		return ToolEvent{}, fmt.Errorf("invalid scene_id: %w", err)
 	}
 	scene, err := s.queries.GetScene(ctx, sceneID)
 	if err != nil {
-		return "", fmt.Errorf("scene not found: %w", err)
+		return ToolEvent{}, fmt.Errorf("scene not found: %w", err)
 	}
+
+	beforeContent := scene.Content
+
 	if _, err := s.queries.UpdateScene(ctx, sqlcgen.UpdateSceneParams{
 		ID:      sceneID,
 		Content: pgtype.Text{String: args.Content, Valid: true},
 	}); err != nil {
-		return "", fmt.Errorf("update scene: %w", err)
+		return ToolEvent{}, fmt.Errorf("update scene: %w", err)
 	}
-	return fmt.Sprintf("Replaced content of scene %q (ID: %s) with %d characters.", scene.Title, scene.ID, len(args.Content)), nil
+	return ToolEvent{
+		Result:        fmt.Sprintf("Replaced content of scene %q (ID: %s) with %d characters.", scene.Title, scene.ID, len(args.Content)),
+		SceneID:       scene.ID.String(),
+		ChapterID:     scene.ChapterID.String(),
+		BeforeContent: beforeContent,
+	}, nil
 }
 
-func (s *Service) toolCreateScene(ctx context.Context, input json.RawMessage) (string, error) {
+func (s *Service) toolCreateScene(ctx context.Context, input json.RawMessage) (ToolEvent, error) {
 	var args struct {
 		ChapterID string `json:"chapter_id"`
 		Title     string `json:"title"`
 		Content   string `json:"content"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("invalid input: %w", err)
+		return ToolEvent{}, fmt.Errorf("invalid input: %w", err)
 	}
 	chapterID, err := uuid.Parse(args.ChapterID)
 	if err != nil {
-		return "", fmt.Errorf("invalid chapter_id: %w", err)
+		return ToolEvent{}, fmt.Errorf("invalid chapter_id: %w", err)
 	}
 	existing, _ := s.queries.ListScenesByChapter(ctx, chapterID)
 	scene, err := s.queries.CreateScene(ctx, sqlcgen.CreateSceneParams{
@@ -194,22 +234,27 @@ func (s *Service) toolCreateScene(ctx context.Context, input json.RawMessage) (s
 		SortOrder: int32(len(existing) + 1),
 	})
 	if err != nil {
-		return "", fmt.Errorf("create scene: %w", err)
+		return ToolEvent{}, fmt.Errorf("create scene: %w", err)
 	}
-	return fmt.Sprintf("Created scene %q (ID: %s) in chapter %s.", scene.Title, scene.ID, chapterID), nil
+	return ToolEvent{
+		Result:      fmt.Sprintf("Created scene %q (ID: %s) in chapter %s.", scene.Title, scene.ID, chapterID),
+		CreatedID:   scene.ID.String(),
+		CreatedType: "scene",
+		ChapterID:   chapterID.String(),
+	}, nil
 }
 
-func (s *Service) toolCreateChapter(ctx context.Context, projectID uuid.UUID, input json.RawMessage) (string, error) {
+func (s *Service) toolCreateChapter(ctx context.Context, projectID uuid.UUID, input json.RawMessage) (ToolEvent, error) {
 	var args struct {
 		ActID string `json:"act_id"`
 		Title string `json:"title"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("invalid input: %w", err)
+		return ToolEvent{}, fmt.Errorf("invalid input: %w", err)
 	}
 	actID, err := uuid.Parse(args.ActID)
 	if err != nil {
-		return "", fmt.Errorf("invalid act_id: %w", err)
+		return ToolEvent{}, fmt.Errorf("invalid act_id: %w", err)
 	}
 	existing, _ := s.queries.ListChaptersByAct(ctx, actID)
 	chapter, err := s.queries.CreateChapter(ctx, sqlcgen.CreateChapterParams{
@@ -219,17 +264,23 @@ func (s *Service) toolCreateChapter(ctx context.Context, projectID uuid.UUID, in
 		SortOrder: int32(len(existing) + 1),
 	})
 	if err != nil {
-		return "", fmt.Errorf("create chapter: %w", err)
+		return ToolEvent{}, fmt.Errorf("create chapter: %w", err)
 	}
-	return fmt.Sprintf("Created chapter %q (ID: %s) in act %s.", chapter.Title, chapter.ID, actID), nil
+	return ToolEvent{
+		Result:      fmt.Sprintf("Created chapter %q (ID: %s) in act %s.", chapter.Title, chapter.ID, actID),
+		CreatedID:   chapter.ID.String(),
+		CreatedType: "chapter",
+		ActID:       actID.String(),
+		ProjectID:   projectID.String(),
+	}, nil
 }
 
-func (s *Service) toolCreateAct(ctx context.Context, projectID uuid.UUID, input json.RawMessage) (string, error) {
+func (s *Service) toolCreateAct(ctx context.Context, projectID uuid.UUID, input json.RawMessage) (ToolEvent, error) {
 	var args struct {
 		Title string `json:"title"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("invalid input: %w", err)
+		return ToolEvent{}, fmt.Errorf("invalid input: %w", err)
 	}
 	existing, _ := s.queries.ListActsByProject(ctx, projectID)
 	act, err := s.queries.CreateAct(ctx, sqlcgen.CreateActParams{
@@ -238,7 +289,12 @@ func (s *Service) toolCreateAct(ctx context.Context, projectID uuid.UUID, input 
 		SortOrder: int32(len(existing) + 1),
 	})
 	if err != nil {
-		return "", fmt.Errorf("create act: %w", err)
+		return ToolEvent{}, fmt.Errorf("create act: %w", err)
 	}
-	return fmt.Sprintf("Created act %q (ID: %s) in project %s.", act.Title, act.ID, projectID), nil
+	return ToolEvent{
+		Result:      fmt.Sprintf("Created act %q (ID: %s) in project %s.", act.Title, act.ID, projectID),
+		CreatedID:   act.ID.String(),
+		CreatedType: "act",
+		ProjectID:   projectID.String(),
+	}, nil
 }

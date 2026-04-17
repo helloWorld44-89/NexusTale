@@ -5,6 +5,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { api } from '@/services/api'
 import type { BeatHistoryEntry } from '@/services/api'
+import NexusThinking from '@/components/ai/NexusThinking'
 
 type Mode = 'beat' | 'continue'
 
@@ -235,9 +236,12 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
 
       {/* Generated preview */}
       {(generated || streaming) && (
-        <div className="rounded border border-brand-border bg-brand-bg px-4 py-3 text-sm text-brand-text leading-7 whitespace-pre-wrap font-serif mb-2 relative">
-          {generated}
-          {streaming && (
+        <div className="rounded border border-brand-border bg-brand-bg px-4 py-3 text-sm text-brand-text leading-7 whitespace-pre-wrap font-serif mb-2 relative max-h-64 overflow-y-auto">
+          {streaming && !generated
+            ? <NexusThinking className="text-brand-cyan/70" />
+            : generated
+          }
+          {streaming && generated && (
             <span className="inline-block w-1.5 h-4 ml-0.5 bg-brand-cyan/70 animate-pulse align-middle" />
           )}
         </div>

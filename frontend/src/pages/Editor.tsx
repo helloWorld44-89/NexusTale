@@ -58,6 +58,7 @@ export default function Editor() {
   const [focusMode,         setFocusMode]         = useState(false)
   const [selectedPromptId,  setSelectedPromptId]  = useState<string | null>(null)
   const [currentBranch,    setCurrentBranch]    = useState<string>('canon')
+  const [refreshKey,       setRefreshKey]       = useState(0)
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -155,7 +156,9 @@ export default function Editor() {
 
     load()
     return () => { cancelled = true }
-  }, [projectId, accessToken])
+  // refreshKey triggers a tree reload when agent creates are undone.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, accessToken, refreshKey])
 
   // ── Content editing + auto-save ─────────────────────────────────────────────
 
@@ -234,6 +237,22 @@ export default function Editor() {
     const next = current + (current.endsWith('\n') ? '\n' : '\n\n') + text
     handleContentChange(activeScene.id, next)
   }, [activeScene, sceneContents, handleContentChange])
+
+  // Refresh a scene's in-editor content after an agent tool writes to it.
+  const handleToolWrite = useCallback(async (sceneId: string, chapterId: string) => {
+    if (!accessToken) return
+    try {
+      const scene = await api.scenes.get(accessToken, chapterId, sceneId)
+      setSceneContents((prev) => ({ ...prev, [sceneId]: scene.content }))
+    } catch {
+      // non-critical — editor will reflect next autosave
+    }
+  }, [accessToken])
+
+  // Reload the full project tree after an agent create is undone.
+  const handleTreeRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1)
+  }, [])
   const content       = activeScene ? (sceneContents[activeScene.id] ?? '') : ''
   const wordCount     = content.trim() === '' ? 0 : content.trim().split(/\s+/).length
 
@@ -318,6 +337,8 @@ export default function Editor() {
             sceneId={selectedSceneId ?? undefined}
             branch={currentBranch}
             onInsertToScene={activeScene ? handleInsertToScene : undefined}
+            onToolWrite={handleToolWrite}
+            onStructureChange={handleTreeRefresh}
           />
         )}
         {!focusMode && leftPanel === 'git' && projectId && accessToken && (
