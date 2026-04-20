@@ -5,11 +5,12 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
 import { api } from '@/services/api'
 import type { Project, ProjectStats, AIUsageSummary, ExportJob, ProjectStructure } from '@/services/api'
+import CollaboratorsPanel from '@/components/CollaboratorsPanel'
 
 export default function ProjectHome() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const accessToken = useAuthStore((s) => s.accessToken)
+  const { accessToken, user } = useAuthStore((s) => ({ accessToken: s.accessToken, user: s.user }))
 
   const [project,    setProject]    = useState<Project | null>(null)
   const [stats,      setStats]      = useState<ProjectStats | null>(null)
@@ -405,6 +406,18 @@ export default function ProjectHome() {
             </div>
           )}
         </div>
+
+        {/* Collaborators panel */}
+        {project && accessToken && user && (
+          <div className="mt-4">
+            <CollaboratorsPanel
+              projectId={id!}
+              ownerId={project.owner_id}
+              currentUser={user.id}
+              token={accessToken}
+            />
+          </div>
+        )}
       </main>
     </div>
   )

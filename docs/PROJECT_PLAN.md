@@ -501,9 +501,200 @@ The author opts in to giving Nexus direct write access to the manuscript — the
 - ✅ WorkshopPanel: `AgentPhase` state (idle/planning/executing/replying); status bar switches copy per phase with spinner; Stop button always visible during agent run; round counter in planning state; agent-optimized 2-row input + `AgentSendIcon`; passes `max_rounds:25` when tools enabled
 - ✅ `NexusThinking` component: 18 general + 10 agent sci-fi/fantasy phrases, random start, 2.2s cycle with 0.3s fade, pulsing orb icon — wired into ChatBar, WorkshopPanel (agentMode when Writes ON), BeatInput (shown before first token arrives)
 
-#### C3 — Collaboration (last, largest)
+#### C3 — Collaboration (git-backed, async)
 
-- **`[Heaviest]` WebSocket + CRDT real-time co-editing** — WebSocket hub per project/document (`/api/v1/projects/:id/collab`); CRDT library choice (Yjs vs Automerge — lock before starting); Redis pub/sub for multi-pod fan-out; presence indicators (who is in which scene); roles (editor / commenter / viewer) and project invite flow; Git snapshot on idle save
+Novel collaboration is fundamentally **async** — co-authors work on different chapters at different times, editors annotate a draft and hand it back, reviewers read and comment. This makes a git-backed PR model a better fit than real-time CRDT for this domain.
+
+**Architecture: per-collaborator git clones**
+
+The project repo (`repos/{projectId}/`) has a single working tree; two users cannot be on different branches simultaneously in that tree. Solution: when a collaborator accepts an invite, the project repo is cloned to `repos/{projectId}/collab/{userID}/`. Each collaborator gets an independent working tree. All existing `GitService` methods (Chronicle, Lore, Diverge, Canonize, etc.) are reused — just called with the collaborator's clone path.
+
+**Roles:**
+
+| Role | Can do |
+|---|---|
+| `coauthor` | Add new chapters/scenes on their branch; Chronicle; open merge requests |
+| `editor` | Same as coauthor; additionally adds suggestions via annotations |
+| `reviewer` | Read-only access + create annotations (notes, highlights, questions) |
+
+> **MVP scope note:** Co-authors and editors work additively (create new content on their branch). Editing existing canon scenes inline is deferred — the annotation system handles suggested changes to existing prose for now. Full branch-scoped DB content isolation is a C4/post-MVP concern.
+
+**C3.0 — Collaborator roles + invite system** `[Medium]`
+
+*Migration 022* — `project_invites` + `project_collaborators`:
+
+```sql
+CREATE TABLE project_invites (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  invited_by  UUID NOT NULL REFERENCES users(id),
+  email       TEXT NOT NULL,
+  role        TEXT NOT NULL CHECK (role IN ('coauthor','editor','reviewer')),
+  token       TEXT NOT NULL UNIQUE,        -- 32-byte random hex, 7-day TTL
+  accepted_at TIMESTAMPTZ,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE project_collaborators (
+  project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL CHECK (role IN ('coauthor','editor','reviewer')),
+  branch_name TEXT NOT NULL,              -- e.g. "coauthor/alice", "editor/bob"
+  clone_path  TEXT NOT NULL,             -- absolute path to their git clone
+  invited_by  UUID NOT NULL REFERENCES users(id),
+  joined_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (project_id, user_id)
+);
+```
+
+*Invite model:* invitee must already have a NexusTale account (email matched on accept). No account-creation-via-invite in C3.
+
+*`internal/collaboration` package:* `InviteCollaborator` · `AcceptInvite` (validates token → creates collaborator row → clones repo → Diverge to `role/username` branch) · `ListCollaborators` · `RemoveCollaborator`.
+
+*Middleware — `RequireProjectAccess`:* passes if `userID == project.owner_id` OR a `project_collaborators` row exists; role enforced per-route (reviewer cannot Chronicle).
+
+*Routes:*
+```
+POST   /projects/:id/invites                  → InviteCollaborator
+GET    /invites/:token                        → GetInviteInfo (preview before accept)
+POST   /invites/:token/accept                 → AcceptInvite
+GET    /projects/:id/collaborators            → ListCollaborators
+DELETE /projects/:id/collaborators/:uid       → RemoveCollaborator
+```
+
+*Frontend:* `CollaboratorsPanel.tsx` in ProjectHome (invite form, pending invites, member list with role badges + remove); `/invites/:token` accept page (shows project/inviter/role → "Join Project"); collaborator projects appear in their project list (ListProjects unions owner + collaborator rows).
+
+**C3.1 — Collaborator-scoped git operations** `[Medium]`
+
+Add `repoPathForUser(ctx, projectID, userID)` in the git handler: returns `project.GitRepoPath` for owner, `collaborator.ClonePath` for collaborators. All existing Chronicle/Lore/Timelines/Echo routes call this — no new routes needed, collaborators use the same endpoints.
+
+Branch scoping: collaborator can only Diverge/TravelTo branches matching their assigned `branch_name` prefix. Validated in the handler before delegating to GitService.
+
+**C3.2 — Merge request system** `[Heavy]`
+
+*Migration 023* — `merge_requests`:
+
+```sql
+CREATE TABLE merge_requests (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id   UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  from_branch  TEXT NOT NULL,
+  to_branch    TEXT NOT NULL DEFAULT 'canon',
+  title        TEXT NOT NULL,
+  description  TEXT NOT NULL DEFAULT '',
+  requested_by UUID NOT NULL REFERENCES users(id),
+  status       TEXT NOT NULL DEFAULT 'open'
+               CHECK (status IN ('open','approved','rejected','merged')),
+  reviewer_note TEXT NOT NULL DEFAULT '',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at  TIMESTAMPTZ
+);
+```
+
+*Service functions:* `OpenMergeRequest` · `ListMergeRequests` · `GetMergeRequestDiff` (fetches collaborator branch from clone into main repo via go-git local fetch; runs Echo between canon HEAD and branch HEAD; parses into per-scene hunks keyed by git path `scenes/{id}.md`) · `ResolveMergeRequest` (approve/reject/merge; on merge calls Canonize; if HasParadox surfaces conflict resolution flow).
+
+*Routes:*
+```
+POST   /projects/:id/merge-requests                     → OpenMergeRequest
+GET    /projects/:id/merge-requests                     → ListMergeRequests
+GET    /projects/:id/merge-requests/:mid                → GetMergeRequest
+GET    /projects/:id/merge-requests/:mid/diff           → GetMergeRequestDiff
+PUT    /projects/:id/merge-requests/:mid                → UpdateStatus
+POST   /projects/:id/merge-requests/:mid/resolve        → SubmitConflictResolution
+```
+
+**C3.3 — Prose diff + conflict resolution UI** `[Heavy — frontend focus]`
+
+`ProseDiffViewer.tsx` — per-scene word-level diff using `diff-match-patch` (tiny, no heavy deps):
+
+```
+┌─────────────────────────────────────────────────┐
+│ Scene: "The Duel at Irongate"                   │
+│ [Canon]                │ [Co-author]            │
+│ The knight raised his  │ Sir Aldric drew his    │
+│ sword—                 │ blade, eyes blazing—   │
+│                                                 │
+│ [← Keep Canon]  [Use Co-author →]  [Edit ✎]    │
+└─────────────────────────────────────────────────┘
+```
+
+- Additions highlighted green, deletions red-strikethrough
+- Three resolution options per scene: keep canon / keep co-author / open inline manual editor
+- All scenes must be resolved before "Merge" button enables
+- "Accept All Co-author" / "Accept All Canon" bulk buttons
+- Conflict-free MRs (fast-forward only, most co-author MRs): read-only diff + single "Merge" button
+
+**C3.4 — Reviewer annotations** `[Medium]`
+
+*Migration 024* — `manuscript_annotations`:
+
+```sql
+CREATE TABLE manuscript_annotations (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  scene_id    UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+  author_id   UUID NOT NULL REFERENCES users(id),
+  start_char  INT NOT NULL,
+  end_char    INT NOT NULL,
+  body        TEXT NOT NULL,
+  type        TEXT NOT NULL DEFAULT 'note'
+              CHECK (type IN ('note','suggestion','question')),
+  resolved    BOOLEAN NOT NULL DEFAULT false,
+  resolved_by UUID REFERENCES users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+*Routes:*
+```
+GET    /projects/:id/scenes/:sid/annotations          → ListAnnotations
+POST   /projects/:id/scenes/:sid/annotations          → CreateAnnotation
+PUT    /projects/:id/scenes/:sid/annotations/:aid     → UpdateAnnotation
+DELETE /projects/:id/scenes/:sid/annotations/:aid     → DeleteAnnotation
+```
+
+*Frontend:* Highlight text in ScribeEditor → "Add note" popover → type → save. Annotations rendered as colored underlines by char offset range. Click → popover with note + author + resolve button (owner only). `AnnotationSidebar.tsx` right panel lists all scene annotations; click to jump to offset. Type badges: note (yellow), suggestion (blue), question (purple). Access: reviewer/editor can create; only owner can resolve.
+
+**C3.5 — Notifications** `[Light]`
+
+*Migration 025* — `notifications`:
+
+```sql
+CREATE TABLE notifications (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id  UUID REFERENCES projects(id) ON DELETE CASCADE,
+  type        TEXT NOT NULL,
+              -- 'invite_received','mr_opened','mr_approved','mr_rejected','mr_merged','annotation_added'
+  payload     JSONB NOT NULL DEFAULT '{}',
+  read_at     TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ON notifications(user_id, read_at) WHERE read_at IS NULL;
+```
+
+Polling model (60 s interval) — no WebSocket required. `NotificationBell.tsx` in TopBar: unread badge count, dropdown with notification cards, click marks read + navigates to relevant MR/annotation. Rows created server-side at event time (invite sent, MR opened, etc.).
+
+*Routes:*
+```
+GET  /notifications             → ListNotifications (unread + last 20 read)
+PUT  /notifications/:id/read    → MarkRead
+PUT  /notifications/read-all    → MarkAllRead
+```
+
+**Build order:** C3.0 → C3.1 → C3.5 → C3.2 → C3.3 → C3.4
+(C3.0+C3.1 are coupled; C3.5 early so every subsequent step can fire notifications; C3.3 is the longest frontend task — give it its own session)
+
+**Migration map:**
+
+| # | Name | Contents |
+|---|---|---|
+| 022 | `user_plan` | `users.plan TEXT DEFAULT 'free'` — added early so C3 invite handler can gate on owner plan at invite time |
+| 023 | `collaboration` | `project_invites` + `project_collaborators` |
+| 024 | `merge_requests` | merge request tracking |
+| 025 | `manuscript_annotations` | inline reviewer notes |
+| 026 | `notifications` | in-app notification inbox |
 
 ### Phase D — Premium / advanced
 
@@ -513,22 +704,41 @@ The author opts in to giving Nexus direct write access to the manuscript — the
 - **Keyboard shortcuts** — writer-defined hotkeys for common editing actions (bold, italic, scene save, beat trigger, focus mode, etc.); shortcut map to be specified before implementation
 - **Customizable workspaces** — per-user, per-project saved panel layouts (open panels, widths, active scene/chapter); named presets ("drafting", "research", "editing") switchable from the TopBar; `user_workspaces` table (JSONB layout blob); synced across sessions so the editor reopens exactly where the writer left off
 
+### Monetization (deferred — to be designed before launch)
+
+Likely a free tier + paid tiers model. Proposed shape:
+
+| Tier | Target | Key limits |
+|---|---|---|
+| **Free** | Hobbyists, evaluators | 1 project, Ollama/local AI only, no collaboration |
+| **Writer** (~$10/mo) | Serious solo authors | Unlimited projects, cloud AI (bring-your-own key), all AI features |
+| **Studio** (~$20/mo) | Co-authors, editors | Everything + C3 collaboration features, team management |
+
+**Principles to lock before implementation:**
+- Exports are free at every tier — a writer's manuscript is never held hostage.
+- AI features use bring-your-own-key; NexusTale does not pay for AI compute on behalf of users.
+- `users.plan TEXT DEFAULT 'free'` column added in migration 022 (already created). Plan-check middleware + Stripe/Paddle webhook handler still needed when billing is implemented.
+- Usage already tracked (`ai_usage` table) — cost-visibility features are already 80% built.
+
 ---
 
 ## 8. Risks & open decisions
 
 | Risk | Mitigation |
 |------|------------|
-| CRDT + Git semantics clash | Define “source of truth” windows; snapshot to Git on idle or explicit save |
+| Prose merge conflicts confusing for writers | Diff UI must be word-level, not raw git markers; ProseDiffViewer abstracts this |
+| Per-collaborator git clone disk usage | Clones share git object store via hardlinks on Linux; acceptable for novel-scale repos |
 | Scrivener format fragility | Document “best effort”; start with documented subset |
 | AI cost spikes | Quotas, caching summaries, smaller models for lint tasks |
 | Scope creep | Ship guide + wiki + editor before map builder v2 |
+| Branch-scoped DB content (C3 MVP gap) | Additive model + annotations covers most collab cases; full inline editing of canon scenes deferred to C4 |
 
-**Decisions to lock early**
+**Decisions locked**
 
-- CRDT library and wire protocol (Yjs vs Automerge vs OT-only).
-- Canonical scene format in Git (Markdown with front matter vs JSON).
-- Whether plot/wiki uses graph DB later or stays in Postgres with recursive CTEs.
+- Collaboration model: git-backed async PR flow (not CRDT/WebSocket). Per-collaborator repo clones for working tree isolation.
+- Invite model (C3): requires existing NexusTale account. No account-creation via invite link in C3.
+- Canonical scene format in Git: Markdown files at `scenes/{id}.md`.
+- DB stays on Postgres with recursive CTEs (no graph DB).
 
 ---
 
@@ -591,8 +801,13 @@ The author opts in to giving Nexus direct write access to the manuscript — the
 - ✅ `[Medium]` **Author control + feedback** — "Writes ON/OFF" toggle; collapsible AgentRunBlock with per-action Undo; live scene refresh; `onStructureChange` for create undos
 - ✅ `[Heavy]` **Agent mode** — max 25 rounds; `agent_planning` SSE events; AgentPhase state machine; NexusThinking cycling annotations
 
-**C3 — Collaboration (last)**
-- `[Heaviest]` **WebSocket + CRDT** — real-time co-editing, presence, roles/invites, Redis fan-out; CRDT library choice must be locked before starting
+**C3 — Collaboration (git-backed async)**
+- ☐ `[Medium]` **C3.0** — Collaborator roles + invite system (migrations 022; `internal/collaboration`; `CollaboratorsPanel`; accept page; project list union)
+- ☐ `[Medium]` **C3.1** — Collaborator-scoped git operations (`repoPathForUser`; branch-prefix enforcement; reuses all existing git routes)
+- ☐ `[Light]`  **C3.5** — Notifications (migration 025; `NotificationBell`; 60 s polling; fired at event time)
+- ☐ `[Heavy]`  **C3.2** — Merge request system (migration 023; diff via go-git local fetch + Echo; Canonize on approve; conflict surfaces HasParadox)
+- ☐ `[Heavy]`  **C3.3** — Prose diff + conflict resolution UI (`ProseDiffViewer`; word-level diff-match-patch; per-scene keep/blend; bulk accept)
+- ☐ `[Medium]` **C3.4** — Reviewer annotations (migration 024; char-offset overlay in ScribeEditor; `AnnotationSidebar`; note/suggestion/question types)
 
 ### Infrastructure
 10. **Staging/prod pipelines** — clone dev Ansible playbook; parameterize environment; add prod secrets to vault.

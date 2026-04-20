@@ -11,7 +11,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | Area | Status |
 |------|--------|
 | **API shell** | Go 1.25 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens |
-| **Database** | PostgreSQL migrations **(020)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
+| **Database** | PostgreSQL migrations **(023)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
 | **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; act layer hidden in UI for single default act; full CRUD + integration tests + Bruno |
 | **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; 21 handler integration tests; fast-forward merge; Paradox detection |
 | **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints; relationship graph (d3 force) |
@@ -23,7 +23,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | **Export** | Markdown (sync zip) + EPUB + DOCX (async jobs, MinIO, presigned URL); `export_jobs` table; goroutine worker pool (`asyncJob{format}`) |
 | **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene); side effects populate wiki + manuscript; guide steps auto-fill AI Bible |
 | **Story structures** | 12 seeded templates + scoring matrix; freeform option; structure badge on ProjectHome; phase banners in WikiHub timeline |
-| **Collaboration** | Package stubbed; no HTTP registration |
+| **Collaboration** | C3.0 complete — roles, invite system (token + 7d TTL), clone-per-collaborator, `RequireProjectAccess` middleware; migrations 022 (user_plan) + 023 (project_collaborators + project_invites) |
 | **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub (entities/timeline/graph/research notes), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats, context pins panel, multi-session Workshop panel** |
 | **Navigation** | TopBar: left nav (logo → Dashboard, Home, Wiki, Guide) + breadcrumb + right area (panel toggles, username, Settings, logout); editor fully navigable |
 | **Settings** | AI provider keys (add/remove/test), Ollama URL + model selector, appearance (dark/light), account deletion |
@@ -42,7 +42,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 3. **World wiki** — Entities (character/location/faction/item/concept/lore), relationships graph, timeline, magic rules, autolink. *API + Bruno tests done; no frontend yet.*
 4. **AI-assisted writing** — Completion, chat, summarize, adapters, RAG. *B1 + B1.5 + B3 done. B2 (context/memory) next.*
 5. **Export** — Markdown, EPUB, Scrivener. *B4 next.*
-6. **Collaboration** — Real-time CRDT/WebSocket, Redis pub/sub. *Scaffold only.*
+6. **Collaboration** — Git-backed async: per-collaborator clones, invite system, merge requests, prose diff + conflict resolution, reviewer annotations, notifications. *C3.0 done.*
 7. **Assets** — Covers and binaries via MinIO/S3. *Package stub; not integrated.*
 8. **Writer UI** — React app: editor, wiki, AI panels, export. *Not started.*
 
@@ -227,10 +227,19 @@ The author opts in to letting Nexus write directly to the manuscript — appendi
 - [x] **`[Heavy]`** Agent mode in Workshop — `maxRounds` param (default 25); `{agent_planning, round}` SSE events per model round; `AgentPhase` state (planning/executing/replying) drives status bar copy; Stop button always visible during agent run with "content is kept" tooltip; agent-optimized 2-row input with task-focused placeholder; `NexusThinking` component (18 general + 10 agent sci-fi/fantasy phrases, cycling with fade, shown before first token in ChatBar / Workshop / BeatInput)
 
 ### C3 — Collaboration (last, largest)
-- [ ] **`[Heaviest]`** WebSocket + CRDT — real-time co-editing per scene; CRDT library choice (Yjs vs Automerge — lock before starting); Redis pub/sub fan-out; presence indicators; roles (editor/commenter/viewer) + invite flow; Git snapshot on idle
+
+Architecture: **git-backed async** — each collaborator gets a per-project git clone (`repos/{projectId}-collab-{userId}/`) on their own branch. Owner merges via merge requests (like a manuscript PR). No CRDT / WebSocket needed for MVP; Redis used for future notification push only.
+
+- [x] **`[Heavy]`** **C3.0 — Roles + invite system** ✓ (2026-04-19) — Migration 022 (`users.plan` free/writer/studio); migration 023 (`project_collaborators` extended + `project_invites`); `internal/collaboration` package (service + handler + `RequireProjectAccess` middleware); roles: co-author/editor/reviewer; 32-byte hex invite token, 7d TTL, email-matched accept, clone + branch on accept; `ListProjectsForUser` union query for dashboard; frontend: `CollaboratorsPanel`, `InviteAccept` page, Login redirect param, router entry; `api.collaboration.*` in api.ts
+- [ ] **`[Heavy]`** **C3.1 — Collaborator-scoped git operations** — Chronicle, Diverge, Lore scoped to collaborator clone; branch prefix enforcement (403 outside own prefix); reviewer blocked from Chronicle
+- [ ] **`[Heavier]`** **C3.2 — Merge request system** — Migration 024 `merge_requests` table; open/reject/merge flows; diff computation between collaborator branch and canon; Paradox conflict detection per scene
+- [ ] **`[Heavy]`** **C3.3 — Prose diff + conflict resolution UI** — side-by-side word-level diff view; Keep Canon / Use Co-author / Edit manually resolution per scene; bulk accept; merge blocked until all conflicts resolved
+- [ ] **`[Heavy]`** **C3.4 — Reviewer annotations** — Migration 025 `scene_annotations` (anchor offset + length, text, type: note/suggestion/question); create/resolve/list; underline highlights in ScribeEditor; annotation sidebar; role restrictions (only owner can resolve)
+- [ ] **`[Medium]`** **C3.5 — Notifications** — Migration 026 `notifications` table; bell icon in TopBar; 60s poll; events: invite received, MR opened/approved/rejected, annotation added; mark-read / mark-all-read
 
 ## Phase D — Premium / advanced
 
+- **Monetization** — `users.plan` column already added (migration 022: free/writer/studio tiers); plan-gated invite limits in `InviteCollaborator` (`TODO(monetization)` marker in service.go); billing integration (Stripe), upgrade flow, and feature gates are Phase D work
 - Map builder; image generation pipelines for wiki entities
 - Scrivener / Fountain export; advanced Git branching UX
 - Series-level continuity management
@@ -272,4 +281,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-04-17: C2.5 fully complete — Steps 1–4 shipped (Continue/Insert, manuscript tools, author control + undo, full agent mode + NexusThinking annotations). BeatInput scroll fix also shipped. Next: C3 (WebSocket + CRDT collaboration) — lock CRDT library choice before starting.*
+*Last updated 2026-04-19: C3.0 shipped — git-backed async collaboration model chosen (per-collaborator clones over CRDT/WebSocket); roles + invite system fully implemented (migrations 022–023, `internal/collaboration`, `CollaboratorsPanel`, `InviteAccept`, `RequireProjectAccess`); `users.plan` added for future monetization gating. Manual test plan at `docs/C3_COLLABORATION_TEST_PLAN.md`. Next: C3.1 (collaborator-scoped git operations).*

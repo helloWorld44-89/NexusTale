@@ -174,10 +174,25 @@ type ProjectActiveBranch struct {
 }
 
 type ProjectCollaborator struct {
-	ProjectID uuid.UUID          `json:"project_id"`
-	UserID    uuid.UUID          `json:"user_id"`
-	Role      UserRole           `json:"role"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ProjectID  uuid.UUID          `json:"project_id"`
+	UserID     uuid.UUID          `json:"user_id"`
+	JoinedAt   pgtype.Timestamptz `json:"joined_at"`
+	Role       string             `json:"role"`
+	BranchName string             `json:"branch_name"`
+	ClonePath  string             `json:"clone_path"`
+	InvitedBy  pgtype.UUID        `json:"invited_by"`
+}
+
+type ProjectInvite struct {
+	ID         uuid.UUID          `json:"id"`
+	ProjectID  uuid.UUID          `json:"project_id"`
+	InvitedBy  uuid.UUID          `json:"invited_by"`
+	Email      string             `json:"email"`
+	Role       string             `json:"role"`
+	Token      string             `json:"token"`
+	AcceptedAt pgtype.Timestamptz `json:"accepted_at"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
 type ProjectPrompt struct {
@@ -236,6 +251,7 @@ type User struct {
 	Role         UserRole           `json:"role"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	Plan         string             `json:"plan"`
 }
 
 type UserApiKey struct {

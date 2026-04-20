@@ -184,6 +184,49 @@ func (q *Queries) ListProjectsByOwner(ctx context.Context, ownerID uuid.UUID) ([
 	return items, nil
 }
 
+const listProjectsForUser = `-- name: ListProjectsForUser :many
+SELECT DISTINCT p.id, p.owner_id, p.title, p.description, p.genres, p.git_repo_path,
+       p.archived, p.created_at, p.updated_at, p.structure_id, p.structure_custom, p.ai_instructions
+FROM projects p
+LEFT JOIN project_collaborators pc ON pc.project_id = p.id AND pc.user_id = $1
+WHERE p.archived = false
+  AND (p.owner_id = $1 OR pc.user_id IS NOT NULL)
+ORDER BY p.updated_at DESC
+`
+
+func (q *Queries) ListProjectsForUser(ctx context.Context, userID uuid.UUID) ([]Project, error) {
+	rows, err := q.db.Query(ctx, listProjectsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Project{}
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.Title,
+			&i.Description,
+			&i.Genres,
+			&i.GitRepoPath,
+			&i.Archived,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StructureID,
+			&i.StructureCustom,
+			&i.AiInstructions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateAIInstructions = `-- name: UpdateAIInstructions :exec
 UPDATE projects SET ai_instructions = $2, updated_at = now() WHERE id = $1
 `

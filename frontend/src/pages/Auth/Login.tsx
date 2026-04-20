@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useAuthStore } from '@/app/store/authStore'
 import { ApiError } from '@/services/api'
@@ -12,6 +12,7 @@ interface LoginForm {
 
 export default function Login() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const login = useAuthStore((s) => s.login)
   const [serverError, setServerError] = useState<string | null>(null)
 
@@ -25,7 +26,8 @@ export default function Login() {
     setServerError(null)
     try {
       await login(data.email, data.password)
-      navigate('/dashboard', { replace: true })
+      const redirect = searchParams.get('redirect')
+      navigate(redirect ?? '/dashboard', { replace: true })
     } catch (e) {
       setServerError(e instanceof ApiError ? e.message : 'Something went wrong. Please try again.')
     }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/jconder44/nexustale/internal/ai"
 	"github.com/jconder44/nexustale/internal/auth"
+	"github.com/jconder44/nexustale/internal/collaboration"
 	"github.com/jconder44/nexustale/internal/config"
 	"github.com/jconder44/nexustale/internal/export"
 	"github.com/jconder44/nexustale/internal/guide"
@@ -115,6 +116,9 @@ func main() {
 	researchService := research.NewService(queries)
 	researchHandler := research.NewHandler(researchService)
 
+	collabService := collaboration.NewService(queries)
+	collabHandler := collaboration.NewHandler(collabService)
+
 	// Router
 	gin.SetMode(cfg.Server.Mode)
 	router := gin.Default()
@@ -157,6 +161,13 @@ func main() {
 
 		researchGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		researchHandler.RegisterRoutes(researchGroup)
+
+		// Collaboration — public preview (no auth), auth-only accept, project-scoped management.
+		collabHandler.RegisterPublicRoutes(v1)
+		collabAuthGroup := v1.Group("", auth.RequireAuth(authService))
+		collabHandler.RegisterAuthRoutes(collabAuthGroup)
+		collabProjectGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		collabHandler.RegisterProjectRoutes(collabProjectGroup)
 	}
 
 	// Server with graceful shutdown

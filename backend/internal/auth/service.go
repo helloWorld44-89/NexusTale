@@ -164,7 +164,13 @@ func (s *Service) GetMe(ctx context.Context, userID uuid.UUID) (*UserResponse, e
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("get user: %v", err))
 	}
-	return toUserResponse(u), nil
+	return &UserResponse{
+		ID:          u.ID,
+		Email:       u.Email,
+		DisplayName: u.DisplayName,
+		Role:        Role(u.Role),
+		CreatedAt:   u.CreatedAt.Time,
+	}, nil
 }
 
 // DeleteMe removes the user and all owned data. Git repos on disk are deleted

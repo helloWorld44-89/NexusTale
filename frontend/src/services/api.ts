@@ -161,6 +161,36 @@ export interface WorkshopSession {
   updated_at: string
 }
 
+export type CollabRole = 'coauthor' | 'editor' | 'reviewer'
+
+export interface CollaboratorResponse {
+  project_id:   string
+  user_id:      string
+  display_name: string
+  email:        string
+  role:         CollabRole
+  branch_name:  string
+  joined_at:    string
+}
+
+export interface InviteResponse {
+  id:         string
+  project_id: string
+  email:      string
+  role:       CollabRole
+  token:      string
+  expires_at: string
+  created_at: string
+}
+
+export interface InvitePreview {
+  project_id:    string
+  project_title: string
+  inviter_name:  string
+  role:          CollabRole
+  expires_at:    string
+}
+
 // ── Error class ───────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -828,5 +858,26 @@ export const api = {
 
     delete: (token: string, provider: string) =>
       request<void>('DELETE', `/users/me/api-keys/${encodeURIComponent(provider)}`, undefined, token),
+  },
+
+  collaboration: {
+    // Unauthenticated preview — shows project/role before accept
+    getInvitePreview: (token: string) =>
+      request<InvitePreview>('GET', `/invites/${token}`),
+
+    acceptInvite: (authToken: string, inviteToken: string) =>
+      request<CollaboratorResponse>('POST', `/invites/${inviteToken}/accept`, undefined, authToken),
+
+    invite: (token: string, projectId: string, email: string, role: CollabRole) =>
+      request<InviteResponse>('POST', `/projects/${projectId}/invites`, { email, role }, token),
+
+    listInvites: (token: string, projectId: string) =>
+      request<InviteResponse[]>('GET', `/projects/${projectId}/invites`, undefined, token),
+
+    listCollaborators: (token: string, projectId: string) =>
+      request<CollaboratorResponse[]>('GET', `/projects/${projectId}/collaborators`, undefined, token),
+
+    removeCollaborator: (token: string, projectId: string, userId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/collaborators/${userId}`, undefined, token),
   },
 }

@@ -99,8 +99,8 @@ func (s *Service) GetProject(ctx context.Context, id uuid.UUID) (*ProjectRespons
 	return toProjectResponse(p), nil
 }
 
-func (s *Service) ListProjects(ctx context.Context, ownerID uuid.UUID) ([]ProjectResponse, error) {
-	projects, err := s.queries.ListProjectsByOwner(ctx, ownerID)
+func (s *Service) ListProjects(ctx context.Context, userID uuid.UUID) ([]ProjectResponse, error) {
+	projects, err := s.queries.ListProjectsForUser(ctx, userID)
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("list projects: %v", err))
 	}
