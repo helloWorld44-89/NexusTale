@@ -6,6 +6,7 @@ import { useAuthStore } from '@/app/store/authStore'
 import { api } from '@/services/api'
 import type { Project, ProjectStats, AIUsageSummary, ExportJob, ProjectStructure } from '@/services/api'
 import CollaboratorsPanel from '@/components/CollaboratorsPanel'
+import MergeRequestsPanel from '@/components/MergeRequestsPanel'
 
 export default function ProjectHome() {
   const { id } = useParams<{ id: string }>()
@@ -414,6 +415,18 @@ export default function ProjectHome() {
               projectId={id!}
               ownerId={project.owner_id}
               currentUser={user.id}
+              token={accessToken}
+            />
+          </div>
+        )}
+
+        {/* Merge Requests panel */}
+        {project && accessToken && user && (
+          <div className="mt-4">
+            <MergeRequestsPanel
+              projectId={id!}
+              ownerId={project.owner_id}
+              currentUserId={user.id}
               token={accessToken}
             />
           </div>

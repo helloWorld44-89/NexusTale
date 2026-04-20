@@ -11,7 +11,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | Area | Status |
 |------|--------|
 | **API shell** | Go 1.25 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens |
-| **Database** | PostgreSQL migrations **(026)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
+| **Database** | PostgreSQL migrations **(027)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
 | **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; act layer hidden in UI for single default act; full CRUD + integration tests + Bruno |
 | **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; 21 handler integration tests; fast-forward merge; Paradox detection |
 | **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints; relationship graph (d3 force) |
@@ -23,7 +23,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | **Export** | Markdown (sync zip) + EPUB + DOCX (async jobs, MinIO, presigned URL); `export_jobs` table; goroutine worker pool (`asyncJob{format}`) |
 | **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene); side effects populate wiki + manuscript; guide steps auto-fill AI Bible |
 | **Story structures** | 12 seeded templates + scoring matrix; freeform option; structure badge on ProjectHome; phase banners in WikiHub timeline |
-| **Collaboration** | C3.0 + C3.1 + C3.5 complete — roles, invite system, clone-per-collaborator, `RequireProjectAccess` middleware; collaborator-scoped git ops (`repoPathForUser`), branch-prefix enforcement, reviewer read-only; notifications table (migration 026), `GET/PUT /notifications`, `NotificationBell` (60s polling, unread badge, mark-read, nav on click); `NotificationWriter` interface wired into collab service for future events |
+| **Collaboration** | C3.0 + C3.1 + C3.5 + C3.2 complete — roles, invite system, clone-per-collaborator; collaborator-scoped git ops, branch-prefix enforcement, reviewer read-only; notifications (migration 026) + `NotificationBell`; **merge requests** (migration 027) — `internal/merge` open/list/get/diff/resolve; `FetchBranchFromClone` + `EchoBranches` on `GitService`; per-scene `SceneDiff` parsing; fast-forward canonize + HasParadox detection; `mr_*` notifications; `MergeRequestsPanel` on ProjectHome |
 | **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub (entities/timeline/graph/research notes), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats, context pins panel, multi-session Workshop panel, NotificationBell (60s polling, unread badge, dropdown)** |
 | **Navigation** | TopBar: left nav (logo → Dashboard, Home, Wiki, Guide) + breadcrumb + right area (panel toggles, username, Settings, logout); editor fully navigable |
 | **Settings** | AI provider keys (add/remove/test), Ollama URL + model selector, appearance (dark/light), account deletion |
@@ -42,7 +42,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 3. **World wiki** — Entities (character/location/faction/item/concept/lore), relationships graph, timeline, magic rules, autolink. *API + Bruno tests done; no frontend yet.*
 4. **AI-assisted writing** — Completion, chat, summarize, adapters, RAG. *B1 + B1.5 + B3 done. B2 (context/memory) next.*
 5. **Export** — Markdown, EPUB, Scrivener. *B4 next.*
-6. **Collaboration** — Git-backed async: per-collaborator clones, invite system, merge requests, prose diff + conflict resolution, reviewer annotations, notifications. *C3.0 + C3.1 + C3.5 done.*
+6. **Collaboration** — Git-backed async: per-collaborator clones, invite system, merge requests, prose diff + conflict resolution, reviewer annotations, notifications. *C3.0 + C3.1 + C3.5 + C3.2 done.*
 7. **Assets** — Covers and binaries via MinIO/S3. *Package stub; not integrated.*
 8. **Writer UI** — React app: editor, wiki, AI panels, export. *Not started.*
 
@@ -232,7 +232,7 @@ Architecture: **git-backed async** — each collaborator gets a per-project git 
 
 - [x] **`[Heavy]`** **C3.0 — Roles + invite system** ✓ (2026-04-19) — Migration 022 (`users.plan` free/writer/studio); migration 023 (`project_collaborators` extended + `project_invites`); `internal/collaboration` package (service + handler + `RequireProjectAccess` middleware); roles: co-author/editor/reviewer; 32-byte hex invite token, 7d TTL, email-matched accept, clone + branch on accept; `ListProjectsForUser` union query for dashboard; frontend: `CollaboratorsPanel`, `InviteAccept` page, Login redirect param, router entry; `api.collaboration.*` in api.ts
 - [ ] **`[Heavy]`** **C3.1 — Collaborator-scoped git operations** — Chronicle, Diverge, Lore scoped to collaborator clone; branch prefix enforcement (403 outside own prefix); reviewer blocked from Chronicle
-- [ ] **`[Heavier]`** **C3.2 — Merge request system** — Migration 024 `merge_requests` table; open/reject/merge flows; diff computation between collaborator branch and canon; Paradox conflict detection per scene
+- [x] **`[Heavier]`** **C3.2 — Merge request system** — Migration 027 `merge_requests` table; open/list/get/diff/resolve flows; `FetchBranchFromClone` + `EchoBranches`; per-scene `SceneDiff` parsing; fast-forward Canonize + HasParadox → 400; `mr_*` notifications; `MergeRequestsPanel` on ProjectHome
 - [ ] **`[Heavy]`** **C3.3 — Prose diff + conflict resolution UI** — side-by-side word-level diff view; Keep Canon / Use Co-author / Edit manually resolution per scene; bulk accept; merge blocked until all conflicts resolved
 - [ ] **`[Heavy]`** **C3.4 — Reviewer annotations** — Migration 025 `scene_annotations` (anchor offset + length, text, type: note/suggestion/question); create/resolve/list; underline highlights in ScribeEditor; annotation sidebar; role restrictions (only owner can resolve)
 - [ ] **`[Medium]`** **C3.5 — Notifications** — Migration 026 `notifications` table; bell icon in TopBar; 60s poll; events: invite received, MR opened/approved/rejected, annotation added; mark-read / mark-all-read
