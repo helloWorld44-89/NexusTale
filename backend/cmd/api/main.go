@@ -17,6 +17,7 @@ import (
 	"github.com/jconder44/nexustale/internal/config"
 	"github.com/jconder44/nexustale/internal/export"
 	"github.com/jconder44/nexustale/internal/guide"
+	"github.com/jconder44/nexustale/internal/merge"
 	"github.com/jconder44/nexustale/internal/notifications"
 	"github.com/jconder44/nexustale/internal/project"
 	"github.com/jconder44/nexustale/internal/prompts"
@@ -124,6 +125,10 @@ func main() {
 	collabService.WithNotificationService(notificationService)
 	collabHandler := collaboration.NewHandler(collabService)
 
+	mergeService := merge.NewService(queries, gitService)
+	mergeService.WithNotificationService(notificationService)
+	mergeHandler := merge.NewHandler(mergeService)
+
 	// Router
 	gin.SetMode(cfg.Server.Mode)
 	router := gin.Default()
@@ -173,6 +178,10 @@ func main() {
 		collabHandler.RegisterAuthRoutes(collabAuthGroup)
 		collabProjectGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		collabHandler.RegisterProjectRoutes(collabProjectGroup)
+
+		// Merge requests — project-scoped.
+		mergeGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		mergeHandler.RegisterRoutes(mergeGroup)
 
 		// Notifications — user-scoped, no project context required.
 		notifGroup := v1.Group("", auth.RequireAuth(authService))

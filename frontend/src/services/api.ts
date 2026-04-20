@@ -210,6 +210,38 @@ export interface Notification {
   created_at: string
 }
 
+// ── Merge Requests ────────────────────────────────────────────────────────────
+
+export interface MergeRequest {
+  id:             string
+  project_id:     string
+  from_branch:    string
+  to_branch:      string
+  title:          string
+  description:    string
+  requested_by:   string
+  requester_name: string
+  status:         'open' | 'approved' | 'rejected' | 'merged'
+  reviewer_note:  string
+  created_at:     string
+  resolved_at?:   string
+}
+
+export interface SceneDiff {
+  git_path:   string
+  scene_id:   string
+  diff:       string
+  is_new:     boolean
+  is_deleted: boolean
+}
+
+export interface MRDiffResponse {
+  mr_id:        string
+  from_branch:  string
+  to_branch:    string
+  scene_diffs:  SceneDiff[]
+}
+
 // ── Error class ───────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -909,5 +941,22 @@ export const api = {
 
     markAllRead: (token: string) =>
       request<void>('PUT', '/notifications/read-all', undefined, token),
+  },
+
+  mergeRequests: {
+    list: (token: string, projectId: string) =>
+      request<MergeRequest[]>('GET', `/projects/${projectId}/merge-requests`, undefined, token),
+
+    get: (token: string, projectId: string, mrId: string) =>
+      request<MergeRequest>('GET', `/projects/${projectId}/merge-requests/${mrId}`, undefined, token),
+
+    create: (token: string, projectId: string, body: { from_branch: string; title: string; description?: string }) =>
+      request<MergeRequest>('POST', `/projects/${projectId}/merge-requests`, body, token),
+
+    getDiff: (token: string, projectId: string, mrId: string) =>
+      request<MRDiffResponse>('GET', `/projects/${projectId}/merge-requests/${mrId}/diff`, undefined, token),
+
+    resolve: (token: string, projectId: string, mrId: string, body: { action: 'approve' | 'reject' | 'merge'; reviewer_note?: string }) =>
+      request<MergeRequest>('PUT', `/projects/${projectId}/merge-requests/${mrId}`, body, token),
   },
 }

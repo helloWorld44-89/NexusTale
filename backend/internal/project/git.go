@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/google/uuid"
@@ -397,3 +399,67 @@ func (g *GitService) Canonize(repoPath, timelineName string) (*CanonizeResult, e
 // ErrNothingToChronicle is returned by Chronicle when the working tree is
 // identical to the last commit (no changes to record).
 var ErrNothingToChronicle = errors.New("nothing to chronicle: no changes since last chronicle")
+
+// BranchTipSHA returns the HEAD SHA of a named branch in the given repo.
+func (g *GitService) BranchTipSHA(repoPath, branchName string) (string, error) {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return "", fmt.Errorf("open repo: %w", err)
+	}
+	ref, err := repo.Reference(plumbing.NewBranchReferenceName(branchName), true)
+	if err != nil {
+		return "", fmt.Errorf("resolve branch %s: %w", branchName, err)
+	}
+	return ref.Hash().String(), nil
+}
+
+// FetchBranchFromClone fetches a single branch from a local clone into the main
+// repo as a local branch. Used before merging a collaborator branch into canon.
+// The remote is created, used, and deleted within the call.
+func (g *GitService) FetchBranchFromClone(mainRepoPath, clonePath, branchName string) error {
+	repo, err := git.PlainOpen(mainRepoPath)
+	if err != nil {
+		return fmt.Errorf("open main repo: %w", err)
+	}
+
+	remoteName := "tmp-" + strings.ReplaceAll(branchName, "/", "-")
+
+	// Remove any leftover remote from a prior attempt before creating.
+	_ = repo.DeleteRemote(remoteName)
+
+	if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{
+		Name: remoteName,
+		URLs: []string{clonePath},
+	}); err != nil {
+		return fmt.Errorf("create temp remote: %w", err)
+	}
+	defer repo.DeleteRemote(remoteName) //nolint:errcheck
+
+	refSpec := gitconfig.RefSpec(
+		fmt.Sprintf("refs/heads/%s:refs/heads/%s", branchName, branchName),
+	)
+	err = repo.Fetch(&git.FetchOptions{
+		RemoteName: remoteName,
+		RefSpecs:   []gitconfig.RefSpec{refSpec},
+		Force:      true,
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return fmt.Errorf("fetch branch %s: %w", branchName, err)
+	}
+	return nil
+}
+
+// EchoBranches returns a unified diff between two branch tips inside a single repo.
+// Used by the merge-request diff endpoint to compare canon vs. a collaborator branch
+// within the collaborator's clone (which contains both refs).
+func (g *GitService) EchoBranches(repoPath, baseBranch, headBranch string) (string, error) {
+	baseSHA, err := g.BranchTipSHA(repoPath, baseBranch)
+	if err != nil {
+		return "", fmt.Errorf("base branch: %w", err)
+	}
+	headSHA, err := g.BranchTipSHA(repoPath, headBranch)
+	if err != nil {
+		return "", fmt.Errorf("head branch: %w", err)
+	}
+	return g.Echo(repoPath, baseSHA, headSHA)
+}

@@ -141,6 +141,20 @@ type GuideStep struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type MergeRequest struct {
+	ID           uuid.UUID          `json:"id"`
+	ProjectID    uuid.UUID          `json:"project_id"`
+	FromBranch   string             `json:"from_branch"`
+	ToBranch     string             `json:"to_branch"`
+	Title        string             `json:"title"`
+	Description  string             `json:"description"`
+	RequestedBy  uuid.UUID          `json:"requested_by"`
+	Status       string             `json:"status"`
+	ReviewerNote string             `json:"reviewer_note"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ResolvedAt   pgtype.Timestamptz `json:"resolved_at"`
+}
+
 type Notification struct {
 	ID        uuid.UUID          `json:"id"`
 	UserID    uuid.UUID          `json:"user_id"`
