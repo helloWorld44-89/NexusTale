@@ -14,6 +14,15 @@ FROM projects
 WHERE owner_id = $1 AND archived = false
 ORDER BY updated_at DESC;
 
+-- name: ListProjectsForUser :many
+SELECT DISTINCT p.id, p.owner_id, p.title, p.description, p.genres, p.git_repo_path,
+       p.archived, p.created_at, p.updated_at, p.structure_id, p.structure_custom, p.ai_instructions
+FROM projects p
+LEFT JOIN project_collaborators pc ON pc.project_id = p.id AND pc.user_id = $1
+WHERE p.archived = false
+  AND (p.owner_id = $1 OR pc.user_id IS NOT NULL)
+ORDER BY p.updated_at DESC;
+
 -- name: UpdateProject :one
 UPDATE projects
 SET title = COALESCE(sqlc.narg('title'), title),

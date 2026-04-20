@@ -8,6 +8,7 @@ import Editor from '@/pages/Editor'
 import Guide from '@/pages/Guide'
 import WikiHub from '@/pages/WikiHub'
 import Settings from '@/pages/Settings'
+import InviteAccept from '@/pages/InviteAccept'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -73,6 +74,9 @@ export function AppRouter() {
           </ProtectedRoute>
         }
       />
+
+      {/* Invite accept — works logged in or out; page handles both states */}
+      <Route path="/invites/:token" element={<InviteAccept />} />
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

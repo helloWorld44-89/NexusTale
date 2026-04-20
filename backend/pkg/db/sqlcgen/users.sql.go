@@ -15,7 +15,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, display_name, password_hash, role)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, display_name, role, created_at, updated_at
+RETURNING id, email, display_name, role, plan, created_at, updated_at
 `
 
 type CreateUserParams struct {
@@ -30,6 +30,7 @@ type CreateUserRow struct {
 	Email       string             `json:"email"`
 	DisplayName string             `json:"display_name"`
 	Role        UserRole           `json:"role"`
+	Plan        string             `json:"plan"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
@@ -47,6 +48,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 		&i.Email,
 		&i.DisplayName,
 		&i.Role,
+		&i.Plan,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -63,20 +65,32 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, display_name, password_hash, role, created_at, updated_at
+SELECT id, email, display_name, password_hash, role, plan, created_at, updated_at
 FROM users
 WHERE email = $1
 `
 
-func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+type GetUserByEmailRow struct {
+	ID           uuid.UUID          `json:"id"`
+	Email        string             `json:"email"`
+	DisplayName  string             `json:"display_name"`
+	PasswordHash string             `json:"password_hash"`
+	Role         UserRole           `json:"role"`
+	Plan         string             `json:"plan"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, email)
-	var i User
+	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.DisplayName,
 		&i.PasswordHash,
 		&i.Role,
+		&i.Plan,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -84,20 +98,32 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, display_name, password_hash, role, created_at, updated_at
+SELECT id, email, display_name, password_hash, role, plan, created_at, updated_at
 FROM users
 WHERE id = $1
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
+type GetUserByIDRow struct {
+	ID           uuid.UUID          `json:"id"`
+	Email        string             `json:"email"`
+	DisplayName  string             `json:"display_name"`
+	PasswordHash string             `json:"password_hash"`
+	Role         UserRole           `json:"role"`
+	Plan         string             `json:"plan"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
-	var i User
+	var i GetUserByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.DisplayName,
 		&i.PasswordHash,
 		&i.Role,
+		&i.Plan,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -134,7 +160,7 @@ SET display_name = COALESCE($2, display_name),
     email = COALESCE($3, email),
     updated_at = now()
 WHERE id = $1
-RETURNING id, email, display_name, role, created_at, updated_at
+RETURNING id, email, display_name, role, plan, created_at, updated_at
 `
 
 type UpdateUserParams struct {
@@ -148,6 +174,7 @@ type UpdateUserRow struct {
 	Email       string             `json:"email"`
 	DisplayName string             `json:"display_name"`
 	Role        UserRole           `json:"role"`
+	Plan        string             `json:"plan"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
@@ -160,6 +187,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateU
 		&i.Email,
 		&i.DisplayName,
 		&i.Role,
+		&i.Plan,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
