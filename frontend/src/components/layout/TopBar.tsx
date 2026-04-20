@@ -1,6 +1,7 @@
 // TopBar — project breadcrumb + navigation + panel toggles + user menu.
 import { Link } from 'react-router-dom'
 import type { LeftPanel } from '@/pages/Editor'
+import NotificationBell from './NotificationBell'
 
 interface TopBarProps {
   projectId:    string
@@ -9,6 +10,7 @@ interface TopBarProps {
   chapterTitle: string
   sceneTitle:   string
   displayName:  string
+  token:        string
   leftPanel:    LeftPanel
   explorerOpen: boolean
   focusMode:    boolean
@@ -25,6 +27,7 @@ export default function TopBar({
   chapterTitle,
   sceneTitle,
   displayName,
+  token,
   leftPanel,
   explorerOpen,
   focusMode,
@@ -115,6 +118,9 @@ export default function TopBar({
 
         {/* Divider */}
         <span className="w-px h-4 bg-brand-border/60 mx-1" />
+
+        {/* Notifications */}
+        {token && <NotificationBell token={token} />}
 
         {/* Username chip */}
         {displayName && (

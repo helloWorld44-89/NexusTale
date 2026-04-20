@@ -1,0 +1,38 @@
+meta {
+  name: collab-chronicle
+  type: http
+  seq: 26
+}
+
+// 3.1-A: Coauthor can chronicle on their own branch.
+// Note: project has no scene content yet so this may return 200 "nothing to chronicle"
+// (init commit already exists). Both outcomes are valid — the key check is no 4xx.
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/chronicle
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+body:json {
+  {
+    "note": "Coauthor initial chronicle"
+  }
+}
+
+script:post-response {
+  const sha = res.body && (res.body.sha || (res.body.last_chronicle && res.body.last_chronicle.sha));
+  if (sha) {
+    bru.setEnvVar("collabCoauthorChronicle", sha);
+  }
+}
+
+tests {
+  test("status is 200 or 201", function() {
+    expect([200, 201]).to.include(res.status);
+  });
+}

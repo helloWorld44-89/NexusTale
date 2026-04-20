@@ -1,0 +1,34 @@
+meta {
+  name: reviewer-chronicle-blocked
+  type: http
+  seq: 30
+}
+
+// 3.1-C: Reviewer has read-only access and cannot chronicle (create commits).
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/chronicle
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabReviewerToken}}
+}
+
+body:json {
+  {
+    "note": "Reviewer tries to commit"
+  }
+}
+
+tests {
+  test("status is 403", function() {
+    expect(res.status).to.equal(403);
+  });
+
+  test("error references read-only access", function() {
+    expect(res.body.message).to.be.a("string");
+    expect(res.body.message.toLowerCase()).to.include("read-only");
+  });
+}

@@ -1,0 +1,31 @@
+meta {
+  name: list-collaborators-after-remove
+  type: http
+  seq: 41
+}
+
+// After removing coauthor, only reviewer remains.
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/collaborators
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("only 1 collaborator remains", function() {
+    expect(res.body.length).to.equal(1);
+  });
+
+  test("remaining collaborator is reviewer", function() {
+    expect(res.body[0].email).to.equal("reviewer@test.com");
+  });
+}

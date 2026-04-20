@@ -1,0 +1,31 @@
+meta {
+  name: collab-canonize-own-branch
+  type: http
+  seq: 38
+}
+
+// Coauthor can canonize their own branch (fast-forward in their clone).
+// Note: since the coauthor's branch was branched from the init commit and has
+// no additional commits, this will be a no-op (timeline is ancestor of canon).
+// We expect 200 regardless — what matters is the request is not rejected.
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/timelines/{{collabCoauthorBranch}}/canonize
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("response has merged_sha or has_paradox", function() {
+    const hasResult = res.body.merged_sha !== undefined || res.body.has_paradox !== undefined;
+    expect(hasResult).to.equal(true);
+  });
+}

@@ -141,6 +141,16 @@ type GuideStep struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Notification struct {
+	ID        uuid.UUID          `json:"id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	ProjectID pgtype.UUID        `json:"project_id"`
+	Type      string             `json:"type"`
+	Payload   json.RawMessage    `json:"payload"`
+	ReadAt    pgtype.Timestamptz `json:"read_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type NovelStructure struct {
 	ID          uuid.UUID       `json:"id"`
 	Name        string          `json:"name"`

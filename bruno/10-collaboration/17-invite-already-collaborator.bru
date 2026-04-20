@@ -1,0 +1,35 @@
+meta {
+  name: invite-already-collaborator
+  type: http
+  seq: 18
+}
+
+// 3.0-C2: Inviting an email that is already an active collaborator should return 400.
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/invites
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+body:json {
+  {
+    "email": "coauthor@test.com",
+    "role": "coauthor"
+  }
+}
+
+tests {
+  test("status is 400", function() {
+    expect(res.status).to.equal(400);
+  });
+
+  test("error references already a collaborator", function() {
+    expect(res.body.message).to.be.a("string");
+    expect(res.body.message.toLowerCase()).to.include("already a collaborator");
+  });
+}

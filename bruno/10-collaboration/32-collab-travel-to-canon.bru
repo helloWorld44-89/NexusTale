@@ -1,0 +1,27 @@
+meta {
+  name: collab-travel-to-canon
+  type: http
+  seq: 33
+}
+
+// Coauthor can travel to canon to read the main story.
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/timelines/canon/travel
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("current_timeline is now canon", function() {
+    expect(res.body.current_timeline).to.equal("canon");
+  });
+}

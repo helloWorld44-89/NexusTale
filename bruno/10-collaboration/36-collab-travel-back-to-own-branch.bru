@@ -1,0 +1,28 @@
+meta {
+  name: collab-travel-back-to-own-branch
+  type: http
+  seq: 37
+}
+
+// Travel coauthor back to their own branch before the canonize test.
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/timelines/{{collabCoauthorBranch}}/travel
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("current_timeline is coauthor branch", function() {
+    const branch = bru.getEnvVar("collabCoauthorBranch");
+    expect(res.body.current_timeline).to.equal(branch);
+  });
+}

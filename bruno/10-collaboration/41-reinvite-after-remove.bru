@@ -1,0 +1,34 @@
+meta {
+  name: reinvite-after-remove
+  type: http
+  seq: 42
+}
+
+// 3.0-F: After removal, owner can re-invite the same user without "already a collaborator" error.
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/invites
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+body:json {
+  {
+    "email": "coauthor@test.com",
+    "role": "editor"
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("new role is editor", function() {
+    expect(res.body.role).to.equal("editor");
+  });
+}

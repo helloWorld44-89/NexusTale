@@ -1,0 +1,27 @@
+meta {
+  name: reviewer-git-status-allowed
+  type: http
+  seq: 32
+}
+
+// Reviewers have read-only git access — status, lore, timelines, and echo should all work.
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/status
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabReviewerToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("has current_timeline", function() {
+    expect(res.body.current_timeline).to.be.a("string");
+  });
+}

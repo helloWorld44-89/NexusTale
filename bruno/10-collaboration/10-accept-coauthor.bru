@@ -1,0 +1,51 @@
+meta {
+  name: accept-coauthor
+  type: http
+  seq: 11
+}
+
+// 3.0-A: Coauthor accepts their invite. Creates collaborator row + git clone.
+
+post {
+  url: {{baseUrl}}/api/v1/invites/{{collabCoauthorInviteToken}}/accept
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("collabCoauthorBranch", res.body.branch_name);
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("project_id matches", function() {
+    const projectId = bru.getEnvVar("collabProjectId");
+    expect(res.body.project_id).to.equal(projectId);
+  });
+
+  test("user_id matches coauthor", function() {
+    const coauthorId = bru.getEnvVar("collabCoauthorUserId");
+    expect(res.body.user_id).to.equal(coauthorId);
+  });
+
+  test("role is coauthor", function() {
+    expect(res.body.role).to.equal("coauthor");
+  });
+
+  test("branch_name starts with coauthor/", function() {
+    expect(res.body.branch_name).to.match(/^coauthor\//);
+  });
+
+  test("has joined_at", function() {
+    expect(res.body.joined_at).to.be.a("string");
+  });
+}

@@ -1,0 +1,23 @@
+meta {
+  name: outsider-list-collaborators-blocked
+  type: http
+  seq: 20
+}
+
+// 3.0-G3: Outsider cannot list collaborators on a project they don't belong to.
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/collaborators
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOutsiderToken}}
+}
+
+tests {
+  test("status is 403", function() {
+    expect(res.status).to.equal(403);
+  });
+}

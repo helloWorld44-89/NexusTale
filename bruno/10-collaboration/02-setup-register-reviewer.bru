@@ -1,0 +1,36 @@
+meta {
+  name: setup-register-reviewer
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/auth/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "reviewer@test.com",
+    "display_name": "Reviewer User",
+    "password": "Test1234!"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("collabReviewerToken", res.body.tokens.access_token);
+    bru.setEnvVar("collabReviewerUserId", res.body.user.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("returns reviewer user", function() {
+    expect(res.body.user.email).to.equal("reviewer@test.com");
+  });
+}

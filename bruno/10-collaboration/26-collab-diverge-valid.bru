@@ -1,0 +1,44 @@
+meta {
+  name: collab-diverge-valid
+  type: http
+  seq: 27
+}
+
+// 3.1-B: Coauthor can create a branch as long as it starts with their assigned branch prefix.
+// collabCoauthorBranch is e.g. "coauthor/coauthor-user", so "coauthor/coauthor-user-draft" is valid.
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/timelines
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+body:json {
+  {
+    "timeline_name": "coauthor/coauthor-user-draft"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("collabCoauthorDraftBranch", res.body.name);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("name matches", function() {
+    expect(res.body.name).to.equal("coauthor/coauthor-user-draft");
+  });
+
+  test("is_active is true", function() {
+    expect(res.body.is_active).to.equal(true);
+  });
+}

@@ -1,0 +1,23 @@
+meta {
+  name: remove-collaborator
+  type: http
+  seq: 39
+}
+
+// 3.0-F: Owner removes the coauthor from the project.
+
+delete {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/collaborators/{{collabCoauthorUserId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+tests {
+  test("status is 204", function() {
+    expect(res.status).to.equal(204);
+  });
+}

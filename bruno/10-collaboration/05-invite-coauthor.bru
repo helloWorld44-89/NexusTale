@@ -1,0 +1,51 @@
+meta {
+  name: invite-coauthor
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/invites
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+body:json {
+  {
+    "email": "coauthor@test.com",
+    "role": "coauthor"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("collabCoauthorInviteToken", res.body.token);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("email matches", function() {
+    expect(res.body.email).to.equal("coauthor@test.com");
+  });
+
+  test("role is coauthor", function() {
+    expect(res.body.role).to.equal("coauthor");
+  });
+
+  test("token is a non-empty string", function() {
+    expect(res.body.token).to.be.a("string");
+    expect(res.body.token.length).to.be.greaterThan(0);
+  });
+
+  test("has expires_at", function() {
+    expect(res.body.expires_at).to.be.a("string");
+  });
+}

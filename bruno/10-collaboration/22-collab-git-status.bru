@@ -1,0 +1,32 @@
+meta {
+  name: collab-git-status
+  type: http
+  seq: 23
+}
+
+// 3.1-A: Coauthor can call git status and sees their own clone's current branch.
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/status
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("current_timeline is the coauthor branch", function() {
+    const branch = bru.getEnvVar("collabCoauthorBranch");
+    expect(res.body.current_timeline).to.equal(branch);
+  });
+
+  test("has last_chronicle", function() {
+    expect(res.body.last_chronicle).to.be.an("object");
+  });
+}

@@ -1,0 +1,30 @@
+meta {
+  name: outsider-post-invite-blocked
+  type: http
+  seq: 21
+}
+
+// 3.0-G4: Outsider cannot send invites to a project they don't belong to.
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/invites
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOutsiderToken}}
+}
+
+body:json {
+  {
+    "email": "anyone@test.com",
+    "role": "reviewer"
+  }
+}
+
+tests {
+  test("status is 403", function() {
+    expect(res.status).to.equal(403);
+  });
+}
