@@ -1,0 +1,28 @@
+meta {
+  name: collab-travel-invalid-branch
+  type: http
+  seq: 34
+}
+
+// Coauthor tries to travel to a branch outside their prefix (not canon, not their own branch).
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/timelines/reviewer%2Freviewer-user/travel
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+tests {
+  test("status is 403", function() {
+    expect(res.status).to.equal(403);
+  });
+
+  test("error references travel restriction", function() {
+    expect(res.body.message).to.be.a("string");
+    expect(res.body.message.toLowerCase()).to.include("travel");
+  });
+}

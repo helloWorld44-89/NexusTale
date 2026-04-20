@@ -11,7 +11,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | Area | Status |
 |------|--------|
 | **API shell** | Go 1.25 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens |
-| **Database** | PostgreSQL migrations **(023)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
+| **Database** | PostgreSQL migrations **(026)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
 | **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; act layer hidden in UI for single default act; full CRUD + integration tests + Bruno |
 | **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; 21 handler integration tests; fast-forward merge; Paradox detection |
 | **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints; relationship graph (d3 force) |
@@ -23,13 +23,13 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | **Export** | Markdown (sync zip) + EPUB + DOCX (async jobs, MinIO, presigned URL); `export_jobs` table; goroutine worker pool (`asyncJob{format}`) |
 | **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene); side effects populate wiki + manuscript; guide steps auto-fill AI Bible |
 | **Story structures** | 12 seeded templates + scoring matrix; freeform option; structure badge on ProjectHome; phase banners in WikiHub timeline |
-| **Collaboration** | C3.0 complete — roles, invite system (token + 7d TTL), clone-per-collaborator, `RequireProjectAccess` middleware; migrations 022 (user_plan) + 023 (project_collaborators + project_invites) |
-| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub (entities/timeline/graph/research notes), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats, context pins panel, multi-session Workshop panel** |
+| **Collaboration** | C3.0 + C3.1 + C3.5 complete — roles, invite system, clone-per-collaborator, `RequireProjectAccess` middleware; collaborator-scoped git ops (`repoPathForUser`), branch-prefix enforcement, reviewer read-only; notifications table (migration 026), `GET/PUT /notifications`, `NotificationBell` (60s polling, unread badge, mark-read, nav on click); `NotificationWriter` interface wired into collab service for future events |
+| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub (entities/timeline/graph/research notes), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats, context pins panel, multi-session Workshop panel, NotificationBell (60s polling, unread badge, dropdown)** |
 | **Navigation** | TopBar: left nav (logo → Dashboard, Home, Wiki, Guide) + breadcrumb + right area (panel toggles, username, Settings, logout); editor fully navigable |
 | **Settings** | AI provider keys (add/remove/test), Ollama URL + model selector, appearance (dark/light), account deletion |
 | **OpenAPI + types** | `docs/openapi.yaml` (45+ routes incl. acts); `frontend/src/services/api-types.ts` generated; inline types for AI/prompts/usage/guide/structures |
 | **CI/CD** | GitHub Actions (self-hosted) → GHCR → Ansible → dev VM; Go tests, tsc, ESLint, API-types drift, sqlc diff, Docker build + push, Ansible deploy |
-| **Bruno collection** | Full integration tests for auth, health, projects, acts, chapters, scenes, wiki (incl. anchor tests), git |
+| **Bruno collection** | Full integration tests for auth, health, projects, acts, chapters, scenes, wiki (incl. anchor tests), git, collaboration (C3.0 + C3.1 — 44 tests in `10-collaboration/`) |
 | **README** | Written — prerequisites, quick start, env vars, Redis/MinIO note |
 | **K8s / Helm** | Stubs — not yet used |
 
@@ -42,7 +42,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 3. **World wiki** — Entities (character/location/faction/item/concept/lore), relationships graph, timeline, magic rules, autolink. *API + Bruno tests done; no frontend yet.*
 4. **AI-assisted writing** — Completion, chat, summarize, adapters, RAG. *B1 + B1.5 + B3 done. B2 (context/memory) next.*
 5. **Export** — Markdown, EPUB, Scrivener. *B4 next.*
-6. **Collaboration** — Git-backed async: per-collaborator clones, invite system, merge requests, prose diff + conflict resolution, reviewer annotations, notifications. *C3.0 done.*
+6. **Collaboration** — Git-backed async: per-collaborator clones, invite system, merge requests, prose diff + conflict resolution, reviewer annotations, notifications. *C3.0 + C3.1 + C3.5 done.*
 7. **Assets** — Covers and binaries via MinIO/S3. *Package stub; not integrated.*
 8. **Writer UI** — React app: editor, wiki, AI panels, export. *Not started.*
 

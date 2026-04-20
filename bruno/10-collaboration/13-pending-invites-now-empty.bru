@@ -1,0 +1,27 @@
+meta {
+  name: pending-invites-now-empty
+  type: http
+  seq: 14
+}
+
+// After both invites are accepted, pending list should be empty.
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/invites
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("no pending invites remain", function() {
+    expect(res.body.length).to.equal(0);
+  });
+}

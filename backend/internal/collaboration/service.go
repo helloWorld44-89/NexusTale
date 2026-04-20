@@ -20,13 +20,25 @@ import (
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
+// NotificationWriter is implemented by the notifications service.
+// Using an interface breaks the import cycle between collaboration ↔ notifications.
+type NotificationWriter interface {
+	Notify(ctx context.Context, userID, projectID uuid.UUID, notifType string, payload map[string]any)
+}
+
 // Service manages project collaborators and invite tokens.
 type Service struct {
-	queries *sqlcgen.Queries
+	queries  *sqlcgen.Queries
+	notifier NotificationWriter // optional; nil → notifications disabled
 }
 
 func NewService(queries *sqlcgen.Queries) *Service {
 	return &Service{queries: queries}
+}
+
+// WithNotificationService wires the notification writer. Called from cmd/api during startup.
+func (s *Service) WithNotificationService(n NotificationWriter) {
+	s.notifier = n
 }
 
 // ── response types ────────────────────────────────────────────────────────────
@@ -119,7 +131,7 @@ func (s *Service) InviteCollaborator(ctx context.Context, ownerID, projectID uui
 		return InviteResponse{}, fmt.Errorf("create invite: %w", err)
 	}
 
-	return InviteResponse{
+	resp := InviteResponse{
 		ID:        row.ID.String(),
 		ProjectID: row.ProjectID.String(),
 		Email:     row.Email,
@@ -127,7 +139,20 @@ func (s *Service) InviteCollaborator(ctx context.Context, ownerID, projectID uui
 		Token:     row.Token,
 		ExpiresAt: row.ExpiresAt.Time.Format(time.RFC3339),
 		CreatedAt: row.CreatedAt.Time.Format(time.RFC3339),
-	}, nil
+	}
+
+	// Notify the invitee non-blocking so invite latency is unaffected.
+	if s.notifier != nil {
+		inviter, _ := s.queries.GetUserByID(ctx, ownerID)
+		go s.notifier.Notify(ctx, invitee.ID, projectID, "invite_received", map[string]any{
+			"project_title": p.Title,
+			"inviter_name":  inviter.DisplayName,
+			"role":          role,
+			"invite_token":  token,
+		})
+	}
+
+	return resp, nil
 }
 
 // ── GetInvitePreview ──────────────────────────────────────────────────────────

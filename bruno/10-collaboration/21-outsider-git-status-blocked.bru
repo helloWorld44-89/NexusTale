@@ -1,0 +1,23 @@
+meta {
+  name: outsider-git-status-blocked
+  type: http
+  seq: 22
+}
+
+// 3.0-G: Outsider cannot access any git route on the project.
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/status
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOutsiderToken}}
+}
+
+tests {
+  test("status is 403", function() {
+    expect(res.status).to.equal(403);
+  });
+}

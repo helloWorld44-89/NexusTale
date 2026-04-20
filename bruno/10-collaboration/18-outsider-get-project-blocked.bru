@@ -1,0 +1,23 @@
+meta {
+  name: outsider-get-project-blocked
+  type: http
+  seq: 19
+}
+
+// 3.0-G2: Outsider's JWT on a project GET they have no access to.
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOutsiderToken}}
+}
+
+tests {
+  test("status is 403", function() {
+    expect(res.status).to.equal(403);
+  });
+}

@@ -424,15 +424,41 @@ func (s *Service) DeleteScene(ctx context.Context, id uuid.UUID) error {
 
 // ── Git / Chronicle operations ────────────────────────────────────────────────
 
-// Chronicle snapshots all scene content for the project into the git repo and
-// creates a new commit (Chronicle) on the current Timeline.
-func (s *Service) Chronicle(ctx context.Context, projectID uuid.UUID, req ChronicleRequest) (*ChronicleEntry, error) {
+// repoPathForUser resolves the git working-tree path for (projectID, userID).
+// Owners use project.GitRepoPath; collaborators use their per-user clone path
+// created during AcceptInvite. Also returns the collaborator row (nil for owner)
+// so callers can apply branch-prefix enforcement without a second DB round-trip.
+func (s *Service) repoPathForUser(ctx context.Context, projectID, userID uuid.UUID) (string, *sqlcgen.ProjectCollaborator, error) {
 	p, err := s.queries.GetProject(ctx, projectID)
 	if err != nil {
-		return nil, apperror.NotFound("project", projectID.String())
+		return "", nil, apperror.NotFound("project", projectID.String())
 	}
 	if p.GitRepoPath == "" {
-		return nil, apperror.Internal("project has no git repository")
+		return "", nil, apperror.Internal("project has no git repository")
+	}
+	if p.OwnerID == userID {
+		return p.GitRepoPath, nil, nil
+	}
+	collab, err := s.queries.GetCollaborator(ctx, sqlcgen.GetCollaboratorParams{
+		ProjectID: projectID,
+		UserID:    userID,
+	})
+	if err != nil {
+		return "", nil, apperror.Forbidden("you are not a member of this project")
+	}
+	return collab.ClonePath, &collab, nil
+}
+
+// Chronicle snapshots all scene content for the project into the git repo and
+// creates a new commit (Chronicle) on the current Timeline.
+// Reviewers have read-only access and cannot create commits.
+func (s *Service) Chronicle(ctx context.Context, projectID, userID uuid.UUID, req ChronicleRequest) (*ChronicleEntry, error) {
+	repoPath, collab, err := s.repoPathForUser(ctx, projectID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if collab != nil && collab.Role == "reviewer" {
+		return nil, apperror.Forbidden("reviewers have read-only access and cannot chronicle")
 	}
 
 	// Build a snapshot of all scene files: chapters/<chID>/scenes/<scID>.md
@@ -453,10 +479,9 @@ func (s *Service) Chronicle(ctx context.Context, projectID uuid.UUID, req Chroni
 		}
 	}
 
-	sha, err := s.git.Chronicle(p.GitRepoPath, req.Note, files)
+	sha, err := s.git.Chronicle(repoPath, req.Note, files)
 	if errors.Is(err, ErrNothingToChronicle) {
-		// Return current HEAD as the chronicle entry with a flag.
-		entries, _ := s.git.Lore(p.GitRepoPath, 1, 1)
+		entries, _ := s.git.Lore(repoPath, 1, 1)
 		if len(entries) > 0 {
 			return &entries[0], ErrNothingToChronicle
 		}
@@ -465,7 +490,7 @@ func (s *Service) Chronicle(ctx context.Context, projectID uuid.UUID, req Chroni
 		return nil, apperror.Internal(fmt.Sprintf("chronicle: %v", err))
 	}
 
-	entries, err := s.git.Lore(p.GitRepoPath, 1, 1)
+	entries, err := s.git.Lore(repoPath, 1, 1)
 	if err != nil || len(entries) == 0 {
 		return &ChronicleEntry{SHA: sha, ShortSHA: sha[:7], Note: req.Note}, nil
 	}
@@ -473,13 +498,13 @@ func (s *Service) Chronicle(ctx context.Context, projectID uuid.UUID, req Chroni
 }
 
 // Lore returns the paginated commit history for the project's current Timeline.
-func (s *Service) Lore(ctx context.Context, projectID uuid.UUID, page, perPage int) ([]ChronicleEntry, error) {
-	p, err := s.queries.GetProject(ctx, projectID)
+func (s *Service) Lore(ctx context.Context, projectID, userID uuid.UUID, page, perPage int) ([]ChronicleEntry, error) {
+	repoPath, _, err := s.repoPathForUser(ctx, projectID, userID)
 	if err != nil {
-		return nil, apperror.NotFound("project", projectID.String())
+		return nil, err
 	}
 
-	entries, err := s.git.Lore(p.GitRepoPath, page, perPage)
+	entries, err := s.git.Lore(repoPath, page, perPage)
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("lore: %v", err))
 	}
@@ -487,13 +512,13 @@ func (s *Service) Lore(ctx context.Context, projectID uuid.UUID, page, perPage i
 }
 
 // Echo returns a unified diff between two Chronicle SHAs.
-func (s *Service) Echo(ctx context.Context, projectID uuid.UUID, fromSHA, toSHA string) (*EchoResponse, error) {
-	p, err := s.queries.GetProject(ctx, projectID)
+func (s *Service) Echo(ctx context.Context, projectID, userID uuid.UUID, fromSHA, toSHA string) (*EchoResponse, error) {
+	repoPath, _, err := s.repoPathForUser(ctx, projectID, userID)
 	if err != nil {
-		return nil, apperror.NotFound("project", projectID.String())
+		return nil, err
 	}
 
-	diff, err := s.git.Echo(p.GitRepoPath, fromSHA, toSHA)
+	diff, err := s.git.Echo(repoPath, fromSHA, toSHA)
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("echo: %v", err))
 	}
@@ -501,20 +526,20 @@ func (s *Service) Echo(ctx context.Context, projectID uuid.UUID, fromSHA, toSHA 
 }
 
 // GitStatus returns the current Timeline name and the most recent Chronicle.
-func (s *Service) GitStatus(ctx context.Context, projectID uuid.UUID) (*GitStatusResponse, error) {
-	p, err := s.queries.GetProject(ctx, projectID)
+func (s *Service) GitStatus(ctx context.Context, projectID, userID uuid.UUID) (*GitStatusResponse, error) {
+	repoPath, _, err := s.repoPathForUser(ctx, projectID, userID)
 	if err != nil {
-		return nil, apperror.NotFound("project", projectID.String())
+		return nil, err
 	}
 
-	timeline, err := s.git.CurrentTimeline(p.GitRepoPath)
+	timeline, err := s.git.CurrentTimeline(repoPath)
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("current timeline: %v", err))
 	}
 
 	resp := &GitStatusResponse{CurrentTimeline: timeline}
 
-	entries, err := s.git.Lore(p.GitRepoPath, 1, 1)
+	entries, err := s.git.Lore(repoPath, 1, 1)
 	if err == nil && len(entries) > 0 {
 		resp.LastChronicle = &entries[0]
 	}
@@ -523,13 +548,13 @@ func (s *Service) GitStatus(ctx context.Context, projectID uuid.UUID) (*GitStatu
 }
 
 // Timelines lists all branches (Timelines) in the project's git repo.
-func (s *Service) Timelines(ctx context.Context, projectID uuid.UUID) ([]TimelineInfo, error) {
-	p, err := s.queries.GetProject(ctx, projectID)
+func (s *Service) Timelines(ctx context.Context, projectID, userID uuid.UUID) ([]TimelineInfo, error) {
+	repoPath, _, err := s.repoPathForUser(ctx, projectID, userID)
 	if err != nil {
-		return nil, apperror.NotFound("project", projectID.String())
+		return nil, err
 	}
 
-	timelines, err := s.git.Timelines(p.GitRepoPath)
+	timelines, err := s.git.Timelines(repoPath)
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("timelines: %v", err))
 	}
@@ -539,16 +564,23 @@ func (s *Service) Timelines(ctx context.Context, projectID uuid.UUID) ([]Timelin
 // Diverge creates a new Timeline and switches to it.
 // userID is recorded in project_active_branch so the user's AI calls resolve
 // to the new branch automatically.
+// Collaborators may only create branches prefixed with their assigned branch name.
 func (s *Service) Diverge(ctx context.Context, projectID, userID uuid.UUID, req DivergeRequest) (*TimelineInfo, error) {
-	p, err := s.queries.GetProject(ctx, projectID)
+	repoPath, collab, err := s.repoPathForUser(ctx, projectID, userID)
 	if err != nil {
-		return nil, apperror.NotFound("project", projectID.String())
+		return nil, err
 	}
 	if req.TimelineName == CanonBranch {
 		return nil, apperror.Validation("timeline name 'canon' is reserved")
 	}
+	if collab != nil && collab.Role == "reviewer" {
+		return nil, apperror.Forbidden("reviewers have read-only access and cannot create branches")
+	}
+	if collab != nil && !strings.HasPrefix(req.TimelineName, collab.BranchName) {
+		return nil, apperror.Forbidden("collaborators may only create branches prefixed with their assigned branch name: " + collab.BranchName)
+	}
 
-	if err := s.git.Diverge(p.GitRepoPath, req.TimelineName, req.FromSHA); err != nil {
+	if err := s.git.Diverge(repoPath, req.TimelineName, req.FromSHA); err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("diverge: %v", err))
 	}
 
@@ -556,7 +588,7 @@ func (s *Service) Diverge(ctx context.Context, projectID, userID uuid.UUID, req 
 		s.notifier.UpsertActiveBranch(ctx, projectID, userID, req.TimelineName)
 	}
 
-	timelines, _ := s.git.Timelines(p.GitRepoPath)
+	timelines, _ := s.git.Timelines(repoPath)
 	for _, t := range timelines {
 		if t.Name == req.TimelineName {
 			return &t, nil
@@ -567,13 +599,17 @@ func (s *Service) Diverge(ctx context.Context, projectID, userID uuid.UUID, req 
 
 // TravelTo switches the working tree to an existing Timeline.
 // userID is recorded in project_active_branch so AI calls resolve correctly.
+// Collaborators may only travel to their own branch prefix or canon.
 func (s *Service) TravelTo(ctx context.Context, projectID, userID uuid.UUID, timelineName string) (*GitStatusResponse, error) {
-	p, err := s.queries.GetProject(ctx, projectID)
+	repoPath, collab, err := s.repoPathForUser(ctx, projectID, userID)
 	if err != nil {
-		return nil, apperror.NotFound("project", projectID.String())
+		return nil, err
+	}
+	if collab != nil && timelineName != CanonBranch && !strings.HasPrefix(timelineName, collab.BranchName) {
+		return nil, apperror.Forbidden("collaborators may only travel to their own branch or canon")
 	}
 
-	if err := s.git.TravelTo(p.GitRepoPath, timelineName); err != nil {
+	if err := s.git.TravelTo(repoPath, timelineName); err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("travel to %s: %v", timelineName, err))
 	}
 
@@ -581,21 +617,30 @@ func (s *Service) TravelTo(ctx context.Context, projectID, userID uuid.UUID, tim
 		s.notifier.UpsertActiveBranch(ctx, projectID, userID, timelineName)
 	}
 
-	return s.GitStatus(ctx, projectID)
+	return s.GitStatus(ctx, projectID, userID)
 }
 
 // Canonize merges a Timeline into Canon (fast-forward only in Phase A).
 // On success it cleans up the merged branch's summary rows and user pointers.
-func (s *Service) Canonize(ctx context.Context, projectID uuid.UUID, timelineName string) (*CanonizeResult, error) {
-	p, err := s.queries.GetProject(ctx, projectID)
+// Reviewers cannot canonize; collaborators can only canonize their own branch.
+func (s *Service) Canonize(ctx context.Context, projectID, userID uuid.UUID, timelineName string) (*CanonizeResult, error) {
+	repoPath, collab, err := s.repoPathForUser(ctx, projectID, userID)
 	if err != nil {
-		return nil, apperror.NotFound("project", projectID.String())
+		return nil, err
 	}
 	if timelineName == CanonBranch {
 		return nil, apperror.Validation("cannot canonize Canon into itself")
 	}
+	if collab != nil {
+		if collab.Role == "reviewer" {
+			return nil, apperror.Forbidden("reviewers cannot canonize timelines")
+		}
+		if !strings.HasPrefix(timelineName, collab.BranchName) {
+			return nil, apperror.Forbidden("collaborators may only canonize their own branch")
+		}
+	}
 
-	result, err := s.git.Canonize(p.GitRepoPath, timelineName)
+	result, err := s.git.Canonize(repoPath, timelineName)
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("canonize: %v", err))
 	}

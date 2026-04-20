@@ -1,0 +1,23 @@
+meta {
+  name: removed-collab-blocked
+  type: http
+  seq: 40
+}
+
+// 3.0-F: After removal, coauthor can no longer access the project.
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/status
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+tests {
+  test("status is 403", function() {
+    expect(res.status).to.equal(403);
+  });
+}

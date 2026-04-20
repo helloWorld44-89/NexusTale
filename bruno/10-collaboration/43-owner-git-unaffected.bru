@@ -1,0 +1,27 @@
+meta {
+  name: owner-git-unaffected
+  type: http
+  seq: 44
+}
+
+// Regression: owner's git operations still use the main project repo, unaffected by collab changes.
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/status
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("owner is on canon", function() {
+    expect(res.body.current_timeline).to.equal("canon");
+  });
+}

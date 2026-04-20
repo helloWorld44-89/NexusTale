@@ -1,0 +1,35 @@
+meta {
+  name: invite-unknown-email
+  type: http
+  seq: 16
+}
+
+// 3.0-C1: Inviting an email with no NexusTale account should return 400.
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/invites
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+body:json {
+  {
+    "email": "ghost@nowhere.test",
+    "role": "coauthor"
+  }
+}
+
+tests {
+  test("status is 400", function() {
+    expect(res.status).to.equal(400);
+  });
+
+  test("error references no account found", function() {
+    expect(res.body.message).to.be.a("string");
+    expect(res.body.message.toLowerCase()).to.include("no nexustale account");
+  });
+}

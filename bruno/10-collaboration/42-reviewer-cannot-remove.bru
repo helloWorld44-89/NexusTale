@@ -1,0 +1,23 @@
+meta {
+  name: reviewer-cannot-remove
+  type: http
+  seq: 43
+}
+
+// Non-owners cannot remove collaborators — only the project owner can.
+
+delete {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/collaborators/{{collabReviewerUserId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabReviewerToken}}
+}
+
+tests {
+  test("status is 403", function() {
+    expect(res.status).to.equal(403);
+  });
+}

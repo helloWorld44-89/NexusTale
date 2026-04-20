@@ -1,0 +1,38 @@
+meta {
+  name: collab-list-timelines
+  type: http
+  seq: 25
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/timelines
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("coauthor branch is listed", function() {
+    const branch = bru.getEnvVar("collabCoauthorBranch");
+    const match = res.body.find(t => t.name === branch);
+    expect(match).to.not.be.undefined;
+  });
+
+  test("active timeline is the coauthor branch", function() {
+    const active = res.body.find(t => t.is_active === true);
+    expect(active).to.not.be.undefined;
+    const branch = bru.getEnvVar("collabCoauthorBranch");
+    expect(active.name).to.equal(branch);
+  });
+}

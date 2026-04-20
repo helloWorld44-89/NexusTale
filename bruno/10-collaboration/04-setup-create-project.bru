@@ -1,0 +1,49 @@
+meta {
+  name: setup-create-project
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+body:json {
+  {
+    "title": "The Shattered Meridian",
+    "description": "A collaborative sci-fi novel about a fractured galaxy.",
+    "genres": ["sci-fi", "space-opera"]
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("collabProjectId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("title matches", function() {
+    expect(res.body.title).to.equal("The Shattered Meridian");
+  });
+
+  test("owner_id is the owner", function() {
+    const ownerUserId = bru.getEnvVar("collabOwnerUserId");
+    expect(res.body.owner_id).to.equal(ownerUserId);
+  });
+
+  test("has UUID id", function() {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    expect(res.body.id).to.match(uuidRegex);
+  });
+}

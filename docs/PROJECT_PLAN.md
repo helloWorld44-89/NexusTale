@@ -802,12 +802,12 @@ Likely a free tier + paid tiers model. Proposed shape:
 - ✅ `[Heavy]` **Agent mode** — max 25 rounds; `agent_planning` SSE events; AgentPhase state machine; NexusThinking cycling annotations
 
 **C3 — Collaboration (git-backed async)**
-- ☐ `[Medium]` **C3.0** — Collaborator roles + invite system (migrations 022; `internal/collaboration`; `CollaboratorsPanel`; accept page; project list union)
-- ☐ `[Medium]` **C3.1** — Collaborator-scoped git operations (`repoPathForUser`; branch-prefix enforcement; reuses all existing git routes)
-- ☐ `[Light]`  **C3.5** — Notifications (migration 025; `NotificationBell`; 60 s polling; fired at event time)
-- ☐ `[Heavy]`  **C3.2** — Merge request system (migration 023; diff via go-git local fetch + Echo; Canonize on approve; conflict surfaces HasParadox)
+- ✅ `[Medium]` **C3.0** — Collaborator roles + invite system (migrations 022 + 023; `internal/collaboration`; `CollaboratorsPanel`; accept page; project list union)
+- ✅ `[Medium]` **C3.1** — Collaborator-scoped git operations (`repoPathForUser`; branch-prefix enforcement; reviewer read-only on Chronicle/Diverge; all existing git routes reused; 44 Bruno tests in `10-collaboration/`)
+- ✅ `[Light]`  **C3.5** — Notifications (migration 026; `internal/notifications` service + handler; `GET /notifications`, `PUT /notifications/:id/read`, `PUT /notifications/read-all`; `NotificationWriter` interface in collab service; `invite_received` fires on invite; `NotificationBell.tsx` — 60s polling, unread badge, dropdown, mark-read + navigate on click; extensible to any future event type via `type TEXT` + `payload JSONB`)
+- ☐ `[Heavy]`  **C3.2** — Merge request system (migration 024; diff via go-git local fetch + Echo; Canonize on approve; conflict surfaces HasParadox)
 - ☐ `[Heavy]`  **C3.3** — Prose diff + conflict resolution UI (`ProseDiffViewer`; word-level diff-match-patch; per-scene keep/blend; bulk accept)
-- ☐ `[Medium]` **C3.4** — Reviewer annotations (migration 024; char-offset overlay in ScribeEditor; `AnnotationSidebar`; note/suggestion/question types)
+- ☐ `[Medium]` **C3.4** — Reviewer annotations (migration 025; char-offset overlay in ScribeEditor; `AnnotationSidebar`; note/suggestion/question types)
 
 ### Infrastructure
 10. **Staging/prod pipelines** — clone dev Ansible playbook; parameterize environment; add prod secrets to vault.

@@ -431,7 +431,7 @@ func (h *Handler) GitStatus(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.GitStatus(c.Request.Context(), id)
+	resp, err := h.svc.GitStatus(c.Request.Context(), id, auth.GetUserID(c))
 	if err != nil {
 		handleError(c, err)
 		return
@@ -451,7 +451,7 @@ func (h *Handler) Chronicle(c *gin.Context) {
 		return
 	}
 
-	entry, err := h.svc.Chronicle(c.Request.Context(), id, req)
+	entry, err := h.svc.Chronicle(c.Request.Context(), id, auth.GetUserID(c), req)
 	if errors.Is(err, ErrNothingToChronicle) {
 		c.JSON(http.StatusOK, gin.H{"message": "nothing to chronicle", "last_chronicle": entry})
 		return
@@ -470,7 +470,7 @@ func (h *Handler) Lore(c *gin.Context) {
 	}
 
 	page, perPage := parsePagination(c)
-	entries, err := h.svc.Lore(c.Request.Context(), id, page, perPage)
+	entries, err := h.svc.Lore(c.Request.Context(), id, auth.GetUserID(c), page, perPage)
 	if err != nil {
 		handleError(c, err)
 		return
@@ -491,7 +491,7 @@ func (h *Handler) Echo(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.Echo(c.Request.Context(), id, fromSHA, toSHA)
+	resp, err := h.svc.Echo(c.Request.Context(), id, auth.GetUserID(c), fromSHA, toSHA)
 	if err != nil {
 		handleError(c, err)
 		return
@@ -505,7 +505,7 @@ func (h *Handler) ListTimelines(c *gin.Context) {
 		return
 	}
 
-	timelines, err := h.svc.Timelines(c.Request.Context(), id)
+	timelines, err := h.svc.Timelines(c.Request.Context(), id, auth.GetUserID(c))
 	if err != nil {
 		handleError(c, err)
 		return
@@ -565,7 +565,7 @@ func (h *Handler) Canonize(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.Canonize(c.Request.Context(), id, c.Param("tname"))
+	result, err := h.svc.Canonize(c.Request.Context(), id, auth.GetUserID(c), c.Param("tname"))
 	if err != nil {
 		handleError(c, err)
 		return

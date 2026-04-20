@@ -17,6 +17,7 @@ import (
 	"github.com/jconder44/nexustale/internal/config"
 	"github.com/jconder44/nexustale/internal/export"
 	"github.com/jconder44/nexustale/internal/guide"
+	"github.com/jconder44/nexustale/internal/notifications"
 	"github.com/jconder44/nexustale/internal/project"
 	"github.com/jconder44/nexustale/internal/prompts"
 	"github.com/jconder44/nexustale/internal/research"
@@ -116,7 +117,11 @@ func main() {
 	researchService := research.NewService(queries)
 	researchHandler := research.NewHandler(researchService)
 
+	notificationService := notifications.NewService(queries)
+	notificationHandler := notifications.NewHandler(notificationService)
+
 	collabService := collaboration.NewService(queries)
+	collabService.WithNotificationService(notificationService)
 	collabHandler := collaboration.NewHandler(collabService)
 
 	// Router
@@ -168,6 +173,10 @@ func main() {
 		collabHandler.RegisterAuthRoutes(collabAuthGroup)
 		collabProjectGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		collabHandler.RegisterProjectRoutes(collabProjectGroup)
+
+		// Notifications — user-scoped, no project context required.
+		notifGroup := v1.Group("", auth.RequireAuth(authService))
+		notificationHandler.RegisterRoutes(notifGroup)
 	}
 
 	// Server with graceful shutdown

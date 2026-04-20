@@ -1,0 +1,48 @@
+meta {
+  name: list-collaborators
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/collaborators
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array", function() {
+    expect(res.body).to.be.an("array");
+  });
+
+  test("has 2 collaborators", function() {
+    expect(res.body.length).to.equal(2);
+  });
+
+  test("coauthor is listed", function() {
+    const coauthor = res.body.find(c => c.email === "coauthor@test.com");
+    expect(coauthor).to.not.be.undefined;
+    expect(coauthor.role).to.equal("coauthor");
+  });
+
+  test("reviewer is listed", function() {
+    const reviewer = res.body.find(c => c.email === "reviewer@test.com");
+    expect(reviewer).to.not.be.undefined;
+    expect(reviewer.role).to.equal("reviewer");
+  });
+
+  test("each collaborator has branch_name", function() {
+    res.body.forEach(c => {
+      expect(c.branch_name).to.be.a("string");
+      expect(c.branch_name.length).to.be.greaterThan(0);
+    });
+  });
+}

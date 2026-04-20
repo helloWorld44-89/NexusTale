@@ -1,0 +1,35 @@
+meta {
+  name: collab-lore
+  type: http
+  seq: 24
+}
+
+// 3.1-A: Coauthor can read their own Lore (commit history).
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/git/lore
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabCoauthorToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns an array of chronicle entries", function() {
+    expect(res.body).to.be.an("array");
+    expect(res.body.length).to.be.greaterThan(0);
+  });
+
+  test("each entry has sha and note", function() {
+    const entry = res.body[0];
+    expect(entry.sha).to.be.a("string");
+    expect(entry.sha.length).to.equal(40);
+    expect(entry.note).to.be.a("string");
+  });
+}

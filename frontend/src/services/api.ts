@@ -191,6 +191,25 @@ export interface InvitePreview {
   expires_at:    string
 }
 
+export type NotificationType =
+  | 'invite_received'
+  | 'mr_opened'
+  | 'mr_approved'
+  | 'mr_rejected'
+  | 'mr_merged'
+  | 'annotation_added'
+  | 'export_complete'
+  | 'summary_ready'
+
+export interface Notification {
+  id:         string
+  type:       NotificationType
+  project_id?: string
+  payload:    Record<string, unknown>
+  read_at:    string | null
+  created_at: string
+}
+
 // ── Error class ───────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -879,5 +898,16 @@ export const api = {
 
     removeCollaborator: (token: string, projectId: string, userId: string) =>
       request<void>('DELETE', `/projects/${projectId}/collaborators/${userId}`, undefined, token),
+  },
+
+  notifications: {
+    list: (token: string) =>
+      request<Notification[]>('GET', '/notifications', undefined, token),
+
+    markRead: (token: string, id: string) =>
+      request<void>('PUT', `/notifications/${id}/read`, undefined, token),
+
+    markAllRead: (token: string) =>
+      request<void>('PUT', '/notifications/read-all', undefined, token),
   },
 }

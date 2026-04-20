@@ -295,6 +295,7 @@ export default function Editor() {
           chapterTitle={activeChapter?.title ?? ''}
           sceneTitle={activeScene?.title ?? ''}
           displayName={user?.display_name ?? ''}
+          token={accessToken ?? ''}
           leftPanel={leftPanel}
           explorerOpen={explorerOpen}
           focusMode={focusMode}

@@ -1,0 +1,38 @@
+meta {
+  name: preview-invite
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/v1/invites/{{collabCoauthorInviteToken}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("shows project title", function() {
+    expect(res.body.project_title).to.equal("The Shattered Meridian");
+  });
+
+  test("shows inviter name", function() {
+    expect(res.body.inviter_name).to.equal("Owner User");
+  });
+
+  test("shows role", function() {
+    expect(res.body.role).to.equal("coauthor");
+  });
+
+  test("has expires_at", function() {
+    expect(res.body.expires_at).to.be.a("string");
+  });
+
+  test("does not expose invite token or internal IDs", function() {
+    expect(res.body.token).to.be.undefined;
+    expect(res.body.invited_by).to.be.undefined;
+  });
+}

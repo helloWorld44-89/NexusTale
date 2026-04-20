@@ -1,0 +1,47 @@
+meta {
+  name: invite-reviewer
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects/{{collabProjectId}}/invites
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{collabOwnerToken}}
+}
+
+body:json {
+  {
+    "email": "reviewer@test.com",
+    "role": "reviewer"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("collabReviewerInviteToken", res.body.token);
+  }
+}
+
+tests {
+  test("status is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("email matches", function() {
+    expect(res.body.email).to.equal("reviewer@test.com");
+  });
+
+  test("role is reviewer", function() {
+    expect(res.body.role).to.equal("reviewer");
+  });
+
+  test("token is a non-empty string", function() {
+    expect(res.body.token).to.be.a("string");
+    expect(res.body.token.length).to.be.greaterThan(0);
+  });
+}
