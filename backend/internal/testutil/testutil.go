@@ -14,8 +14,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/jconder44/nexustale/internal/annotations"
 	"github.com/jconder44/nexustale/internal/auth"
+	"github.com/jconder44/nexustale/internal/collaboration"
+	"github.com/jconder44/nexustale/internal/notifications"
 	"github.com/jconder44/nexustale/internal/project"
+	"github.com/jconder44/nexustale/internal/research"
 	"github.com/jconder44/nexustale/internal/wiki"
 	"github.com/jconder44/nexustale/pkg/db"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
@@ -60,11 +64,28 @@ func SetupTestDB(t *testing.T) *pgxpool.Pool {
 
 func cleanDB(pool *pgxpool.Pool) {
 	ctx := context.Background()
-	// Wiki tables first (cascade from projects, but explicit is clearer).
-	// Entity order matches FK dependencies: children before parents.
+	// Order: leaf tables first, then parents. Most have CASCADE FKs on project_id/user_id,
+	// but explicit deletes keep the cleanup deterministic and avoid FK violation errors
+	// when tests leave partial state.
 	tables := []string{
+		// Annotations (depend on scenes, projects, users)
+		"manuscript_annotations",
+		// Wiki (depend on projects)
 		"wiki_timeline_events", "wiki_magic_rules", "wiki_relationships", "wiki_entities",
-		"scenes", "chapters", "forks", "project_collaborators", "projects",
+		// Collaboration & merge (depend on projects, users)
+		"merge_requests",
+		"project_invites", "project_collaborators",
+		// AI state (depend on projects, chapters)
+		"ai_context_pins", "workshop_sessions", "chapter_summaries", "project_active_branch",
+		// Research & notifications (depend on projects, users)
+		"research_notes", "notifications",
+		// Usage, exports, guide (depend on projects, users)
+		"ai_usage", "export_jobs", "guide_steps",
+		// API keys (depend on users)
+		"user_api_keys",
+		// Core content — scenes before chapters before acts before projects
+		"scenes", "chapters", "acts", "forks", "projects",
+		// Auth
 		"refresh_tokens", "users",
 	}
 	for _, table := range tables {
@@ -73,8 +94,7 @@ func cleanDB(pool *pgxpool.Pool) {
 }
 
 // SetupRouter builds a test router wired with all current services.
-// The wiki group mirrors the mounting in cmd/api/main.go.
-// Git is disabled (nil) — use SetupRouterWithGit for git-enabled tests.
+// Git is disabled (nil) — use SetupRouterWithGit for tests that exercise git routes.
 func SetupRouter(t *testing.T) (*gin.Engine, *sqlcgen.Queries, *auth.Service) {
 	t.Helper()
 	return setupRouter(t, "")
@@ -104,13 +124,22 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 		gitSvc = project.NewGitService(reposPath)
 	}
 	projectService := project.NewService(queries, gitSvc)
-	// storage is nil in tests — image upload routes will return 500 if exercised,
-	// but existing wiki integration tests don't exercise image upload.
-	wikiService := wiki.NewService(queries, nil)
+	// storage is nil in tests — wiki image upload and export routes return 500 if
+	// exercised, but existing tests do not call those paths.
+	wikiService          := wiki.NewService(queries, nil)
+	researchService      := research.NewService(queries)
+	annotationService    := annotations.NewService(queries)
+	notifService         := notifications.NewService(queries)
+	collabService        := collaboration.NewService(queries)
+	collabService.WithNotificationService(notifService)
 
-	authHandler := auth.NewHandler(authService)
-	projectHandler := project.NewHandler(projectService)
-	wikiHandler := wiki.NewHandler(wikiService)
+	authHandler        := auth.NewHandler(authService)
+	projectHandler     := project.NewHandler(projectService)
+	wikiHandler        := wiki.NewHandler(wikiService)
+	researchHandler    := research.NewHandler(researchService)
+	annotationHandler  := annotations.NewHandler(annotationService)
+	notifHandler       := notifications.NewHandler(notifService)
+	collabHandler      := collaboration.NewHandler(collabService)
 
 	router := gin.New()
 
@@ -125,6 +154,21 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 
 		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService))
 		wikiHandler.RegisterRoutes(wikiGroup)
+
+		researchGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		researchHandler.RegisterRoutes(researchGroup)
+
+		annotationGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		annotationHandler.RegisterRoutes(annotationGroup)
+
+		notifGroup := v1.Group("", auth.RequireAuth(authService))
+		notifHandler.RegisterRoutes(notifGroup)
+
+		collabHandler.RegisterPublicRoutes(v1)
+		collabAuthGroup := v1.Group("", auth.RequireAuth(authService))
+		collabHandler.RegisterAuthRoutes(collabAuthGroup)
+		collabProjectGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		collabHandler.RegisterProjectRoutes(collabProjectGroup)
 	}
 
 	return router, queries, authService
@@ -151,6 +195,28 @@ func RegisterAndGetToken(t *testing.T, router *gin.Engine, email string) string 
 	var resp auth.AuthResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	return resp.Tokens.AccessToken
+}
+
+// RegisterUser registers a new user and returns their access token plus user ID.
+func RegisterUser(t *testing.T, router *gin.Engine, email, displayName string) (token, userID string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{
+		"email":        email,
+		"display_name": displayName,
+		"password":     "password123",
+	})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/auth/register", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp auth.AuthResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	return resp.Tokens.AccessToken, resp.User.ID.String()
 }
 
 // AuthRequest builds an authenticated JSON request.

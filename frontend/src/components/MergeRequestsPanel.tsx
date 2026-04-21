@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type MergeRequest } from '@/services/api'
+import ProseDiffViewer from '@/components/ProseDiffViewer'
 
 interface Props {
   projectId: string
@@ -18,6 +19,7 @@ export default function MergeRequestsPanel({ projectId, ownerId, currentUserId, 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]   = useState<string | null>(null)
   const [resolving, setResolving] = useState<string | null>(null)
+  const [reviewingMR, setReviewingMR] = useState<MergeRequest | null>(null)
 
   const isOwner = currentUserId === ownerId
 
@@ -144,6 +146,7 @@ export default function MergeRequestsPanel({ projectId, ownerId, currentUserId, 
               isOwner={isOwner}
               resolving={resolving === mr.id}
               onResolve={handleResolve}
+              onReview={() => setReviewingMR(mr)}
             />
           ))}
           {closedMrs.length > 0 && openMrs.length > 0 && (
@@ -156,9 +159,23 @@ export default function MergeRequestsPanel({ projectId, ownerId, currentUserId, 
               isOwner={isOwner}
               resolving={false}
               onResolve={handleResolve}
+              onReview={() => setReviewingMR(mr)}
             />
           ))}
         </div>
+      )}
+
+      {reviewingMR && (
+        <ProseDiffViewer
+          mr={reviewingMR}
+          token={token}
+          projectId={projectId}
+          onClose={() => setReviewingMR(null)}
+          onMerged={updated => {
+            setMrs(prev => prev.map(m => m.id === updated.id ? updated : m))
+            setReviewingMR(null)
+          }}
+        />
       )}
     </div>
   )
@@ -171,11 +188,13 @@ function MRRow({
   isOwner,
   resolving,
   onResolve,
+  onReview,
 }: {
   mr: MergeRequest
   isOwner: boolean
   resolving: boolean
   onResolve: (mr: MergeRequest, action: 'approve' | 'reject' | 'merge') => void
+  onReview: () => void
 }) {
   const statusColor =
     mr.status === 'open'     ? 'text-brand-cyan bg-brand-cyan/10' :
@@ -207,8 +226,19 @@ function MRRow({
         </span>
       </div>
 
+      {(mr.status === 'open' || mr.status === 'approved' || mr.status === 'merged') && (
+        <div className="mt-2.5">
+          <button
+            onClick={onReview}
+            className="px-2 py-1 rounded text-[10px] bg-brand-cyan/8 text-brand-cyan/80 hover:bg-brand-cyan/15 hover:text-brand-cyan transition-colors"
+          >
+            Review Diff →
+          </button>
+        </div>
+      )}
+
       {isOwner && (mr.status === 'open' || mr.status === 'approved') && (
-        <div className="flex gap-1.5 mt-2.5">
+        <div className="flex gap-1.5 mt-1.5">
           {mr.status === 'open' && (
             <button
               disabled={resolving}

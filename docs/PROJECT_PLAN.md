@@ -154,7 +154,7 @@ flowchart TB
 ### 3.9 Cross-cutting
 
 - **Observability**: structured logs (`slog`), metrics, tracing on hot paths (AI, export, WS).
-- **Testing**: table-driven unit tests; integration tests with testcontainers (Postgres, Redis) for auth and one collab path.
+- **Testing**: table-driven unit tests; integration tests with testcontainers (Postgres, Redis) for auth and one collab path. As of 2026-04-21: `testutil.SetupRouter` wires all services (research, annotations, notifications, collaboration); `cleanDB` covers 28 tables in FK-safe order; new test packages cover `research` (5 tests), `annotations` (9 tests), `notifications` (6 tests), `collaboration` (7 tests). All 10 packages pass `go test ./...`.
 
 ---
 
@@ -692,9 +692,9 @@ PUT  /notifications/read-all    → MarkAllRead
 |---|---|---|
 | 022 | `user_plan` | `users.plan TEXT DEFAULT 'free'` — added early so C3 invite handler can gate on owner plan at invite time |
 | 023 | `collaboration` | `project_invites` + `project_collaborators` |
-| 024 | `merge_requests` | merge request tracking |
-| 025 | `manuscript_annotations` | inline reviewer notes |
 | 026 | `notifications` | in-app notification inbox |
+| 027 | `merge_requests` | merge request tracking |
+| 028 | `manuscript_annotations` | inline reviewer notes |
 
 ### Phase D — Premium / advanced
 
@@ -806,8 +806,8 @@ Likely a free tier + paid tiers model. Proposed shape:
 - ✅ `[Medium]` **C3.1** — Collaborator-scoped git operations (`repoPathForUser`; branch-prefix enforcement; reviewer read-only on Chronicle/Diverge; all existing git routes reused; 44 Bruno tests in `10-collaboration/`)
 - ✅ `[Light]`  **C3.5** — Notifications (migration 026; `internal/notifications` service + handler; `GET /notifications`, `PUT /notifications/:id/read`, `PUT /notifications/read-all`; `NotificationWriter` interface in collab service; `invite_received` fires on invite; `NotificationBell.tsx` — 60s polling, unread badge, dropdown, mark-read + navigate on click; extensible to any future event type via `type TEXT` + `payload JSONB`)
 - ✅ `[Heavy]`  **C3.2** — Merge request system (migration 027; `internal/merge` service + handler; 5 routes: open/list/get/diff/resolve; `BranchTipSHA` + `FetchBranchFromClone` + `EchoBranches` added to `GitService`; `parseDiff` builds per-scene `SceneDiff` structs; `FetchBranchFromClone` fetches collab branch into main repo via temp remote; `ResolveMergeRequest` handles approve/reject/merge with fast-forward Canonize + HasParadox → 400; `mr_opened`/`mr_approved`/`mr_rejected`/`mr_merged` notifications; `MergeRequestsPanel.tsx` on ProjectHome — open MR form for collaborators, approve/reject/merge buttons for owner; `api.mergeRequests.*` + `MergeRequest`/`SceneDiff`/`MRDiffResponse` types in api.ts)
-- ☐ `[Heavy]`  **C3.3** — Prose diff + conflict resolution UI (`ProseDiffViewer`; word-level diff-match-patch; per-scene keep/blend; bulk accept)
-- ☐ `[Medium]` **C3.4** — Reviewer annotations (migration 025; char-offset overlay in ScribeEditor; `AnnotationSidebar`; note/suggestion/question types)
+- ✅ `[Heavy]`  **C3.3** — Prose diff + conflict resolution UI (`ProseDiffViewer.tsx`; `diff-match-patch` word-level diff; `extractTexts` reconstructs canon/coauthor text from unified diff; per-scene Keep Canon / Use Co-author / manual resolution; bulk accept; merge blocked until all scenes resolved; conflict-free MRs show single Merge button; integrated into `MergeRequestsPanel` as "Review Diff →" overlay)
+- ✅ `[Medium]` **C3.4** — Reviewer annotations (migration 028 `manuscript_annotations`; `internal/annotations` service + handler; `GET/POST /projects/:id/scenes/:sid/annotations`, `PUT/DELETE .../annotations/:aid`; `forwardRef` ScribeEditor with `jumpToAnnotation` imperative handle; floating popover on mouse-up selection; `AnnotationSidebar.tsx` right panel with open/resolved sections; note/suggestion/question type badges; resolve (owner), delete (own or owner); `onAnnotationCreated` wires popover → sidebar; ActivityBar "Annotations" button with unread badge count)
 
 ### Infrastructure
 10. **Staging/prod pipelines** — clone dev Ansible playbook; parameterize environment; add prod secrets to vault.

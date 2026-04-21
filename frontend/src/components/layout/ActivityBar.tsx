@@ -2,15 +2,20 @@
 import type { LeftPanel } from '@/pages/Editor'
 
 interface ActivityBarProps {
-  activePanel:      LeftPanel
-  onToggleChat:     () => void
-  onToggleGit:      () => void
-  onToggleWiki:     () => void
-  onToggleContext:  () => void
-  onToggleWorkshop: () => void
+  activePanel:         LeftPanel
+  onToggleChat:        () => void
+  onToggleGit:         () => void
+  onToggleWiki:        () => void
+  onToggleContext:     () => void
+  onToggleWorkshop:    () => void
+  onToggleAnnotations: () => void
+  annotationCount?:    number
 }
 
-export default function ActivityBar({ activePanel, onToggleChat, onToggleGit, onToggleWiki, onToggleContext, onToggleWorkshop }: ActivityBarProps) {
+export default function ActivityBar({
+  activePanel, onToggleChat, onToggleGit, onToggleWiki,
+  onToggleContext, onToggleWorkshop, onToggleAnnotations, annotationCount,
+}: ActivityBarProps) {
   return (
     <div className="w-12 flex flex-col items-center py-2 gap-1 bg-brand-bg border-r border-brand-border shrink-0">
       <ActivityButton
@@ -52,6 +57,15 @@ export default function ActivityBar({ activePanel, onToggleChat, onToggleGit, on
       >
         <BookIcon />
       </ActivityButton>
+
+      <ActivityButton
+        active={activePanel === 'annotations'}
+        title="Annotations"
+        onClick={onToggleAnnotations}
+        badge={annotationCount}
+      >
+        <AnnotationsIcon />
+      </ActivityButton>
     </div>
   )
 }
@@ -61,11 +75,13 @@ function ActivityButton({
   title,
   onClick,
   children,
+  badge,
 }: {
   active: boolean
   title: string
   onClick: () => void
   children: React.ReactNode
+  badge?: number
 }) {
   return (
     <button
@@ -81,6 +97,11 @@ function ActivityButton({
         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-brand-cyan rounded-r" />
       )}
       {children}
+      {badge != null && badge > 0 && (
+        <span className="absolute top-0.5 right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full bg-yellow-400 text-brand-bg text-[8px] font-bold leading-none px-0.5">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
     </button>
   )
 }
@@ -128,6 +149,17 @@ function BookIcon() {
     <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 3h9a2 2 0 012 2v10a2 2 0 01-2 2H4a1 1 0 01-1-1V4a1 1 0 011-1z" />
       <path d="M13 3v14M7 7h3M7 10h3" />
+    </svg>
+  )
+}
+
+function AnnotationsIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 5h14M3 9h10M3 13h7" />
+      <circle cx="16" cy="14" r="3" />
+      <path d="M16 13v1.5" strokeWidth="1.8" />
+      <circle cx="16" cy="15.8" r="0.3" fill="currentColor" />
     </svg>
   )
 }
