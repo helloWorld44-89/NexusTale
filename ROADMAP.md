@@ -237,6 +237,135 @@ Architecture: **git-backed async** — each collaborator gets a per-project git 
 - [x] **`[Heavy]`** **C3.4 — Reviewer annotations** ✓ — Migration 028 `manuscript_annotations` (char offset, type: note/suggestion/question, resolved_by); `internal/annotations` (service + handler); floating selection popover in `ScribeEditor` (`forwardRef` + `useImperativeHandle`); `AnnotationSidebar.tsx` right panel with open/resolved sections; `jumpToAnnotation` impl via `setSelectionRange`; ActivityBar "Annotations" button + unread badge; `api.annotations.*` in api.ts
 - [x] **`[Medium]`** **C3.5 — Notifications** ✓ — Migration 026 `notifications` table; `internal/notifications` service + handler; `NotificationBell.tsx` in TopBar; 60s poll; invite_received, mr_opened/approved/rejected/merged events; mark-read / mark-all-read
 
+## Phase C+ — Security & Code Review (pre-alpha gate)
+
+All items must be resolved or explicitly deferred before the alpha invite goes out.
+Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nice-to-have.
+
+### Security review
+
+**Authentication & session management**
+- [ ] **P0** `NEXUSTALE_JWT_SECRET` and `NEXUSTALE_ENCRYPTION_KEY` rotated to ≥32-byte random values in prod (not dev defaults)
+- [ ] **P0** MinIO root credentials changed from defaults (`minioadmin`)
+- [ ] **P0** CORS: `AllowOrigins` locked to the app domain, not `*`, in prod
+- [ ] **P0** TLS on all external traffic — nginx terminates (Let's Encrypt via certbot); HSTS header set
+- [ ] **P1** Refresh token single-use rotation policy — verify tokens are invalidated on use, not just on logout
+- [ ] **P1** `RequireProjectAccess` middleware: audit every project-scoped route to confirm it is applied; reviewer read-only enforced on Chronicle/Diverge
+- [ ] **P1** API key storage: confirm `encrypted_key` never returned or logged in plaintext; `key_hint` is the only external-facing field
+- [ ] **P2** httpOnly + Secure + SameSite flags on any future cookie use (access token is in-memory / Authorization header today — this is precautionary)
+
+**Input validation & injection**
+- [ ] **P0** Git branch names from user input (`branch_name`, `from_branch`) validated against `^[a-zA-Z0-9/_-]+$` — no shell metacharacters; collaborator clone path is DB-derived, not user-provided
+- [ ] **P1** File uploads (wiki images): content-type validated server-side (not just `Content-Type` header); max size enforced; `.svg` files rejected (XSS via SVG)
+- [ ] **P1** DOCX/EPUB export: user-provided title and scene content XML-escaped in OOXML builder; verify `encodeXML` coverage in `docx.go`
+- [ ] **P1** AI prompt: no system prompt injection via `\n\nHuman:` smuggling — verify `BuildContext` output is appended safely, not interpolated raw into system prompt string
+- [ ] **P2** Timeline anchor DFS cycle detection: add depth limit (currently unbounded recursion on malformed data)
+
+**Access control**
+- [ ] **P0** Non-owner cannot approve, reject, or merge MRs — verify `merge_handler.go` checks `project.owner_id`
+- [ ] **P0** Non-owner cannot resolve annotations — verify `annotation handler` checks `project.owner_id`
+- [ ] **P1** Collaborator can only read/write their own clone path — `repoPathForUser` must not accept an arbitrary user ID that bypasses this check
+- [ ] **P1** `DELETE /users/me` cascade: git repos and MinIO objects cleaned up; verify no orphan files on disk after delete
+- [ ] **P2** Rate limiting on `POST /auth/login` and `POST /auth/register` (brute-force and account enumeration risk)
+- [ ] **P2** Rate limiting on AI endpoints (`/ai/complete`, `/ai/chat`) — cost-abuse protection for users sharing server-side keys
+
+**Dependencies**
+- [ ] **P1** `govulncheck ./...` in backend — zero High/Critical CVEs in Go deps
+- [ ] **P1** `npm audit --audit-level=high` in frontend — zero High/Critical CVEs; `diff-match-patch` and `d3` are new additions to check
+- [ ] **P1** Review `go-git` version for any known path traversal CVEs (active library with past issues)
+
+---
+
+### Code review
+
+**Backend**
+- [ ] **P0** `ScheduleSummarize`: debounce map (`map[string]*time.Timer`) grows unbounded — a goroutine per unique `(chapter_id, branch)` key accumulates if chapters/branches are deleted; add cleanup on project delete and a max-age eviction
+- [ ] **P0** `AcceptInvite`: DB insert (collaborator row) + git clone are not atomic — if the clone fails, the DB row is committed and the user appears as a collaborator with no working repo; wrap in a transaction or compensate on clone error
+- [ ] **P1** Git operations: no concurrency lock on the same repo path — two simultaneous Chronicle calls on the same project could corrupt the git index; add a per-repo mutex or use `go-git`'s locking primitives
+- [ ] **P1** All handlers use `handleError(c, err)` — grep for any raw `c.JSON(http.StatusInternalServerError, ...)` that bypasses structured error responses
+- [ ] **P1** SSE goroutines: verify `pw.Close()` is called on every exit path (including adapter error) so the client-side `EventSource` closes and the goroutine is freed
+- [ ] **P1** `buildPinnedContext` / `appendPinnedNote` (full mode): no length cap — a user pinning 20 full chapters could blow the model's context window; add a per-section token estimate and cap at ~2000 tokens per pin
+- [ ] **P2** `numericToFloat64()`: verify COALESCE(SUM(...)) nil handling when the aggregate returns zero rows (Postgres returns NULL for SUM over empty set even with COALESCE on the column)
+- [ ] **P2** DB pool: confirm `context.Background()` is not used in request handlers — all queries should respect the request context for proper timeout/cancellation
+
+**Frontend**
+- [ ] **P0** React error boundaries: no error boundary wraps any major panel — an unhandled JS exception blanks the editor with no recovery UI; add at least one top-level boundary in `Editor.tsx`
+- [ ] **P1** `ScribeEditor` navigate-away race: autosave debounce is 1500ms — if user navigates before it fires, the last edit is lost; flush on `beforeunload` or on scene ID change
+- [ ] **P1** SSE `EventSource` cleanup: verify `ChatBar`, `WorkshopPanel`, and `BeatInput` close their EventSource in the `useEffect` cleanup function; a stale connection holds the connection open and can replay events
+- [ ] **P1** `ProseDiffViewer`: no virtualization — a project with 100+ scenes in one MR will render all `SceneDiffCard` components synchronously; add windowing (e.g., react-virtual) or paginate by scene
+- [ ] **P2** `localStorage` for access token: consider moving to an in-memory variable (survives React re-renders via module scope) to reduce XSS token exposure surface; refresh token flow already handles persistence
+- [ ] **P2** `api.ts`: confirm no `Authorization` header is ever sent to third-party origins; the fetch wrapper should assert `url.startsWith('/')` or compare to configured base URL
+
+**API contract**
+- [ ] **P1** OpenAPI spec (`docs/openapi.yaml`) is ~20 routes behind — bring current before beta (all B1–C routes missing); `api-types.ts` codegen disabled for newer routes; inline types in `api.ts` are source of truth until then
+- [ ] **P2** No versioning strategy beyond `/api/v1/` prefix — document policy for breaking changes before beta clients exist
+
+---
+
+## Alpha release plan
+
+**Alpha definition:** invite-only (target 20–50 writers), solo-writer focused, no SLA. The dev VM doubles as the alpha environment. No public sign-up until beta.
+
+### Feature scope
+
+| Area | In alpha | Deferred |
+|------|----------|----------|
+| Manuscript (write/outline/branch/export) | ✅ all | — |
+| Wiki (entities/relationships/timeline/magic/graph) | ✅ all | — |
+| AI (Nexus, Workshop, Beat, Context pins, Bible) | ✅ all | RAG/embeddings |
+| Novel guide + story structure | ✅ all | — |
+| Collaboration (invite, clone, MR, annotations, notifications) | ✅ all | — |
+| Exports (Markdown, EPUB, DOCX) | ✅ all | Scrivener, Fountain, PDF |
+| Monetization | ❌ | Phase D |
+| Map builder v2 / image generation | ❌ | Phase D |
+| Desktop app (Tauri) | ❌ | Phase D |
+| Customizable workspaces | ❌ | Phase D |
+
+### Environment checklist
+
+- [ ] **P0** TLS certificate provisioned for the alpha domain (Let's Encrypt via certbot in Ansible)
+- [ ] **P0** All P0 security items above resolved
+- [ ] **P0** Postgres daily backup — `pg_dump` cron job writing compressed dumps to an off-host location (S3, Backblaze, etc.); retention: 7 days
+- [ ] **P0** Git repo backup — tar the `repos/` directory nightly alongside the DB dump
+- [ ] **P1** Structured log capture: Docker logging driver writing to a file with rotation (`--log-driver json-file --log-opt max-size=50m --log-opt max-file=5`)
+- [ ] **P1** Uptime monitor on `GET /healthz` — alert on 2 consecutive failures (UptimeRobot free tier works)
+- [ ] **P1** Disk usage alert — `repos/` and MinIO grow unboundedly; alert at 70% disk usage
+- [ ] **P2** AI usage dashboard for admin — `ai_usage` table already queryable; a simple `psql` query or Grafana panel is sufficient for alpha
+
+### Pre-launch code checklist
+
+- [ ] All **P0** code review items resolved
+- [ ] All **P0** security review items resolved
+- [ ] `govulncheck` and `npm audit` clean (P1 items)
+- [ ] `npx tsc --noEmit` and `go build ./...` clean on the release commit
+- [ ] Smoke test the full user loop on alpha env: register → guide wizard → write scene → Chronicle → wiki entity → export Markdown → invite collaborator → open MR
+
+### Alpha UX / onboarding
+
+- [ ] Error messages are writer-facing — no Go stack traces or raw DB errors leak through (`apperror` messages audited)
+- [ ] Guide wizard surfaced prominently on first project (existing CTA on ProjectHome)
+- [ ] "Give feedback" link visible in the app (Settings or TopBar) — Discord/email/form
+- [ ] Invite email template with direct link to `/invites/:token`
+- [ ] Known limitations doc (one-pager) shared with alpha users: collaboration is async (no live co-editing), no mobile support, AI requires your own API key
+
+### Rollback plan
+
+- Docker images are tagged by git SHA (`:{sha}`) — rollback = re-run Ansible with previous SHA tag
+- DB migration `.down.sql` files exist for all 28 migrations; test rollback from 028 → 027 on a staging DB before launch
+- Alpha user data export: any user can export their full manuscript as Markdown at any time (no lock-in)
+
+### Alpha → beta graduation criteria
+
+A milestone, not a date. Graduate when all of the following are true:
+
+- [ ] ≥10 writers have completed the novel guide wizard (premise → first scene)
+- [ ] ≥3 collaborative projects have had at least one merge request opened and resolved
+- [ ] Core user loop (register → write → export) completed without Claude Code intervention by ≥5 non-dev users
+- [ ] No P0 bugs open for >48 hours sustained over a 2-week window
+- [ ] Feedback triaged — Phase D backlog updated with top writer requests
+
+---
+
 ## Phase D — Premium / advanced
 
 - **Monetization** — `users.plan` column already added (migration 022: free/writer/studio tiers); plan-gated invite limits in `InviteCollaborator` (`TODO(monetization)` marker in service.go); billing integration (Stripe), upgrade flow, and feature gates are Phase D work
@@ -281,4 +410,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-04-21: Phase C3 complete — all six C3 milestones shipped. C3.3 added `ProseDiffViewer` (word-level diff-match-patch, per-scene resolution, bulk accept). C3.4 added reviewer annotations: migration 028 `manuscript_annotations`, `internal/annotations` package, `ScribeEditor` selection popover, `AnnotationSidebar` right panel, ActivityBar badge. Integration test suite updated: `testutil.SetupRouter` now wires all services; new test packages for `research` (5), `annotations` (9), `notifications` (6), `collaboration` (7); all 10 packages pass. Phase D (maps, image gen, Scrivener export, workspaces, monetization) is next.*
+*Last updated 2026-04-21: Phase C3 complete. Phase C+ (security review, code review, alpha release plan) added as a mandatory pre-alpha gate. Alpha targets 20–50 invite-only writers on the dev VM; graduation criteria defined before beta opens. Phase D (maps, image gen, Scrivener export, workspaces, monetization) follows after beta.*
