@@ -134,6 +134,21 @@ export interface ContextPin {
   created_at:   string
 }
 
+export interface Annotation {
+  id:          string
+  project_id:  string
+  scene_id:    string
+  author_id:   string
+  author_name: string
+  start_char:  number
+  end_char:    number
+  body:        string
+  type:        'note' | 'suggestion' | 'question'
+  resolved:    boolean
+  resolved_by?: string
+  created_at:  string
+}
+
 export interface ResearchNote {
   id:         string
   project_id: string
@@ -958,5 +973,19 @@ export const api = {
 
     resolve: (token: string, projectId: string, mrId: string, body: { action: 'approve' | 'reject' | 'merge'; reviewer_note?: string }) =>
       request<MergeRequest>('PUT', `/projects/${projectId}/merge-requests/${mrId}`, body, token),
+  },
+
+  annotations: {
+    list: (token: string, projectId: string, sceneId: string) =>
+      request<Annotation[]>('GET', `/projects/${projectId}/scenes/${sceneId}/annotations`, undefined, token),
+
+    create: (token: string, projectId: string, sceneId: string, body: { start_char: number; end_char: number; body: string; type: string }) =>
+      request<Annotation>('POST', `/projects/${projectId}/scenes/${sceneId}/annotations`, body, token),
+
+    update: (token: string, projectId: string, sceneId: string, annotationId: string, body: { body?: string; resolved?: boolean }) =>
+      request<Annotation>('PUT', `/projects/${projectId}/scenes/${sceneId}/annotations/${annotationId}`, body, token),
+
+    delete: (token: string, projectId: string, sceneId: string, annotationId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/scenes/${sceneId}/annotations/${annotationId}`, undefined, token),
   },
 }

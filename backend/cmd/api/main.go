@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/jconder44/nexustale/internal/ai"
+	"github.com/jconder44/nexustale/internal/annotations"
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/internal/collaboration"
 	"github.com/jconder44/nexustale/internal/config"
@@ -129,6 +130,9 @@ func main() {
 	mergeService.WithNotificationService(notificationService)
 	mergeHandler := merge.NewHandler(mergeService)
 
+	annotationService := annotations.NewService(queries)
+	annotationHandler := annotations.NewHandler(annotationService)
+
 	// Router
 	gin.SetMode(cfg.Server.Mode)
 	router := gin.Default()
@@ -186,6 +190,10 @@ func main() {
 		// Notifications — user-scoped, no project context required.
 		notifGroup := v1.Group("", auth.RequireAuth(authService))
 		notificationHandler.RegisterRoutes(notifGroup)
+
+		// Annotations — project + scene scoped.
+		annotationGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		annotationHandler.RegisterRoutes(annotationGroup)
 	}
 
 	// Server with graceful shutdown

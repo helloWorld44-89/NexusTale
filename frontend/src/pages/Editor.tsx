@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
 import { api } from '@/services/api'
-import type { Act, Chapter, Scene } from '@/services/api'
+import type { Act, Chapter, Scene, Annotation } from '@/services/api'
 import TopBar from '@/components/layout/TopBar'
 import StatusBar from '@/components/layout/StatusBar'
 import ChatBar from '@/components/ai/ChatBar'
@@ -11,13 +11,14 @@ import ContextPanel from '@/components/ai/ContextPanel'
 import WorkshopPanel from '@/components/ai/WorkshopPanel'
 import GitPanel from '@/components/editor/GitPanel'
 import WikiPanel from '@/components/wiki/WikiPanel'
-import ScribeEditor from '@/components/editor/ScribeEditor'
+import ScribeEditor, { type ScribeEditorHandle } from '@/components/editor/ScribeEditor'
+import AnnotationSidebar from '@/components/editor/AnnotationSidebar'
 import SceneMetadataPanel from '@/components/editor/SceneMetadataPanel'
 import ProjectExplorer from '@/components/project/ProjectExplorer'
 import type { ActItem } from '@/components/project/ProjectExplorer'
 import ActivityBar from '@/components/layout/ActivityBar'
 
-export type LeftPanel = 'chat' | 'context' | 'workshop' | 'git' | 'wiki' | 'none'
+export type LeftPanel = 'chat' | 'context' | 'workshop' | 'git' | 'wiki' | 'annotations' | 'none'
 
 // Chapter augmented with its scenes for the explorer tree.
 interface ChapterWithScenes extends Chapter {
@@ -57,10 +58,13 @@ export default function Editor() {
   const [explorerOpen,      setExplorerOpen]      = useState(true)
   const [focusMode,         setFocusMode]         = useState(false)
   const [selectedPromptId,  setSelectedPromptId]  = useState<string | null>(null)
-  const [currentBranch,    setCurrentBranch]    = useState<string>('canon')
-  const [refreshKey,       setRefreshKey]       = useState(0)
+  const [currentBranch,      setCurrentBranch]      = useState<string>('canon')
+  const [refreshKey,         setRefreshKey]         = useState(0)
+  const [pendingAnnotation,  setPendingAnnotation]  = useState<Annotation | null>(null)
+  const [annotationCount,    setAnnotationCount]    = useState(0)
 
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scribeEditorRef = useRef<ScribeEditorHandle>(null)
 
   // ── Focus mode keyboard shortcuts ──────────────────────────────────────────
   useEffect(() => {
@@ -315,6 +319,8 @@ export default function Editor() {
             onToggleWorkshop={() => toggleLeftPanel('workshop')}
             onToggleGit={() => toggleLeftPanel('git')}
             onToggleWiki={() => toggleLeftPanel('wiki')}
+            onToggleAnnotations={() => toggleLeftPanel('annotations')}
+            annotationCount={annotationCount}
           />
         )}
         {!focusMode && leftPanel === 'chat' && projectId && accessToken && (
@@ -352,6 +358,18 @@ export default function Editor() {
         {!focusMode && leftPanel === 'wiki' && projectId && accessToken && (
           <WikiPanel token={accessToken} projectId={projectId} currentContent={content} />
         )}
+        {!focusMode && leftPanel === 'annotations' && projectId && accessToken && (
+          <AnnotationSidebar
+            token={accessToken}
+            projectId={projectId}
+            sceneId={selectedSceneId}
+            currentUserId={user?.id ?? ''}
+            ownerId={user?.id ?? ''}
+            onJump={(start, end) => scribeEditorRef.current?.jumpToAnnotation(start, end)}
+            newAnnotation={pendingAnnotation}
+            onAnnotationConsumed={() => setPendingAnnotation(null)}
+          />
+        )}
         <div className="flex flex-col flex-1 overflow-hidden relative">
           {/* Floating exit button — only in focus mode */}
           {focusMode && (
@@ -365,6 +383,7 @@ export default function Editor() {
             </button>
           )}
           <ScribeEditor
+            ref={scribeEditorRef}
             sceneTitle={activeScene?.title ?? 'Select a scene'}
             content={content}
             sceneSelected={!!activeScene}
@@ -374,6 +393,11 @@ export default function Editor() {
             sceneId={activeScene?.id}
             promptId={selectedPromptId}
             branch={currentBranch}
+            onAnnotationCreated={(ann) => {
+              setPendingAnnotation(ann)
+              setAnnotationCount(c => c + 1)
+              if (leftPanel !== 'annotations') toggleLeftPanel('annotations')
+            }}
           />
           {activeScene && accessToken && selectedChapterId && projectId && sceneData[activeScene.id] && (
             <SceneMetadataPanel
