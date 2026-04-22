@@ -1,7 +1,9 @@
 package merge
 
 import (
+	"log/slog"
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -9,6 +11,8 @@ import (
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/pkg/apperror"
 )
+
+var branchNameRE = regexp.MustCompile(`^[a-zA-Z0-9/_-]+$`)
 
 type Handler struct {
 	svc *Service
@@ -43,6 +47,10 @@ func (h *Handler) openMR(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !branchNameRE.MatchString(body.FromBranch) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "from_branch contains invalid characters; use letters, numbers, /, _, - only"})
 		return
 	}
 
@@ -133,5 +141,6 @@ func handleError(c *gin.Context, err error) {
 		c.JSON(appErr.Code, gin.H{"error": appErr.Error()})
 		return
 	}
+	slog.Error("unhandled handler error", "path", c.FullPath(), "error", err)
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 }

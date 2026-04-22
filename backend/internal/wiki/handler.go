@@ -18,7 +18,7 @@ package wiki
 //	GET              /autolink?text=         return entities whose names appear in the given text
 
 import (
-	"mime"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -199,7 +199,15 @@ func (h *Handler) UploadEntityImage(c *gin.Context) {
 		return
 	}
 
-	// Validate MIME type — allow common web image formats only.
+	const maxImageSize = 5 << 20 // 5 MiB
+	if fh.Size > maxImageSize {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "image exceeds maximum size of 5 MiB"})
+		return
+	}
+
+	// Validate file type against an explicit allowlist only — no fallback to
+	// mime.TypeByExtension, which would admit .svg (image/svg+xml) and enable
+	// stored-XSS via SVG script elements.
 	ext := strings.ToLower(filepath.Ext(fh.Filename))
 	allowed := map[string]string{
 		".jpg":  "image/jpeg",
@@ -210,16 +218,13 @@ func (h *Handler) UploadEntityImage(c *gin.Context) {
 	}
 	contentType, ok := allowed[ext]
 	if !ok {
-		// Fall back to MIME detection from the extension header.
-		contentType = mime.TypeByExtension(ext)
-		if !strings.HasPrefix(contentType, "image/") {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "unsupported image type"})
-			return
-		}
+		c.JSON(http.StatusBadRequest, gin.H{"message": "unsupported image type; allowed: jpg, png, gif, webp"})
+		return
 	}
 
 	f, err := fh.Open()
 	if err != nil {
+		slog.Error("wiki: failed to open upload", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "could not read upload"})
 		return
 	}
@@ -476,5 +481,6 @@ func handleError(c *gin.Context, err error) {
 		c.JSON(appErr.Code, appErr)
 		return
 	}
+	slog.Error("unhandled handler error", "path", c.FullPath(), "error", err)
 	c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
 }

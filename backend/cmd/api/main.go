@@ -29,10 +29,37 @@ import (
 	"github.com/jconder44/nexustale/pkg/storage"
 )
 
+// corsMiddleware sets CORS headers. allowedOrigin is compared against the
+// request Origin header; "*" permits any origin (dev only).
+func corsMiddleware(allowedOrigin string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+		allowed := allowedOrigin == "*" || origin == allowedOrigin
+		if allowed && origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+		} else if allowedOrigin == "*" {
+			c.Header("Access-Control-Allow-Origin", "*")
+		}
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-NexusTale-Branch")
+		c.Header("Access-Control-Allow-Credentials", "true")
+		c.Header("Access-Control-Max-Age", "86400")
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
+}
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
+	if err := cfg.ValidateProd(); err != nil {
+		slog.Error("security configuration error", "error", err)
 		os.Exit(1)
 	}
 
@@ -136,6 +163,7 @@ func main() {
 	// Router
 	gin.SetMode(cfg.Server.Mode)
 	router := gin.Default()
+	router.Use(corsMiddleware(cfg.Server.AllowedOrigin))
 
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -148,43 +176,47 @@ func main() {
 
 		authHandler.RegisterAPIKeyRoutes(v1)
 
-		projectsGroup := v1.Group("/projects", auth.RequireAuth(authService))
+		requireAccess := collaboration.RequireProjectAccess(queries)
+
+		// projectsGroup serves both collection routes (/projects) and member routes
+		// (/projects/:id/...). requireAccess is a no-op when :id is absent.
+		projectsGroup := v1.Group("/projects", auth.RequireAuth(authService), requireAccess)
 		chaptersGroup := v1.Group("/chapters", auth.RequireAuth(authService))
 		projectHandler.RegisterRoutes(projectsGroup, chaptersGroup)
 
-		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService))
+		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService), requireAccess)
 		wikiHandler.RegisterRoutes(wikiGroup)
 
-		aiGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		aiGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		aiHandler.RegisterRoutes(aiGroup)
 
 		// User-scoped AI routes (no project context required).
 		aiUserGroup := v1.Group("", auth.RequireAuth(authService))
 		aiHandler.RegisterUserRoutes(aiUserGroup)
 
-		exportGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		exportGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		exportHandler.RegisterRoutes(exportGroup)
 
 		guideHandler.RegisterPublicRoutes(v1)
 
-		guideGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		guideGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		guideHandler.RegisterRoutes(guideGroup)
 
-		promptsGroup := v1.Group("/projects/:id/prompts", auth.RequireAuth(authService))
+		promptsGroup := v1.Group("/projects/:id/prompts", auth.RequireAuth(authService), requireAccess)
 		promptsHandler.RegisterRoutes(promptsGroup)
 
-		researchGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		researchGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		researchHandler.RegisterRoutes(researchGroup)
 
 		// Collaboration — public preview (no auth), auth-only accept, project-scoped management.
 		collabHandler.RegisterPublicRoutes(v1)
 		collabAuthGroup := v1.Group("", auth.RequireAuth(authService))
 		collabHandler.RegisterAuthRoutes(collabAuthGroup)
-		collabProjectGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		collabProjectGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		collabHandler.RegisterProjectRoutes(collabProjectGroup)
 
 		// Merge requests — project-scoped.
-		mergeGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		mergeGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		mergeHandler.RegisterRoutes(mergeGroup)
 
 		// Notifications — user-scoped, no project context required.
@@ -192,7 +224,7 @@ func main() {
 		notificationHandler.RegisterRoutes(notifGroup)
 
 		// Annotations — project + scene scoped.
-		annotationGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		annotationGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		annotationHandler.RegisterRoutes(annotationGroup)
 	}
 

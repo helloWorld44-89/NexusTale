@@ -17,6 +17,7 @@ import SceneMetadataPanel from '@/components/editor/SceneMetadataPanel'
 import ProjectExplorer from '@/components/project/ProjectExplorer'
 import type { ActItem } from '@/components/project/ProjectExplorer'
 import ActivityBar from '@/components/layout/ActivityBar'
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 
 export type LeftPanel = 'chat' | 'context' | 'workshop' | 'git' | 'wiki' | 'annotations' | 'none'
 
@@ -324,52 +325,65 @@ export default function Editor() {
           />
         )}
         {!focusMode && leftPanel === 'chat' && projectId && accessToken && (
-          <ChatBar
-            token={accessToken}
-            projectId={projectId}
-            sceneId={selectedSceneId ?? undefined}
-            branch={currentBranch}
-            onInsertToScene={activeScene ? handleInsertToScene : undefined}
-          />
+          <ErrorBoundary label="Nexus chat">
+            <ChatBar
+              token={accessToken}
+              projectId={projectId}
+              sceneId={selectedSceneId ?? undefined}
+              branch={currentBranch}
+              onInsertToScene={activeScene ? handleInsertToScene : undefined}
+            />
+          </ErrorBoundary>
         )}
         {!focusMode && leftPanel === 'context' && projectId && accessToken && (
           <div className="w-72 shrink-0 flex flex-col border-r border-brand-border bg-brand-bg overflow-hidden">
-            <ContextPanel token={accessToken} projectId={projectId} />
+            <ErrorBoundary label="context panel">
+              <ContextPanel token={accessToken} projectId={projectId} />
+            </ErrorBoundary>
           </div>
         )}
         {!focusMode && leftPanel === 'workshop' && projectId && accessToken && (
-          <WorkshopPanel
-            token={accessToken}
-            projectId={projectId}
-            sceneId={selectedSceneId ?? undefined}
-            branch={currentBranch}
-            onInsertToScene={activeScene ? handleInsertToScene : undefined}
-            onToolWrite={handleToolWrite}
-            onStructureChange={handleTreeRefresh}
-          />
+          <ErrorBoundary label="Workshop">
+            <WorkshopPanel
+              token={accessToken}
+              projectId={projectId}
+              sceneId={selectedSceneId ?? undefined}
+              branch={currentBranch}
+              onInsertToScene={activeScene ? handleInsertToScene : undefined}
+              onToolWrite={handleToolWrite}
+              onStructureChange={handleTreeRefresh}
+            />
+          </ErrorBoundary>
         )}
         {!focusMode && leftPanel === 'git' && projectId && accessToken && (
-          <GitPanel
-            token={accessToken}
-            projectId={projectId}
-            onBranchChange={setCurrentBranch}
-          />
+          <ErrorBoundary label="Chronicle panel">
+            <GitPanel
+              token={accessToken}
+              projectId={projectId}
+              onBranchChange={setCurrentBranch}
+            />
+          </ErrorBoundary>
         )}
         {!focusMode && leftPanel === 'wiki' && projectId && accessToken && (
-          <WikiPanel token={accessToken} projectId={projectId} currentContent={content} />
+          <ErrorBoundary label="wiki panel">
+            <WikiPanel token={accessToken} projectId={projectId} currentContent={content} />
+          </ErrorBoundary>
         )}
         {!focusMode && leftPanel === 'annotations' && projectId && accessToken && (
-          <AnnotationSidebar
-            token={accessToken}
-            projectId={projectId}
-            sceneId={selectedSceneId}
-            currentUserId={user?.id ?? ''}
-            ownerId={user?.id ?? ''}
-            onJump={(start, end) => scribeEditorRef.current?.jumpToAnnotation(start, end)}
-            newAnnotation={pendingAnnotation}
-            onAnnotationConsumed={() => setPendingAnnotation(null)}
-          />
+          <ErrorBoundary label="annotations panel">
+            <AnnotationSidebar
+              token={accessToken}
+              projectId={projectId}
+              sceneId={selectedSceneId}
+              currentUserId={user?.id ?? ''}
+              ownerId={user?.id ?? ''}
+              onJump={(start, end) => scribeEditorRef.current?.jumpToAnnotation(start, end)}
+              newAnnotation={pendingAnnotation}
+              onAnnotationConsumed={() => setPendingAnnotation(null)}
+            />
+          </ErrorBoundary>
         )}
+        <ErrorBoundary label="scene editor">
         <div className="flex flex-col flex-1 overflow-hidden relative">
           {/* Floating exit button — only in focus mode */}
           {focusMode && (
@@ -411,20 +425,23 @@ export default function Editor() {
             />
           )}
         </div>
+        </ErrorBoundary>
         {!focusMode && explorerOpen && (
-          <ProjectExplorer
-            projectTitle={projectTitle}
-            acts={explorerActs}
-            selectedChapterId={selectedChapterId ?? ''}
-            selectedSceneId={selectedSceneId ?? ''}
-            onSelectScene={handleSelectScene}
-            onCreateAct={handleCreateAct}
-            onCreateChapter={handleCreateChapter}
-            onCreateScene={handleCreateScene}
-            token={accessToken ?? undefined}
-            projectId={projectId}
-            branch={currentBranch}
-          />
+          <ErrorBoundary label="project explorer">
+            <ProjectExplorer
+              projectTitle={projectTitle}
+              acts={explorerActs}
+              selectedChapterId={selectedChapterId ?? ''}
+              selectedSceneId={selectedSceneId ?? ''}
+              onSelectScene={handleSelectScene}
+              onCreateAct={handleCreateAct}
+              onCreateChapter={handleCreateChapter}
+              onCreateScene={handleCreateScene}
+              token={accessToken ?? undefined}
+              projectId={projectId}
+              branch={currentBranch}
+            />
+          </ErrorBoundary>
         )}
       </div>
 

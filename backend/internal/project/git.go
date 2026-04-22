@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -29,10 +30,27 @@ func systemAuthor() *object.Signature {
 
 type GitService struct {
 	reposPath string
+
+	// mu guards the locks map; each entry serialises write operations on one repo.
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
 }
 
 func NewGitService(reposPath string) *GitService {
-	return &GitService{reposPath: reposPath}
+	return &GitService{reposPath: reposPath, locks: make(map[string]*sync.Mutex)}
+}
+
+// repoLock returns the mutex for repoPath, creating it on first use.
+// The returned mutex must be locked/unlocked by the caller.
+func (g *GitService) repoLock(repoPath string) *sync.Mutex {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	m, ok := g.locks[repoPath]
+	if !ok {
+		m = &sync.Mutex{}
+		g.locks[repoPath] = m
+	}
+	return m
 }
 
 // InitRepo creates a non-bare git repo for the project with an initial commit
@@ -87,6 +105,10 @@ func (g *GitService) InitRepo(projectID uuid.UUID) (string, error) {
 // a commit on the current branch. Returns the full commit SHA.
 // Returns ErrNothingToChronicle if the snapshot is identical to the last commit.
 func (g *GitService) Chronicle(repoPath, note string, files map[string]string) (string, error) {
+	mu := g.repoLock(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return "", fmt.Errorf("open repo: %w", err)
@@ -276,6 +298,10 @@ func (g *GitService) CurrentTimeline(repoPath string) (string, error) {
 // Diverge creates a new Timeline (branch) from fromSHA (or HEAD if empty) and
 // switches the working tree to it.
 func (g *GitService) Diverge(repoPath, timelineName, fromSHA string) error {
+	mu := g.repoLock(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return fmt.Errorf("open repo: %w", err)
@@ -306,6 +332,10 @@ func (g *GitService) Diverge(repoPath, timelineName, fromSHA string) error {
 
 // TravelTo switches the working tree to an existing Timeline (branch).
 func (g *GitService) TravelTo(repoPath, timelineName string) error {
+	mu := g.repoLock(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return fmt.Errorf("open repo: %w", err)
@@ -325,6 +355,10 @@ func (g *GitService) TravelTo(repoPath, timelineName string) error {
 // If the histories have diverged (a Paradox), it returns a result with
 // HasParadox=true rather than an error — the caller surfaces this to the writer.
 func (g *GitService) Canonize(repoPath, timelineName string) (*CanonizeResult, error) {
+	mu := g.repoLock(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("open repo: %w", err)
@@ -417,6 +451,10 @@ func (g *GitService) BranchTipSHA(repoPath, branchName string) (string, error) {
 // repo as a local branch. Used before merging a collaborator branch into canon.
 // The remote is created, used, and deleted within the call.
 func (g *GitService) FetchBranchFromClone(mainRepoPath, clonePath, branchName string) error {
+	mu := g.repoLock(mainRepoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	repo, err := git.PlainOpen(mainRepoPath)
 	if err != nil {
 		return fmt.Errorf("open main repo: %w", err)

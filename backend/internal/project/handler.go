@@ -3,14 +3,29 @@ package project
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/jconder44/nexustale/internal/auth"
+	"github.com/jconder44/nexustale/internal/collaboration"
 	"github.com/jconder44/nexustale/pkg/apperror"
 )
+
+// branchNameRE restricts git branch names to safe characters only.
+// Prevents shell-metacharacter injection through Timeline/Diverge inputs.
+var branchNameRE = regexp.MustCompile(`^[a-zA-Z0-9/_-]+$`)
+
+func validateBranchName(c *gin.Context, name string) bool {
+	if !branchNameRE.MatchString(name) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "branch name contains invalid characters; use letters, numbers, /, _, - only"})
+		return false
+	}
+	return true
+}
 
 type Handler struct {
 	svc *Service
@@ -440,6 +455,11 @@ func (h *Handler) GitStatus(c *gin.Context) {
 }
 
 func (h *Handler) Chronicle(c *gin.Context) {
+	if collaboration.GetCollabRole(c) == "reviewer" {
+		c.JSON(http.StatusForbidden, gin.H{"message": "reviewers cannot create chronicle entries"})
+		return
+	}
+
 	id, err := parseUUID(c, "id")
 	if err != nil {
 		return
@@ -514,6 +534,11 @@ func (h *Handler) ListTimelines(c *gin.Context) {
 }
 
 func (h *Handler) Diverge(c *gin.Context) {
+	if collaboration.GetCollabRole(c) == "reviewer" {
+		c.JSON(http.StatusForbidden, gin.H{"message": "reviewers cannot create timelines"})
+		return
+	}
+
 	id, err := parseUUID(c, "id")
 	if err != nil {
 		return
@@ -528,6 +553,9 @@ func (h *Handler) Diverge(c *gin.Context) {
 	var req DivergeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "validation error", "detail": err.Error()})
+		return
+	}
+	if !validateBranchName(c, req.TimelineName) {
 		return
 	}
 
@@ -551,7 +579,12 @@ func (h *Handler) TravelTo(c *gin.Context) {
 		return
 	}
 
-	status, err := h.svc.TravelTo(c.Request.Context(), id, claims.UserID, c.Param("tname"))
+	tname := c.Param("tname")
+	if !validateBranchName(c, tname) {
+		return
+	}
+
+	status, err := h.svc.TravelTo(c.Request.Context(), id, claims.UserID, tname)
 	if err != nil {
 		handleError(c, err)
 		return
@@ -565,7 +598,12 @@ func (h *Handler) Canonize(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.Canonize(c.Request.Context(), id, auth.GetUserID(c), c.Param("tname"))
+	tname := c.Param("tname")
+	if !validateBranchName(c, tname) {
+		return
+	}
+
+	result, err := h.svc.Canonize(c.Request.Context(), id, auth.GetUserID(c), tname)
 	if err != nil {
 		handleError(c, err)
 		return
@@ -618,5 +656,6 @@ func handleError(c *gin.Context, err error) {
 		c.JSON(appErr.Code, appErr)
 		return
 	}
+	slog.Error("unhandled handler error", "path", c.FullPath(), "error", err)
 	c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
 }

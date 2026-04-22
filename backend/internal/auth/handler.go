@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -138,5 +139,6 @@ func handleError(c *gin.Context, err error) {
 		c.JSON(appErr.Code, appErr)
 		return
 	}
+	slog.Error("unhandled handler error", "path", c.FullPath(), "error", err)
 	c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
 }

@@ -51,6 +51,20 @@ func newDebouncer() *debouncer {
 	return &debouncer{pending: make(map[debounceKey]*pendingWork)}
 }
 
+// cancelForChapter stops and removes all pending timers whose key matches
+// chapterID. Called when a chapter is deleted to prevent spurious LLM calls.
+func (d *debouncer) cancelForChapter(chapterID uuid.UUID) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for key, pw := range d.pending {
+		if key.chapterID == chapterID {
+			pw.timer.Stop()
+			delete(d.pending, key)
+		}
+	}
+}
+
 // schedule either resets an existing timer or creates a new one. When the
 // timer fires the supplied fn is called in a new goroutine.
 func (d *debouncer) schedule(key debounceKey, delay time.Duration, userID uuid.UUID, fn func(userID uuid.UUID)) {
@@ -120,6 +134,12 @@ func (s *Service) ScheduleSummarize(userID, chapterID uuid.UUID, branchName stri
 	s.debounce.schedule(key, summarizeDebounce, userID, func(uid uuid.UUID) {
 		s.regenerateSummary(uid, chapterID, branchName)
 	})
+}
+
+// CancelSummarize satisfies project.SummaryNotifier. It cancels any pending
+// debounce timers for the given chapter (called when a chapter is deleted).
+func (s *Service) CancelSummarize(chapterID uuid.UUID) {
+	s.debounce.cancelForChapter(chapterID)
 }
 
 // UpsertActiveBranch satisfies project.SummaryNotifier. It records the
