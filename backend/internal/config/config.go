@@ -1,10 +1,36 @@
 package config
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/spf13/viper"
 )
+
+// ValidateProd returns an error if any security-critical defaults are still set
+// when running in release mode. Call this from main after loading config.
+func (c *Config) ValidateProd() error {
+	if c.Server.Mode != "release" {
+		return nil
+	}
+	var errs []string
+	if c.Auth.JWTSecret == "change-me-in-production" {
+		errs = append(errs, "NEXUSTALE_AUTH_JWTSECRET is still the default — rotate to a ≥32-char random value")
+	}
+	if c.Encryption.Key == "0000000000000000000000000000000000000000000000000000000000000000" {
+		errs = append(errs, "NEXUSTALE_ENCRYPTION_KEY is still the all-zeros default — rotate to a random 64-hex-char value")
+	}
+	if c.Minio.AccessKey == "minioadmin" || c.Minio.SecretKey == "minioadmin" {
+		errs = append(errs, "MinIO credentials are still the default minioadmin — change before going live")
+	}
+	if c.Server.AllowedOrigin == "*" {
+		errs = append(errs, "NEXUSTALE_SERVER_ALLOWEDORIGIN is '*' in release mode — set it to your app domain")
+	}
+	if len(errs) > 0 {
+		return errors.New("insecure defaults detected in release mode:\n  - " + strings.Join(errs, "\n  - "))
+	}
+	return nil
+}
 
 type Config struct {
 	Server     ServerConfig
@@ -25,8 +51,9 @@ type AIConfig struct {
 }
 
 type ServerConfig struct {
-	Port string
-	Mode string // "debug", "release", "test"
+	Port          string
+	Mode          string // "debug", "release", "test"
+	AllowedOrigin string // CORS allowed origin; defaults to "*" in dev, must be set in prod
 }
 
 type DBConfig struct {
@@ -75,6 +102,7 @@ func Load() (*Config, error) {
 	// Defaults
 	v.SetDefault("server.port", "8080")
 	v.SetDefault("server.mode", "debug")
+	v.SetDefault("server.allowedorigin", "*")
 	v.SetDefault("db.url", "postgres://nexustale:nexustale@localhost:5432/nexustale?sslmode=disable")
 	v.SetDefault("db.maxconns", 10)
 	v.SetDefault("db.minconns", 2)
@@ -106,8 +134,9 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		Server: ServerConfig{
-			Port: v.GetString("server.port"),
-			Mode: v.GetString("server.mode"),
+			Port:          v.GetString("server.port"),
+			Mode:          v.GetString("server.mode"),
+			AllowedOrigin: v.GetString("server.allowedorigin"),
 		},
 		DB: DBConfig{
 			URL:            v.GetString("db.url"),

@@ -245,9 +245,9 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 ### Security review
 
 **Authentication & session management**
-- [ ] **P0** `NEXUSTALE_JWT_SECRET` and `NEXUSTALE_ENCRYPTION_KEY` rotated to ≥32-byte random values in prod (not dev defaults)
-- [ ] **P0** MinIO root credentials changed from defaults (`minioadmin`)
-- [ ] **P0** CORS: `AllowOrigins` locked to the app domain, not `*`, in prod
+- [ ] **P0** `NEXUSTALE_JWT_SECRET` and `NEXUSTALE_ENCRYPTION_KEY` rotated to ≥32-byte random values in prod (not dev defaults) — `config.ValidateProd()` now exits on startup if defaults detected in release mode
+- [ ] **P0** MinIO root credentials changed from defaults (`minioadmin`) — `config.ValidateProd()` now rejects defaults in release mode
+- [x] **P0** CORS: `AllowOrigins` locked to the app domain, not `*`, in prod — `corsMiddleware` wired; `NEXUSTALE_SERVER_ALLOWEDORIGIN` env var; `ValidateProd` rejects `*` in release mode
 - [ ] **P0** TLS on all external traffic — nginx terminates (Let's Encrypt via certbot); HSTS header set
 - [ ] **P1** Refresh token single-use rotation policy — verify tokens are invalidated on use, not just on logout
 - [ ] **P1** `RequireProjectAccess` middleware: audit every project-scoped route to confirm it is applied; reviewer read-only enforced on Chronicle/Diverge
@@ -255,15 +255,15 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 - [ ] **P2** httpOnly + Secure + SameSite flags on any future cookie use (access token is in-memory / Authorization header today — this is precautionary)
 
 **Input validation & injection**
-- [ ] **P0** Git branch names from user input (`branch_name`, `from_branch`) validated against `^[a-zA-Z0-9/_-]+$` — no shell metacharacters; collaborator clone path is DB-derived, not user-provided
+- [x] **P0** Git branch names from user input (`branch_name`, `from_branch`) validated against `^[a-zA-Z0-9/_-]+$` — `validateBranchName` in `project/handler.go` (Diverge/TravelTo/Canonize) + `branchNameRE` in `merge/handler.go` (from_branch)
 - [ ] **P1** File uploads (wiki images): content-type validated server-side (not just `Content-Type` header); max size enforced; `.svg` files rejected (XSS via SVG)
 - [ ] **P1** DOCX/EPUB export: user-provided title and scene content XML-escaped in OOXML builder; verify `encodeXML` coverage in `docx.go`
 - [ ] **P1** AI prompt: no system prompt injection via `\n\nHuman:` smuggling — verify `BuildContext` output is appended safely, not interpolated raw into system prompt string
 - [ ] **P2** Timeline anchor DFS cycle detection: add depth limit (currently unbounded recursion on malformed data)
 
 **Access control**
-- [ ] **P0** Non-owner cannot approve, reject, or merge MRs — verify `merge_handler.go` checks `project.owner_id`
-- [ ] **P0** Non-owner cannot resolve annotations — verify `annotation handler` checks `project.owner_id`
+- [x] **P0** Non-owner cannot approve, reject, or merge MRs — `ResolveMergeRequest` in `merge/service.go` checks `p.OwnerID != callerID` → 403 (verified correct)
+- [x] **P0** Non-owner cannot resolve annotations — `Resolve` in `annotations/service.go` now checks `p.OwnerID != resolverID` → 403
 - [ ] **P1** Collaborator can only read/write their own clone path — `repoPathForUser` must not accept an arbitrary user ID that bypasses this check
 - [ ] **P1** `DELETE /users/me` cascade: git repos and MinIO objects cleaned up; verify no orphan files on disk after delete
 - [ ] **P2** Rate limiting on `POST /auth/login` and `POST /auth/register` (brute-force and account enumeration risk)
@@ -279,8 +279,8 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 ### Code review
 
 **Backend**
-- [ ] **P0** `ScheduleSummarize`: debounce map (`map[string]*time.Timer`) grows unbounded — a goroutine per unique `(chapter_id, branch)` key accumulates if chapters/branches are deleted; add cleanup on project delete and a max-age eviction
-- [ ] **P0** `AcceptInvite`: DB insert (collaborator row) + git clone are not atomic — if the clone fails, the DB row is committed and the user appears as a collaborator with no working repo; wrap in a transaction or compensate on clone error
+- [x] **P0** `ScheduleSummarize`: debounce map cleanup — `cancelForChapter` on debouncer; `CancelSummarize(chapterID)` on `ai.Service` satisfies new `SummaryNotifier` interface method; `DeleteChapter` in `project/service.go` calls it before DB delete
+- [x] **P0** `AcceptInvite`: non-atomic clone + DB insert — on `CreateCollaborator` error, `os.RemoveAll(clonePath)` is called to clean up the orphaned working tree; warning logged if cleanup also fails
 - [ ] **P1** Git operations: no concurrency lock on the same repo path — two simultaneous Chronicle calls on the same project could corrupt the git index; add a per-repo mutex or use `go-git`'s locking primitives
 - [ ] **P1** All handlers use `handleError(c, err)` — grep for any raw `c.JSON(http.StatusInternalServerError, ...)` that bypasses structured error responses
 - [ ] **P1** SSE goroutines: verify `pw.Close()` is called on every exit path (including adapter error) so the client-side `EventSource` closes and the goroutine is freed
@@ -289,7 +289,7 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 - [ ] **P2** DB pool: confirm `context.Background()` is not used in request handlers — all queries should respect the request context for proper timeout/cancellation
 
 **Frontend**
-- [ ] **P0** React error boundaries: no error boundary wraps any major panel — an unhandled JS exception blanks the editor with no recovery UI; add at least one top-level boundary in `Editor.tsx`
+- [x] **P0** React error boundaries — `ErrorBoundary.tsx` class component created; all major panels in `Editor.tsx` wrapped (Nexus, Context, Workshop, Chronicle, Wiki, Annotations, scene editor, project explorer); shows error message + "Try again" reset button
 - [ ] **P1** `ScribeEditor` navigate-away race: autosave debounce is 1500ms — if user navigates before it fires, the last edit is lost; flush on `beforeunload` or on scene ID change
 - [ ] **P1** SSE `EventSource` cleanup: verify `ChatBar`, `WorkshopPanel`, and `BeatInput` close their EventSource in the `useEffect` cleanup function; a stale connection holds the connection open and can replay events
 - [ ] **P1** `ProseDiffViewer`: no virtualization — a project with 100+ scenes in one MR will render all `SceneDiffCard` components synchronously; add windowing (e.g., react-virtual) or paginate by scene

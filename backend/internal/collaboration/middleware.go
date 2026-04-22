@@ -17,15 +17,23 @@ const contextKeyCollabRole = "collab_role"
 // so downstream handlers can enforce role-specific restrictions.
 //
 // Must be applied after RequireAuth so that JWT claims are already in context.
+// If the route has no :id param (e.g. collection-level routes like GET /projects),
+// the middleware is a no-op so it is safe to apply at group level.
 func RequireProjectAccess(queries *sqlcgen.Queries) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		rawID := c.Param("id")
+		if rawID == "" {
+			c.Next()
+			return
+		}
+
 		userID := auth.GetUserID(c)
 		if userID == uuid.Nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
 			return
 		}
 
-		projectID, err := uuid.Parse(c.Param("id"))
+		projectID, err := uuid.Parse(rawID)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "invalid project id"})
 			return

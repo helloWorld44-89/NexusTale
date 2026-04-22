@@ -20,6 +20,9 @@ import (
 type SummaryNotifier interface {
 	// ScheduleSummarize marks a chapter summary stale and debounces LLM regen.
 	ScheduleSummarize(userID, chapterID uuid.UUID, branchName string)
+	// CancelSummarize cancels any pending debounce timers for the given chapter
+	// so deleted chapters don't trigger spurious LLM calls.
+	CancelSummarize(chapterID uuid.UUID)
 	// UpsertActiveBranch records which Timeline a user is on for a project.
 	UpsertActiveBranch(ctx context.Context, projectID, userID uuid.UUID, branchName string)
 	// CleanupBranch deletes summary rows and active-branch pointers for a
@@ -314,6 +317,9 @@ func (s *Service) UpdateChapter(ctx context.Context, id uuid.UUID, req UpdateCha
 }
 
 func (s *Service) DeleteChapter(ctx context.Context, id uuid.UUID) error {
+	if s.notifier != nil {
+		s.notifier.CancelSummarize(id)
+	}
 	return s.queries.DeleteChapter(ctx, id)
 }
 

@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -243,7 +245,8 @@ func (s *Service) AcceptInvite(ctx context.Context, userID uuid.UUID, token stri
 		return CollaboratorResponse{}, fmt.Errorf("setup collaborator workspace: %w", err)
 	}
 
-	// Insert collaborator row.
+	// Insert collaborator row. If this fails, clean up the clone so we don't
+	// leave an orphaned working tree on disk with no DB record.
 	pgInvitedBy := pgtype.UUID{Bytes: [16]byte(inv.InvitedBy), Valid: true}
 	collab, err := s.queries.CreateCollaborator(ctx, sqlcgen.CreateCollaboratorParams{
 		ProjectID:  inv.ProjectID,
@@ -254,6 +257,9 @@ func (s *Service) AcceptInvite(ctx context.Context, userID uuid.UUID, token stri
 		InvitedBy:  pgInvitedBy,
 	})
 	if err != nil {
+		if removeErr := os.RemoveAll(clonePath); removeErr != nil {
+			slog.Warn("collaboration: failed to clean up clone after DB error", "path", clonePath, "error", removeErr)
+		}
 		return CollaboratorResponse{}, fmt.Errorf("create collaborator: %w", err)
 	}
 

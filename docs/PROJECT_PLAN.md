@@ -703,57 +703,57 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 #### Security review
 
 **Auth & secrets**
-- P0 JWT secret + encryption key rotated to ≥32-byte random values in prod (not dev defaults)
-- P0 MinIO root credentials changed from defaults
-- P0 CORS `AllowOrigins` locked to the app domain, not `*`, in prod Gin config
-- P0 TLS on all external traffic — nginx terminates (Let's Encrypt / certbot); HSTS header set
-- P1 Refresh token revocation: tokens invalidated on use (rotation), not only on logout
-- P1 `RequireProjectAccess` middleware applied to every project-scoped route; reviewer read-only enforced server-side on Chronicle/Diverge
-- P1 `encrypted_key` (AI keys) never logged or returned in any response; only `key_hint` is external
+- [ ] **P0** JWT secret + encryption key rotated to ≥32-byte random values in prod (not dev defaults) — `config.ValidateProd()` exits on startup if defaults detected in release mode
+- [ ] **P0** MinIO root credentials changed from defaults — `config.ValidateProd()` rejects defaults in release mode
+- [x] **P0** CORS `AllowOrigins` locked to the app domain, not `*`, in prod Gin config — `corsMiddleware` + `NEXUSTALE_SERVER_ALLOWEDORIGIN`
+- [ ] **P0** TLS on all external traffic — nginx terminates (Let's Encrypt / certbot); HSTS header set
+- [x] **P1** Refresh token revocation: tokens invalidated on use (rotation), not only on logout — `Refresh()` already calls `DeleteRefreshToken` before issuing new pair; audited clean
+- [x] **P1** `RequireProjectAccess` middleware applied to every project-scoped route; reviewer read-only enforced server-side on Chronicle/Diverge
+- [x] **P1** `encrypted_key` (AI keys) never logged or returned in any response; only `key_hint` is external — `APIKeyResponse` omits `EncryptedKey`; `toAPIKeyResponse()` maps only safe fields; `DecryptAPIKey()` used only internally
 
 **Input validation & injection**
-- P0 Git branch names from user input validated to `^[a-zA-Z0-9/_-]+$` — reject shell metacharacters; collaborator clone path must come from DB, never from request body
-- P1 File uploads: content-type validated server-side, max size enforced, `.svg` rejected (stored XSS risk)
-- P1 DOCX/EPUB export: user-provided title and scene content XML-escaped in the OOXML builder (`encodeXML` coverage in `docx.go`)
-- P1 AI prompt: `BuildContext` output appended, not interpolated, into system prompt — no `\n\nHuman:` injection vector
-- P2 Timeline anchor DFS: add depth limit (currently unbounded recursion on malformed `anchor_event_id` cycles)
+- [x] **P0** Git branch names from user input validated to `^[a-zA-Z0-9/_-]+$` — `validateBranchName` in `project/handler.go`; `branchNameRE` in `merge/handler.go`
+- [x] **P1** File uploads: content-type validated server-side, max size enforced, `.svg` rejected — explicit allowlist only (no `mime.TypeByExtension` fallback which admitted `.svg`); 5 MiB hard cap added
+- [x] **P1** DOCX/EPUB export: user-provided title and scene content XML-escaped in the OOXML builder — `xmlEscape()` already applied to all user content; audited clean
+- [x] **P1** AI prompt: `BuildContext` output appended, not interpolated, into system prompt — no `\n\nHuman:` injection vector — all adapters use structured chat APIs (`system` param / `role:system` message); `+` concatenation only, no template engine
+- [ ] **P2** Timeline anchor DFS: add depth limit (currently unbounded recursion on malformed `anchor_event_id` cycles)
 
 **Access control**
-- P0 Only project owner can approve/reject/merge MRs — verified in `merge_handler.go`
-- P0 Only project owner can resolve annotations — verified in `annotation_handler.go`
-- P1 `repoPathForUser` cannot be bypassed via an arbitrary `userID` parameter — must be authenticated user's ID only
-- P1 `DELETE /users/me` cascade: git repos + MinIO objects cleaned from disk after DB delete; no orphan files
-- P2 Rate limiting on `POST /auth/login` and `POST /auth/register` (brute-force + account enumeration)
-- P2 Rate limiting on AI endpoints (`/ai/complete`, `/ai/chat`) — cost-abuse protection
+- [x] **P0** Only project owner can approve/reject/merge MRs — `ResolveMergeRequest` checks `p.OwnerID != callerID` (verified correct)
+- [x] **P0** Only project owner can resolve annotations — `Resolve` in `annotations/service.go` now checks `p.OwnerID != resolverID`
+- [x] **P1** `repoPathForUser` cannot be bypassed via an arbitrary `userID` parameter — all callers pass `auth.GetUserID(c)` / `claims.UserID` from JWT; path sourced from DB columns set at creation time
+- [ ] **P1** `DELETE /users/me` cascade: git repos + MinIO objects cleaned from disk after DB delete; no orphan files
+- [ ] **P2** Rate limiting on `POST /auth/login` and `POST /auth/register` (brute-force + account enumeration)
+- [ ] **P2** Rate limiting on AI endpoints (`/ai/complete`, `/ai/chat`) — cost-abuse protection
 
 **Dependencies**
-- P1 `govulncheck ./...` — zero High/Critical CVEs in Go dependencies
-- P1 `npm audit --audit-level=high` — zero High/Critical CVEs; `diff-match-patch` and `d3` are new additions to check
-- P1 Audit `go-git` version for known path traversal CVEs
+- [ ] **P1** `govulncheck ./...` — zero High/Critical CVEs in Go dependencies
+- [ ] **P1** `npm audit --audit-level=high` — zero High/Critical CVEs; `diff-match-patch` and `d3` are new additions to check
+- [ ] **P1** Audit `go-git` version for known path traversal CVEs
 
 #### Code review
 
 **Backend**
-- P0 `ScheduleSummarize`: debounce `map[string]*time.Timer` grows unbounded — goroutines accumulate if chapters/branches are deleted; add cleanup on project delete and max-age eviction
-- P0 `AcceptInvite`: DB insert + git clone are not atomic — clone failure after DB commit leaves an orphaned collaborator row; wrap in a transaction or compensate on clone error
-- P1 Git operations: no per-repo concurrency lock — two simultaneous Chronicle calls on the same project can corrupt the git index; add a per-path `sync.Mutex`
-- P1 All handlers route errors through `handleError(c, err)` — grep for raw `c.JSON(500, ...)` escapes
-- P1 SSE goroutines: `pw.Close()` called on every exit path (adapter error, client disconnect, context cancel)
-- P1 `buildPinnedContext` / `appendPinnedNote` (full mode): no length cap — add a per-section token estimate and hard cap (~2000 tokens per pin) to avoid blowing model context windows
-- P2 `numericToFloat64()`: verify nil handling when SUM returns NULL over an empty set
-- P2 Request handlers must not use `context.Background()` — all queries should propagate the Gin request context for timeout/cancellation
+- [x] **P0** `ScheduleSummarize`: debounce map cleanup — `cancelForChapter` on debouncer; `CancelSummarize` on `ai.Service`; `DeleteChapter` calls it pre-delete
+- [x] **P0** `AcceptInvite`: non-atomic clone + DB — compensates with `os.RemoveAll(clonePath)` if `CreateCollaborator` fails
+- [x] **P1** Git operations: no per-repo concurrency lock — `GitService` now holds a `map[string]*sync.Mutex` (guarded by a top-level `sync.Mutex`); `Chronicle`, `Diverge`, `TravelTo`, `Canonize`, `FetchBranchFromClone` each acquire the per-repo lock before touching the working tree
+- [x] **P1** All handlers route errors through `handleError(c, err)` — all 12 handler packages now log via `slog.Error` in the fallback; direct `c.JSON(500)` in `wiki` upload handler also fixed
+- [x] **P1** SSE goroutines: `pw.Close()` called on every exit path — audited; all three SSE pipes (`Complete`, `Chat`, `WorkshopChat`) use `defer pw.Close()`
+- [ ] **P1** `buildPinnedContext` / `appendPinnedNote` (full mode): no length cap — add a per-section token estimate and hard cap (~2000 tokens per pin) to avoid blowing model context windows
+- [ ] **P2** `numericToFloat64()`: verify nil handling when SUM returns NULL over an empty set
+- [ ] **P2** Request handlers must not use `context.Background()` — all queries should propagate the Gin request context for timeout/cancellation
 
 **Frontend**
-- P0 No React error boundary wraps any major panel — an unhandled JS exception blanks the editor; add at minimum a boundary in `Editor.tsx`
-- P1 `ScribeEditor` navigate-away: autosave debounce (1500ms) means the last edit can be lost on fast navigation; flush pending save on scene ID change or `beforeunload`
-- P1 SSE cleanup: `EventSource` closed in `useEffect` cleanup in `ChatBar`, `WorkshopPanel`, `BeatInput` — a stale connection replays events on re-mount
-- P1 `ProseDiffViewer`: all `SceneDiffCard` components rendered synchronously — large MRs (100+ scenes) will freeze the UI; add virtualization or paginated scene list
-- P2 Access token in `localStorage` — evaluate moving to in-memory module-scope variable to reduce XSS exposure (refresh token already handles persistence across reloads)
-- P2 `api.ts` fetch wrapper: assert request URL is relative or matches configured base URL before appending the Authorization header
+- [x] **P0** React error boundaries — `ErrorBoundary.tsx` created; all major Editor panels wrapped with label + "Try again" reset
+- [ ] **P1** `ScribeEditor` navigate-away: autosave debounce (1500ms) means the last edit can be lost on fast navigation; flush pending save on scene ID change or `beforeunload`
+- [ ] **P1** SSE cleanup: `EventSource` closed in `useEffect` cleanup in `ChatBar`, `WorkshopPanel`, `BeatInput` — a stale connection replays events on re-mount
+- [ ] **P1** `ProseDiffViewer`: all `SceneDiffCard` components rendered synchronously — large MRs (100+ scenes) will freeze the UI; add virtualization or paginated scene list
+- [ ] **P2** Access token in `localStorage` — evaluate moving to in-memory module-scope variable to reduce XSS exposure (refresh token already handles persistence across reloads)
+- [ ] **P2** `api.ts` fetch wrapper: assert request URL is relative or matches configured base URL before appending the Authorization header
 
 **API contract**
-- P1 OpenAPI spec (`docs/openapi.yaml`) is ~20 routes behind (all B1–C routes missing); bring current before beta; inline types in `api.ts` are authoritative until then
-- P2 Document breaking-change policy for `/api/v1/` before external beta clients exist
+- [ ] **P1** OpenAPI spec (`docs/openapi.yaml`) is ~20 routes behind (all B1–C routes missing); bring current before beta; inline types in `api.ts` are authoritative until then
+- [ ] **P2** Document breaking-change policy for `/api/v1/` before external beta clients exist
 
 #### Alpha release plan
 
@@ -775,21 +775,21 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 | Customizable workspaces | ❌ | Phase D |
 
 **Environment checklist**
-- P0 TLS certificate provisioned for the alpha domain (certbot added to Ansible deploy playbook)
-- P0 All P0 security items resolved
-- P0 Postgres daily backup: `pg_dump` cron → compressed dump → off-host storage (7-day retention)
-- P0 Git repo backup: nightly tar of `repos/` alongside DB dump
-- P1 Structured log capture: Docker `json-file` driver with `max-size=50m`, `max-file=5`
-- P1 Uptime monitor on `GET /healthz` with email alert on 2 consecutive failures
-- P1 Disk usage alert at 70% — `repos/` and MinIO grow unboundedly
-- P2 Admin AI usage view: `ai_usage` table queryable via psql or a simple Grafana panel
+- [ ] **P0** TLS certificate provisioned for the alpha domain (certbot added to Ansible deploy playbook)
+- [ ] **P0** All P0 security items resolved
+- [ ] **P0** Postgres daily backup: `pg_dump` cron → compressed dump → off-host storage (7-day retention)
+- [ ] **P0** Git repo backup: nightly tar of `repos/` alongside DB dump
+- [ ] **P1** Structured log capture: Docker `json-file` driver with `max-size=50m`, `max-file=5`
+- [ ] **P1** Uptime monitor on `GET /healthz` with email alert on 2 consecutive failures
+- [ ] **P1** Disk usage alert at 70% — `repos/` and MinIO grow unboundedly
+- [ ] **P2** Admin AI usage view: `ai_usage` table queryable via psql or a simple Grafana panel
 
 **Pre-launch code checklist**
-- P0 All P0 code review items resolved
-- P0 All P0 security review items resolved
-- P1 `govulncheck` + `npm audit` clean
-- P1 `npx tsc --noEmit` and `go build ./...` clean on the release commit
-- Full smoke test on alpha env: register → guide wizard → write scene → Chronicle → wiki entity → Markdown export → invite collaborator → open MR → resolve → merge
+- [ ] **P0** All P0 code review items resolved
+- [ ] **P0** All P0 security review items resolved
+- [ ] **P1** `govulncheck` + `npm audit` clean
+- [ ] **P1** `npx tsc --noEmit` and `go build ./...` clean on the release commit
+- [ ] Full smoke test on alpha env: register → guide wizard → write scene → Chronicle → wiki entity → Markdown export → invite collaborator → open MR → resolve → merge
 
 **Alpha UX / onboarding**
 - No Go stack traces or raw DB errors in any API response (`apperror` messages audited)

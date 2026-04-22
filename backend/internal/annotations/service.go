@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jconder44/nexustale/pkg/apperror"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
@@ -126,6 +127,15 @@ func (s *Service) UpdateBody(ctx context.Context, projectID, annotationID uuid.U
 }
 
 func (s *Service) Resolve(ctx context.Context, projectID, annotationID, resolverID uuid.UUID) (AnnotationResponse, error) {
+	// Only the project owner may resolve annotations.
+	p, err := s.queries.GetProject(ctx, projectID)
+	if err != nil {
+		return AnnotationResponse{}, apperror.NotFound("project", projectID.String())
+	}
+	if p.OwnerID != resolverID {
+		return AnnotationResponse{}, apperror.Forbidden("only the project owner can resolve annotations")
+	}
+
 	row, err := s.queries.ResolveAnnotation(ctx, sqlcgen.ResolveAnnotationParams{
 		ID:        annotationID,
 		ProjectID: projectID,
