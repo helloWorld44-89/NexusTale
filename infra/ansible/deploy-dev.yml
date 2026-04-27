@@ -12,8 +12,13 @@
 #   ghcr_token           — GitHub PAT with read:packages scope
 #   nexustale_db_password
 #   nexustale_jwt_secret
+#   nexustale_encryption_key  — 64 hex chars (openssl rand -hex 32)
 #   nexustale_minio_accesskey
 #   nexustale_minio_secretkey
+#
+# Optional extra-vars (TLS — leave unset to deploy HTTP-only):
+#   nexustale_domain      — public domain name (e.g. nexustale.example.com)
+#   nexustale_alert_email — email for Let's Encrypt expiry notices
 
 - name: Deploy NexusTale to dev VM
   hosts: "{{ dev_vm_host }}"
@@ -26,6 +31,8 @@
     compose_file: "{{ deploy_dir }}/docker-compose.yml"
     ghcr_registry: ghcr.io
     ghcr_user: helloworld44-89
+    nexustale_domain: ""
+    nexustale_alert_email: ""
 
   tasks:
     - name: Ensure deploy directory exists
@@ -46,14 +53,133 @@
       ansible.builtin.copy:
         content: |
           IMAGE_TAG={{ image_tag }}
+          NEXUSTALE_SERVER_MODE=release
           NEXUSTALE_DB_PASSWORD={{ nexustale_db_password }}
           NEXUSTALE_AUTH_JWTSECRET={{ nexustale_jwt_secret }}
+          NEXUSTALE_ENCRYPTION_KEY={{ nexustale_encryption_key }}
           NEXUSTALE_MINIO_ACCESSKEY={{ nexustale_minio_accesskey }}
           NEXUSTALE_MINIO_SECRETKEY={{ nexustale_minio_secretkey }}
         dest: "{{ deploy_dir }}/.env"
         mode: "0600"
 
       no_log: true
+
+
+    # ── TLS (certbot + Let's Encrypt) ─────────────────────────────────────────
+    # All TLS tasks are skipped when nexustale_domain is not set; the plain
+    # HTTP nginx config is used instead so the stack starts without a domain.
+
+    - name: Write plain HTTP nginx config (no domain configured)
+      ansible.builtin.copy:
+        src: "{{ workspace }}/infra/docker/nginx.conf"
+        dest: "{{ deploy_dir }}/nginx.ssl.conf"
+        mode: "0644"
+      when: nexustale_domain | length == 0
+
+    - name: Install certbot
+      ansible.builtin.apt:
+        name: certbot
+        state: present
+        update_cache: true
+      when: nexustale_domain | length > 0
+
+    - name: Template SSL nginx config
+      ansible.builtin.template:
+        src: "{{ workspace }}/infra/ansible/templates/nginx.ssl.conf.j2"
+        dest: "{{ deploy_dir }}/nginx.ssl.conf"
+        mode: "0644"
+      when: nexustale_domain | length > 0
+
+    - name: Check if certificate already exists
+      ansible.builtin.stat:
+        path: "/etc/letsencrypt/live/{{ nexustale_domain }}/fullchain.pem"
+      register: cert_stat
+      when: nexustale_domain | length > 0
+
+    - name: Stop frontend for initial certificate issuance
+      ansible.builtin.shell: >
+        docker compose -f {{ compose_file }} --env-file {{ deploy_dir }}/.env
+        stop frontend
+      args:
+        chdir: "{{ deploy_dir }}"
+      when: nexustale_domain | length > 0 and not cert_stat.stat.exists
+      ignore_errors: true
+      changed_when: true
+
+    - name: Obtain initial TLS certificate (standalone)
+      ansible.builtin.shell: >
+        certbot certonly --standalone --non-interactive --agree-tos
+        -d {{ nexustale_domain }}
+        -m {{ nexustale_alert_email }}
+      when: nexustale_domain | length > 0 and not cert_stat.stat.exists
+      changed_when: true
+
+    - name: Set up certbot renewal cron
+      ansible.builtin.cron:
+        name: "certbot renew nexustale"
+        minute: "0"
+        hour: "3"
+        weekday: "1"
+        job: >
+          certbot renew --standalone --quiet
+          --pre-hook  "cd {{ deploy_dir }} && docker compose -f docker-compose.yml --env-file .env stop frontend"
+          --post-hook "cd {{ deploy_dir }} && docker compose -f docker-compose.yml --env-file .env start frontend"
+      when: nexustale_domain | length > 0
+
+
+    # ── Backups ───────────────────────────────────────────────────────────────
+    # NOTE: dumps land on the same VM disk for now (sufficient for alpha).
+    # Before beta, add an off-host sync step (rclone → S3/Backblaze B2).
+
+    - name: Ensure backup directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - /opt/backups/nexustale/db
+        - /opt/backups/nexustale/repos
+
+    - name: Set up Postgres daily backup cron
+      ansible.builtin.cron:
+        name: "nexustale postgres backup"
+        minute: "0"
+        hour: "2"
+        job: >-
+          docker exec nexustale-postgres-1
+          pg_dump -U nexustale nexustale
+          | gzip > /opt/backups/nexustale/db/nexustale_$(date +\%Y\%m\%d).sql.gz
+          && find /opt/backups/nexustale/db -name "*.sql.gz" -mtime +7 -delete
+
+    - name: Set up git repos daily backup cron
+      ansible.builtin.cron:
+        name: "nexustale repos backup"
+        minute: "15"
+        hour: "2"
+        job: >-
+          docker run --rm
+          -v git-repos:/data/repos:ro
+          -v /opt/backups/nexustale/repos:/backup
+          alpine
+          tar czf /backup/repos_$(date +\%Y\%m\%d).tar.gz -C /data repos
+          && find /opt/backups/nexustale/repos -name "*.tar.gz" -mtime +7 -delete
+
+
+    - name: Set up disk usage alert cron
+      ansible.builtin.cron:
+        name: "nexustale disk alert"
+        minute: "30"
+        hour: "*/4"
+        job: >-
+          USAGE=$(df / --output=pcent | tail -1 | tr -d ' %') &&
+          [ "$USAGE" -ge 70 ] &&
+          logger -t nexustale "DISK ALERT: / is ${USAGE}% full" &&
+          echo "NexusTale disk alert: / is ${USAGE}% full on $(hostname) at $(date)" |
+          mail -s "NexusTale disk alert: ${USAGE}% used" {{ nexustale_alert_email }} ||
+          true
+
+
+    # ── Deploy ────────────────────────────────────────────────────────────────
 
     - name: Log in to GHCR
       ansible.builtin.shell: |

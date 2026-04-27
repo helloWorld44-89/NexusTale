@@ -18,6 +18,7 @@ import (
 
 	"github.com/jconder44/nexustale/pkg/apperror"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
+	"github.com/jconder44/nexustale/pkg/storage"
 )
 
 type Service struct {
@@ -27,6 +28,12 @@ type Service struct {
 	refreshTokenExpiry time.Duration
 	bcryptCost         int
 	encKey             []byte // AES-256-GCM key for API key encryption
+	storageClient      *storage.Client
+}
+
+// WithStorage wires a MinIO client so DeleteMe can clean up binary assets.
+func (s *Service) WithStorage(sc *storage.Client) {
+	s.storageClient = sc
 }
 
 func NewService(queries *sqlcgen.Queries, jwtSecret string, accessExpiry, refreshExpiry time.Duration, bcryptCost int, encKey []byte) *Service {
@@ -173,22 +180,54 @@ func (s *Service) GetMe(ctx context.Context, userID uuid.UUID) (*UserResponse, e
 	}, nil
 }
 
-// DeleteMe removes the user and all owned data. Git repos on disk are deleted
-// after the DB row is removed (FK cascades handle everything else).
+// DeleteMe removes the user and all owned data. On-disk resources (git repos,
+// collaborator clones, MinIO objects) are collected before the DB cascade and
+// deleted best-effort afterwards.
 func (s *Service) DeleteMe(ctx context.Context, userID uuid.UUID) error {
-	// Collect git repo paths before the cascade wipes project rows.
+	// Collect all disk/object-store paths before the cascade wipes DB rows.
 	repoPaths, err := s.queries.ListProjectGitPaths(ctx, userID)
 	if err != nil {
 		return apperror.Internal(fmt.Sprintf("list git repos: %v", err))
+	}
+
+	clonePaths, err := s.queries.ListUserCollaboratorClonePaths(ctx, userID)
+	if err != nil {
+		return apperror.Internal(fmt.Sprintf("list clone paths: %v", err))
+	}
+
+	var wikiKeys, exportKeys []string
+	if s.storageClient != nil {
+		rawWiki, e := s.queries.ListUserWikiImageKeys(ctx, userID)
+		if e != nil {
+			return apperror.Internal(fmt.Sprintf("list wiki image keys: %v", e))
+		}
+		wikiKeys = pgTextSlice(rawWiki)
+
+		rawExport, e := s.queries.ListUserExportMinioKeys(ctx, userID)
+		if e != nil {
+			return apperror.Internal(fmt.Sprintf("list export minio keys: %v", e))
+		}
+		exportKeys = pgTextSlice(rawExport)
 	}
 
 	if err := s.queries.DeleteUser(ctx, userID); err != nil {
 		return apperror.Internal(fmt.Sprintf("delete user: %v", err))
 	}
 
-	// Best-effort: clean up git repos on disk after DB row is gone.
+	// Best-effort cleanup — errors are logged but don't fail the request.
 	for _, path := range repoPaths {
 		_ = os.RemoveAll(path)
+	}
+	for _, path := range clonePaths {
+		_ = os.RemoveAll(path)
+	}
+	if s.storageClient != nil {
+		for _, key := range wikiKeys {
+			_ = s.storageClient.DeleteObject(ctx, key)
+		}
+		for _, key := range exportKeys {
+			_ = s.storageClient.DeleteObject(ctx, key)
+		}
 	}
 
 	return nil
@@ -252,4 +291,14 @@ func (s *Service) generateTokenPair(ctx context.Context, userID uuid.UUID, email
 func hashToken(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])
+}
+
+func pgTextSlice(ts []pgtype.Text) []string {
+	out := make([]string, 0, len(ts))
+	for _, t := range ts {
+		if t.Valid && t.String != "" {
+			out = append(out, t.String)
+		}
+	}
+	return out
 }

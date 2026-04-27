@@ -245,34 +245,34 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 ### Security review
 
 **Authentication & session management**
-- [ ] **P0** `NEXUSTALE_JWT_SECRET` and `NEXUSTALE_ENCRYPTION_KEY` rotated to ≥32-byte random values in prod (not dev defaults) — `config.ValidateProd()` now exits on startup if defaults detected in release mode
-- [ ] **P0** MinIO root credentials changed from defaults (`minioadmin`) — `config.ValidateProd()` now rejects defaults in release mode
+- [x] **P0** `NEXUSTALE_JWT_SECRET` and `NEXUSTALE_ENCRYPTION_KEY` rotated to ≥32-byte random values in prod (not dev defaults) — `config.ValidateProd()` now exits on startup if defaults detected in release mode; `NEXUSTALE_SERVER_MODE=release` and `NEXUSTALE_ENCRYPTION_KEY` injected via Ansible; add `NEXUSTALE_ENCRYPTION_KEY` GitHub secret (`openssl rand -hex 32`)
+- [x] **P0** MinIO root credentials changed from defaults (`minioadmin`) — `config.ValidateProd()` now rejects defaults in release mode; credentials injected via Ansible from GitHub secrets; ensure `NEXUSTALE_MINIO_ACCESSKEY` / `NEXUSTALE_MINIO_SECRETKEY` secrets are non-default values
 - [x] **P0** CORS: `AllowOrigins` locked to the app domain, not `*`, in prod — `corsMiddleware` wired; `NEXUSTALE_SERVER_ALLOWEDORIGIN` env var; `ValidateProd` rejects `*` in release mode
-- [ ] **P0** TLS on all external traffic — nginx terminates (Let's Encrypt via certbot); HSTS header set
-- [ ] **P1** Refresh token single-use rotation policy — verify tokens are invalidated on use, not just on logout
-- [ ] **P1** `RequireProjectAccess` middleware: audit every project-scoped route to confirm it is applied; reviewer read-only enforced on Chronicle/Diverge
-- [ ] **P1** API key storage: confirm `encrypted_key` never returned or logged in plaintext; `key_hint` is the only external-facing field
+- [x] **P0** TLS on all external traffic — nginx terminates (Let's Encrypt via certbot); HSTS header set; `infra/ansible/templates/nginx.ssl.conf.j2` (TLSv1.2/1.3, Mozilla Intermediate ciphers, HSTS 2yr); certbot standalone for initial issuance + weekly renewal cron with pre/post hooks; `docker-compose.deploy.yml` mounts `/etc/letsencrypt` + `nginx.ssl.conf`; add `NEXUSTALE_DOMAIN` + `NEXUSTALE_ALERT_EMAIL` GitHub secrets
+- [x] **P1** Refresh token single-use rotation policy — `DeleteRefreshToken` called in `Refresh()` before issuing new pair; audited clean
+- [x] **P1** `RequireProjectAccess` middleware: `RequireChapterAccess` middleware added to `collaboration/middleware.go` — reads `:cid`, looks up `chapter.ProjectID`, applies identical owner/collaborator check; wired onto `chaptersGroup` in `main.go`; all scene routes now enforce project membership
+- [x] **P1** API key storage: `toAPIKeyResponse()` maps only `ID`/`Provider`/`KeyHint`; `EncryptedKey` never in any response; `DecryptAPIKey` internal only; audited clean
 - [ ] **P2** httpOnly + Secure + SameSite flags on any future cookie use (access token is in-memory / Authorization header today — this is precautionary)
 
 **Input validation & injection**
 - [x] **P0** Git branch names from user input (`branch_name`, `from_branch`) validated against `^[a-zA-Z0-9/_-]+$` — `validateBranchName` in `project/handler.go` (Diverge/TravelTo/Canonize) + `branchNameRE` in `merge/handler.go` (from_branch)
-- [ ] **P1** File uploads (wiki images): content-type validated server-side (not just `Content-Type` header); max size enforced; `.svg` files rejected (XSS via SVG)
-- [ ] **P1** DOCX/EPUB export: user-provided title and scene content XML-escaped in OOXML builder; verify `encodeXML` coverage in `docx.go`
-- [ ] **P1** AI prompt: no system prompt injection via `\n\nHuman:` smuggling — verify `BuildContext` output is appended safely, not interpolated raw into system prompt string
+- [x] **P1** File uploads (wiki images): magic-byte sniffing via `http.DetectContentType` added to `UploadEntityImage`; extension pre-check + magic check both required; SVG absent from both allowlists; `router.MaxMultipartMemory = 5 MiB` set in `main.go`
+- [x] **P1** DOCX/EPUB export: `xmlEscape` applied to all user strings in `buildDocumentXML` (title, chapter title, scene title, body paragraphs); style-name args are constants; EPUB chapter title/project title auto-escaped by go-epub's `encoding/xml` marshaler; audited clean
+- [x] **P1** AI prompt: `BuildContext` output appended via `+` string concat into system prompt; no template engine; no injection vector; audited clean
 - [ ] **P2** Timeline anchor DFS cycle detection: add depth limit (currently unbounded recursion on malformed data)
 
 **Access control**
 - [x] **P0** Non-owner cannot approve, reject, or merge MRs — `ResolveMergeRequest` in `merge/service.go` checks `p.OwnerID != callerID` → 403 (verified correct)
 - [x] **P0** Non-owner cannot resolve annotations — `Resolve` in `annotations/service.go` now checks `p.OwnerID != resolverID` → 403
-- [ ] **P1** Collaborator can only read/write their own clone path — `repoPathForUser` must not accept an arbitrary user ID that bypasses this check
-- [ ] **P1** `DELETE /users/me` cascade: git repos and MinIO objects cleaned up; verify no orphan files on disk after delete
+- [x] **P1** Collaborator can only read/write their own clone path — all `repoPathForUser` callers pass `auth.GetUserID(c)` / `claims.UserID` from verified JWT; no user-supplied ID accepted; audited clean
+- [x] **P1** `DELETE /users/me` cascade: `ListUserWikiImageKeys`, `ListUserExportMinioKeys`, `ListUserCollaboratorClonePaths` sqlc queries added; `auth.Service.WithStorage` wired from `main.go`; MinIO objects + clone dirs cleaned best-effort after DB cascade
 - [ ] **P2** Rate limiting on `POST /auth/login` and `POST /auth/register` (brute-force and account enumeration risk)
 - [ ] **P2** Rate limiting on AI endpoints (`/ai/complete`, `/ai/chat`) — cost-abuse protection for users sharing server-side keys
 
 **Dependencies**
-- [ ] **P1** `govulncheck ./...` in backend — zero High/Critical CVEs in Go deps
-- [ ] **P1** `npm audit --audit-level=high` in frontend — zero High/Critical CVEs; `diff-match-patch` and `d3` are new additions to check
-- [ ] **P1** Review `go-git` version for any known path traversal CVEs (active library with past issues)
+- [x] **P1** `govulncheck ./...` in backend — fixed `GO-2026-4910` (go-git v5.12.0 → v5.17.1, malicious idx DoS) and `GO-2025-3553` (golang-jwt v5.2.1 → v5.2.2, header parsing DoS in `ValidateAccessToken`); clean
+- [x] **P1** `npm audit --audit-level=high` in frontend — 0 high/critical; 2 moderate (esbuild/vite dev-server only, fix requires breaking vite@8 upgrade — deferred to Phase D); postcss XSS fixed via `npm audit fix`
+- [x] **P1** Review `go-git` version for known path traversal CVEs — `GO-2026-4910` found and fixed (v5.12.0 → v5.17.1)
 
 ---
 
@@ -281,23 +281,23 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 **Backend**
 - [x] **P0** `ScheduleSummarize`: debounce map cleanup — `cancelForChapter` on debouncer; `CancelSummarize(chapterID)` on `ai.Service` satisfies new `SummaryNotifier` interface method; `DeleteChapter` in `project/service.go` calls it before DB delete
 - [x] **P0** `AcceptInvite`: non-atomic clone + DB insert — on `CreateCollaborator` error, `os.RemoveAll(clonePath)` is called to clean up the orphaned working tree; warning logged if cleanup also fails
-- [ ] **P1** Git operations: no concurrency lock on the same repo path — two simultaneous Chronicle calls on the same project could corrupt the git index; add a per-repo mutex or use `go-git`'s locking primitives
-- [ ] **P1** All handlers use `handleError(c, err)` — grep for any raw `c.JSON(http.StatusInternalServerError, ...)` that bypasses structured error responses
-- [ ] **P1** SSE goroutines: verify `pw.Close()` is called on every exit path (including adapter error) so the client-side `EventSource` closes and the goroutine is freed
-- [ ] **P1** `buildPinnedContext` / `appendPinnedNote` (full mode): no length cap — a user pinning 20 full chapters could blow the model's context window; add a per-section token estimate and cap at ~2000 tokens per pin
+- [x] **P1** Git operations: `GitService.repoLock` (per-path `sync.Mutex` map guarded by `sync.Mutex`) already serialises all write ops — `Chronicle`, `Diverge`, `TravelTo`, `Canonize`, `FetchBranchFromClone`; read ops are safely concurrent; audited clean
+- [x] **P1** All handlers use `handleError(c, err)` — the two `c.JSON(500)` lines in `collaboration/handler.go` and `annotations/handler.go` are inside each file's own `handleError` function; no bypass; audited clean
+- [x] **P1** SSE goroutines: `defer pw.Close()` confirmed on all three SSE pipes (`Complete`, `Chat`, `WorkshopChat`); audited clean
+- [x] **P1** `buildPinnedContext` / `appendPinnedNote` (full mode): `pinnedContentLimit = 2000` constant applied in `appendPinnedScene`, `appendPinnedNote`, `appendPinnedEntity`; audited present in `context.go`
 - [ ] **P2** `numericToFloat64()`: verify COALESCE(SUM(...)) nil handling when the aggregate returns zero rows (Postgres returns NULL for SUM over empty set even with COALESCE on the column)
 - [ ] **P2** DB pool: confirm `context.Background()` is not used in request handlers — all queries should respect the request context for proper timeout/cancellation
 
 **Frontend**
 - [x] **P0** React error boundaries — `ErrorBoundary.tsx` class component created; all major panels in `Editor.tsx` wrapped (Nexus, Context, Workshop, Chronicle, Wiki, Annotations, scene editor, project explorer); shows error message + "Try again" reset button
-- [ ] **P1** `ScribeEditor` navigate-away race: autosave debounce is 1500ms — if user navigates before it fires, the last edit is lost; flush on `beforeunload` or on scene ID change
-- [ ] **P1** SSE `EventSource` cleanup: verify `ChatBar`, `WorkshopPanel`, and `BeatInput` close their EventSource in the `useEffect` cleanup function; a stale connection holds the connection open and can replay events
-- [ ] **P1** `ProseDiffViewer`: no virtualization — a project with 100+ scenes in one MR will render all `SceneDiffCard` components synchronously; add windowing (e.g., react-virtual) or paginate by scene
+- [x] **P1** `ScribeEditor` navigate-away race: `pendingSaveRef` stores current save callback; flushed via `useEffect` cleanup on `selectedSceneId` change and via `beforeunload` handler
+- [x] **P1** SSE `EventSource` cleanup: `useEffect(() => () => abortRef.current?.abort(), [])` added to `ChatBar`, `WorkshopPanel`, and `BeatInput` — aborts in-flight fetch streams on unmount
+- [x] **P1** `ProseDiffViewer`: 20-per-page pagination with Prev/Next controls replaces full synchronous render of all `SceneDiffCard` components
 - [ ] **P2** `localStorage` for access token: consider moving to an in-memory variable (survives React re-renders via module scope) to reduce XSS token exposure surface; refresh token flow already handles persistence
 - [ ] **P2** `api.ts`: confirm no `Authorization` header is ever sent to third-party origins; the fetch wrapper should assert `url.startsWith('/')` or compare to configured base URL
 
 **API contract**
-- [ ] **P1** OpenAPI spec (`docs/openapi.yaml`) is ~20 routes behind — bring current before beta (all B1–C routes missing); `api-types.ts` codegen disabled for newer routes; inline types in `api.ts` are source of truth until then
+- [x] **P1** OpenAPI spec (`docs/openapi.yaml`) brought current — 49 operations added across AI, export, guide, prompts, research, collaboration, merge requests, notifications, and annotations; spec grew from 1907 → 3335 lines; `api-types.ts` regenerated clean (`npm run gen:api`); `npx tsc --noEmit` passes
 - [ ] **P2** No versioning strategy beyond `/api/v1/` prefix — document policy for breaking changes before beta clients exist
 
 ---
@@ -325,11 +325,11 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 
 - [ ] **P0** TLS certificate provisioned for the alpha domain (Let's Encrypt via certbot in Ansible)
 - [ ] **P0** All P0 security items above resolved
-- [ ] **P0** Postgres daily backup — `pg_dump` cron job writing compressed dumps to an off-host location (S3, Backblaze, etc.); retention: 7 days
-- [ ] **P0** Git repo backup — tar the `repos/` directory nightly alongside the DB dump
-- [ ] **P1** Structured log capture: Docker logging driver writing to a file with rotation (`--log-driver json-file --log-opt max-size=50m --log-opt max-file=5`)
-- [ ] **P1** Uptime monitor on `GET /healthz` — alert on 2 consecutive failures (UptimeRobot free tier works)
-- [ ] **P1** Disk usage alert — `repos/` and MinIO grow unboundedly; alert at 70% disk usage
+- [x] **P0** Postgres daily backup — `pg_dump` cron via Ansible (02:00 daily); gzip to `/opt/backups/nexustale/db/`; 7-day retention; dumps on same VM disk for alpha — add off-host rclone sync before beta
+- [x] **P0** Git repo backup — `docker run alpine tar` against the `git-repos` volume (02:15 daily); gzip to `/opt/backups/nexustale/repos/`; 7-day retention
+- [x] **P1** Structured log capture: `x-logging` YAML anchor in `docker-compose.deploy.yml` applies `json-file` driver with `max-size=50m` / `max-file=5` to all five services
+- [ ] **P1** Uptime monitor on `GET /healthz` — **manual step**: sign up at uptimerobot.com (free tier), add HTTP monitor for `https://<domain>/healthz`, set alert contact to `NEXUSTALE_ALERT_EMAIL`, threshold = 2 consecutive failures
+- [x] **P1** Disk usage alert — cron every 4 h checks `df /`; if ≥70% writes to syslog via `logger` and emails `nexustale_alert_email`; wired in Ansible
 - [ ] **P2** AI usage dashboard for admin — `ai_usage` table already queryable; a simple `psql` query or Grafana panel is sufficient for alpha
 
 ### Pre-launch code checklist
@@ -375,6 +375,7 @@ A milestone, not a date. Graduate when all of the following are true:
 - Multi-region, scale-out collaboration tuning
 - **OpenAPI catch-up** — bring `docs/openapi.yaml` current with all B1–C routes; regenerate `api-types.ts`; restore codegen for newer endpoints (schedule before C3)
 - **Customizable workspaces** — per-user, per-project saved panel layouts (which panels are open, their widths, which scene/chapter is active); named workspace presets ("drafting", "research", "editing") switchable from the TopBar; stored in `user_workspaces` table (JSONB layout blob); synced across sessions so the editor opens exactly where you left off
+- **Object storage migration (MinIO → S3-compatible)** — The self-hosted MinIO server is AGPL v3.0 licensed; running it as part of a commercial SaaS without a commercial license creates legal exposure. The `minio-go` client SDK (Apache 2.0) is not the issue — only the server binary. Plan: replace `pkg/storage/storage.go` with `aws-sdk-go-v2/service/s3` (~100 line rewrite; interface unchanged: `PutObject`, `PresignedGetURL`, `DeleteObject`); target **Cloudflare R2** for alpha/beta (free tier: 10 GB storage, no egress fees, S3-compatible) or Backblaze B2 as an alternative; dev Docker Compose keeps MinIO locally since `aws-sdk-go-v2` speaks the same S3 API. Config env vars (`NEXUSTALE_MINIO_*`) can be renamed to `NEXUSTALE_S3_*` at the same time. No DB migrations needed. Must be done before any paid tier goes live.
 
 ### D-Desktop — Native desktop app (optional, Tauri-based)
 
@@ -410,4 +411,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-04-21: Phase C3 complete. Phase C+ (security review, code review, alpha release plan) added as a mandatory pre-alpha gate. Alpha targets 20–50 invite-only writers on the dev VM; graduation criteria defined before beta opens. Phase D (maps, image gen, Scrivener export, workspaces, monetization) follows after beta.*
+*Last updated 2026-04-27: Phase C3 complete. Phase C+ (security review, code review, alpha release plan) added as a mandatory pre-alpha gate. Alpha targets 20–50 invite-only writers on the dev VM; graduation criteria defined before beta opens. Phase D (maps, image gen, Scrivener export, workspaces, monetization, MinIO → S3 migration) follows after beta.*

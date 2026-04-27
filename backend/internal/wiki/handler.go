@@ -18,6 +18,9 @@ package wiki
 //	GET              /autolink?text=         return entities whose names appear in the given text
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"path/filepath"
@@ -184,9 +187,19 @@ func (h *Handler) CreateChildEntity(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
+// allowedImageTypes maps the sniffed MIME type (from http.DetectContentType)
+// to the content-type string used for MinIO storage. SVG is intentionally absent
+// — browsers execute <script> inside SVG, enabling stored XSS.
+var allowedImageTypes = map[string]string{
+	"image/jpeg": "image/jpeg",
+	"image/png":  "image/png",
+	"image/gif":  "image/gif",
+	"image/webp": "image/webp",
+}
+
 // UploadEntityImage accepts a multipart file in the "image" field,
-// validates the MIME type, and stores it as the entity's portrait in MinIO.
-// Max file size is enforced by Gin's multipart memory limit (set in main.go).
+// validates both the file extension and the actual magic bytes (via
+// http.DetectContentType), and stores the result as the entity's portrait in MinIO.
 func (h *Handler) UploadEntityImage(c *gin.Context) {
 	id, err := parseUUID(c, "eid")
 	if err != nil {
@@ -205,19 +218,11 @@ func (h *Handler) UploadEntityImage(c *gin.Context) {
 		return
 	}
 
-	// Validate file type against an explicit allowlist only — no fallback to
-	// mime.TypeByExtension, which would admit .svg (image/svg+xml) and enable
-	// stored-XSS via SVG script elements.
+	// Extension pre-check: reject obviously wrong or dangerous extensions before
+	// opening the file. SVG is explicitly absent from this list.
 	ext := strings.ToLower(filepath.Ext(fh.Filename))
-	allowed := map[string]string{
-		".jpg":  "image/jpeg",
-		".jpeg": "image/jpeg",
-		".png":  "image/png",
-		".gif":  "image/gif",
-		".webp": "image/webp",
-	}
-	contentType, ok := allowed[ext]
-	if !ok {
+	allowedExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true}
+	if !allowedExts[ext] {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "unsupported image type; allowed: jpg, png, gif, webp"})
 		return
 	}
@@ -230,7 +235,31 @@ func (h *Handler) UploadEntityImage(c *gin.Context) {
 	}
 	defer f.Close()
 
-	resp, err := h.svc.UploadEntityImage(c.Request.Context(), id, fh.Filename, contentType, f, fh.Size)
+	// Magic-byte validation: read the first 512 bytes and let the stdlib
+	// sniff the actual content type regardless of what the filename claims.
+	sniffBuf := make([]byte, 512)
+	n, err := io.ReadFull(f, sniffBuf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		slog.Error("wiki: failed to read upload for sniffing", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "could not read upload"})
+		return
+	}
+
+	sniffed := http.DetectContentType(sniffBuf[:n])
+	// DetectContentType may append "; charset=..." — strip it.
+	mediaType := strings.SplitN(sniffed, ";", 2)[0]
+	mediaType = strings.TrimSpace(mediaType)
+
+	contentType, ok := allowedImageTypes[mediaType]
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "file content does not match an allowed image type"})
+		return
+	}
+
+	// Reconstruct the full reader: already-read bytes + remainder of file.
+	reader := io.MultiReader(bytes.NewReader(sniffBuf[:n]), f)
+
+	resp, err := h.svc.UploadEntityImage(c.Request.Context(), id, fh.Filename, contentType, reader, fh.Size)
 	if err != nil {
 		handleError(c, err)
 		return

@@ -821,6 +821,792 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}/guide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** Get guide wizard progress for a project */
+        get: operations["getGuideProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/guide/{step}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                step: components["schemas"]["GuideStepKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save (draft) data for a guide step */
+        post: operations["saveGuideStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/guide/{step}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                step: components["schemas"]["GuideStepKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a guide step as complete and apply its side effects */
+        post: operations["completeGuideStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai-instructions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** Get the project's AI Story Bible */
+        get: operations["getAIInstructions"];
+        /** Save the project's AI Story Bible */
+        put: operations["updateAIInstructions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai-instructions/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate AI Story Bible from wiki and project data */
+        post: operations["generateAIInstructions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** List writing-style prompts for a project */
+        get: operations["listPrompts"];
+        put?: never;
+        /** Create a writing-style prompt */
+        post: operations["createPrompt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/prompts/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** Export all prompts as a portable JSON array */
+        get: operations["exportPrompts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/prompts/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import a prompt array (upserts by name) */
+        post: operations["importPrompts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/prompts/{promptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                promptId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a writing-style prompt */
+        put: operations["updatePrompt"];
+        post?: never;
+        /** Delete a writing-style prompt */
+        delete: operations["deletePrompt"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** List recent export jobs for a project */
+        get: operations["listExportJobs"];
+        put?: never;
+        /** Start an export job (markdown streams immediately; epub/docx are async) */
+        post: operations["startExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/export/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        /** Poll an export job and retrieve a download URL when done */
+        get: operations["getExportJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/test-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test whether any AI provider is reachable with the user's API keys */
+        post: operations["testAIConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stream a scene continuation or beat expansion as SSE */
+        post: operations["aiComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stream a multi-turn Nexus chat response as SSE */
+        post: operations["aiChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/summarize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Summarize a block of text or a scene */
+        post: operations["aiSummarize"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** Get AI token and cost usage summary for a project */
+        get: operations["getAIUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/beat-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** Get recent beat prompts for the project (for re-use suggestions) */
+        get: operations["getBeatHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/context-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** Preview the AI context window that will be sent with the next request */
+        get: operations["getContextPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/context-pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** List context pins for a project */
+        get: operations["listContextPins"];
+        put?: never;
+        /** Pin an entity, chapter, scene, or research note to the AI context */
+        post: operations["createContextPin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/context-pins/{pinId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                pinId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a context pin */
+        delete: operations["deleteContextPin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/chapters/{chapterId}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                chapterId: string;
+            };
+            cookie?: never;
+        };
+        /** Get the AI-generated summary for a chapter on the active branch */
+        get: operations["getChapterSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/chapters/{chapterId}/summarize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                chapterId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger an immediate chapter summary regeneration */
+        post: operations["regenerateChapterSummary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/workshop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** List workshop sessions for a project */
+        get: operations["listWorkshopSessions"];
+        put?: never;
+        /** Create a new workshop session */
+        post: operations["createWorkshopSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/workshop/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /** Get a workshop session with its full message history */
+        get: operations["getWorkshopSession"];
+        /** Rename a workshop session */
+        put: operations["updateWorkshopSession"];
+        post?: never;
+        /** Delete a workshop session */
+        delete: operations["deleteWorkshopSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/workshop/{sid}/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a message in a workshop session (SSE stream) */
+        post: operations["workshopChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/research-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** List research notes for a project */
+        get: operations["listResearchNotes"];
+        put?: never;
+        /** Create a research note */
+        post: operations["createResearchNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/research-notes/{noteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a research note */
+        get: operations["getResearchNote"];
+        put?: never;
+        post?: never;
+        /** Delete a research note */
+        delete: operations["deleteResearchNote"];
+        options?: never;
+        head?: never;
+        /** Update a research note */
+        patch: operations["updateResearchNote"];
+        trace?: never;
+    };
+    "/invites/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        /** Get a public preview of an invite link (no auth required) */
+        get: operations["getInvitePreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invites/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a collaboration invite (creates clone and collaborator record) */
+        post: operations["acceptInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** List pending (unaccepted, non-expired) invites for a project */
+        get: operations["listPendingInvites"];
+        put?: never;
+        /** Send a collaboration invite by email */
+        post: operations["inviteCollaborator"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/collaborators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** List accepted collaborators for a project */
+        get: operations["listCollaborators"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/collaborators/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a collaborator from a project */
+        delete: operations["removeCollaborator"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/merge-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** List merge requests for a project */
+        get: operations["listMergeRequests"];
+        put?: never;
+        /** Open a merge request from a collaborator branch into canon */
+        post: operations["openMergeRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/merge-requests/{mid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mid: string;
+            };
+            cookie?: never;
+        };
+        /** Get a merge request */
+        get: operations["getMergeRequest"];
+        /** Merge or reject a merge request (owner only) */
+        put: operations["resolveMergeRequest"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/merge-requests/{mid}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mid: string;
+            };
+            cookie?: never;
+        };
+        /** Get the per-scene diff for a merge request */
+        get: operations["getMergeRequestDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List notifications for the authenticated user */
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mark all notifications as read */
+        put: operations["markAllNotificationsRead"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/{notificationId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notificationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Mark a single notification as read */
+        put: operations["markNotificationRead"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/scenes/{sceneId}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+            };
+            cookie?: never;
+        };
+        /** List annotations for a scene */
+        get: operations["listAnnotations"];
+        put?: never;
+        /** Create an annotation on a scene */
+        post: operations["createAnnotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/scenes/{sceneId}/annotations/{annotationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+                annotationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Update an annotation body or mark it resolved */
+        put: operations["updateAnnotation"];
+        post?: never;
+        /** Delete an annotation */
+        delete: operations["deleteAnnotation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1233,6 +2019,344 @@ export interface components {
             /** Format: uuid */
             structure_id?: string | null;
             structure_custom?: Record<string, never> | null;
+        };
+        /** @enum {string} */
+        GuideStepKey: "premise" | "characters" | "world" | "outline" | "first_scene";
+        GuideStepResponse: {
+            step: components["schemas"]["GuideStepKey"];
+            data?: Record<string, never> | null;
+            completed: boolean;
+        };
+        GuideProgressResponse: {
+            steps: components["schemas"]["GuideStepResponse"][];
+        };
+        SaveGuideStepRequest: {
+            data?: Record<string, never>;
+        };
+        AIInstructionsResponse: {
+            ai_instructions: string;
+        };
+        UpdateAIInstructionsRequest: {
+            ai_instructions: string;
+        };
+        /** @enum {string} */
+        PromptCategory: "style" | "voice" | "workshop" | "system";
+        CreatePromptRequest: {
+            name: string;
+            content: string;
+            category?: components["schemas"]["PromptCategory"];
+        };
+        UpdatePromptRequest: {
+            name?: string;
+            content?: string;
+            category?: components["schemas"]["PromptCategory"];
+        };
+        PromptResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            name: string;
+            content: string;
+            category: components["schemas"]["PromptCategory"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @enum {string} */
+        ExportFormat: "markdown" | "epub" | "docx";
+        ExportRequest: {
+            format: components["schemas"]["ExportFormat"];
+        };
+        /** @enum {string} */
+        ExportJobStatus: "pending" | "processing" | "done" | "failed";
+        ExportJobResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            /** Format: uuid */
+            user_id: string;
+            format: components["schemas"]["ExportFormat"];
+            status: components["schemas"]["ExportJobStatus"];
+            download_url?: string | null;
+            error_msg?: string | null;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ExportEnqueueResponse: {
+            /** Format: uuid */
+            job_id: string;
+        };
+        /** @enum {string} */
+        CompleteMode: "continue" | "beat";
+        CompleteRequest: {
+            /** Format: uuid */
+            scene_id?: string;
+            mode?: components["schemas"]["CompleteMode"];
+            /** @description Required when mode=beat */
+            beat?: string;
+            instruction?: string;
+            provider?: string;
+            max_tokens?: number;
+            /** Format: uuid */
+            prompt_id?: string;
+        };
+        ChatMessage: {
+            /** @enum {string} */
+            role: "user" | "assistant" | "system";
+            content: string;
+        };
+        ChatRequest: {
+            /** Format: uuid */
+            scene_id?: string;
+            messages: components["schemas"]["ChatMessage"][];
+            provider?: string;
+            max_tokens?: number;
+        };
+        SummarizeRequest: {
+            text?: string;
+            /** Format: uuid */
+            scene_id?: string;
+            provider?: string;
+        };
+        SummarizeResponse: {
+            summary: string;
+        };
+        AIUsageResponse: {
+            total_calls: number;
+            /** Format: double */
+            total_cost_usd: number;
+            total_tokens: number;
+            calls_by_provider?: {
+                [key: string]: number;
+            };
+        };
+        BeatHistoryEntry: {
+            beat_text: string;
+            mode: string;
+            /** Format: uuid */
+            scene_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ChapterSummaryResponse: {
+            /** Format: uuid */
+            chapter_id: string;
+            summary?: string | null;
+            branch?: string | null;
+            /** Format: date-time */
+            updated_at?: string | null;
+        };
+        TestConnectionResponse: {
+            ok: boolean;
+            message?: string;
+        };
+        /** @enum {string} */
+        ContextPinType: "entity" | "chapter" | "scene" | "note";
+        /** @enum {string} */
+        ContextPinMode: "summary" | "full";
+        CreateContextPinRequest: {
+            pin_type: components["schemas"]["ContextPinType"];
+            /** Format: uuid */
+            ref_id: string;
+            mode?: components["schemas"]["ContextPinMode"];
+        };
+        ContextPinResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            /** Format: uuid */
+            user_id: string;
+            pin_type: components["schemas"]["ContextPinType"];
+            /** Format: uuid */
+            ref_id: string;
+            mode: components["schemas"]["ContextPinMode"];
+            label?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        WorkshopMessage: {
+            /** @enum {string} */
+            role: "user" | "assistant";
+            content: string;
+        };
+        WorkshopSession: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            title: string;
+            messages: components["schemas"]["WorkshopMessage"][];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateWorkshopSessionRequest: {
+            title?: string;
+        };
+        UpdateWorkshopSessionRequest: {
+            title?: string;
+        };
+        WorkshopChatRequest: {
+            message: string;
+            tools_enabled?: boolean;
+            max_rounds?: number;
+        };
+        CreateResearchNoteRequest: {
+            title: string;
+            body?: string;
+            source_url?: string;
+            tags?: string[];
+        };
+        UpdateResearchNoteRequest: {
+            title?: string;
+            body?: string;
+            source_url?: string;
+            tags?: string[];
+        };
+        ResearchNoteResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            title: string;
+            body?: string | null;
+            source_url?: string | null;
+            tags?: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @enum {string} */
+        CollaboratorRole: "coauthor" | "editor" | "reviewer";
+        InviteCollaboratorRequest: {
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["CollaboratorRole"];
+        };
+        InvitePreviewResponse: {
+            project_title: string;
+            invited_by: string;
+            role: components["schemas"]["CollaboratorRole"];
+        };
+        PendingInviteResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            email: string;
+            role: components["schemas"]["CollaboratorRole"];
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        CollaboratorResponse: {
+            /** Format: uuid */
+            user_id: string;
+            display_name: string;
+            email: string;
+            role: components["schemas"]["CollaboratorRole"];
+            branch_name?: string;
+            /** Format: date-time */
+            joined_at: string;
+        };
+        /** @enum {string} */
+        MRStatus: "open" | "merged" | "rejected";
+        OpenMergeRequestRequest: {
+            title: string;
+            description?: string;
+            from_branch: string;
+            to_branch: string;
+        };
+        ResolveMergeRequestRequest: {
+            /** @enum {string} */
+            action: "merge" | "reject";
+        };
+        MergeRequestResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            title: string;
+            description?: string | null;
+            from_branch: string;
+            to_branch: string;
+            status: components["schemas"]["MRStatus"];
+            requester_name?: string | null;
+            merged_sha?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        SceneDiff: {
+            /** Format: uuid */
+            scene_id: string;
+            scene_title: string;
+            /** @description Unified diff text */
+            diff: string;
+        };
+        MRDiffResponse: {
+            /** Format: uuid */
+            merge_request_id: string;
+            scene_diffs: components["schemas"]["SceneDiff"][];
+        };
+        /** @enum {string} */
+        NotificationType: "mr_opened" | "mr_merged" | "mr_rejected" | "invite_accepted" | "collab_removed";
+        NotificationResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            type: components["schemas"]["NotificationType"];
+            payload?: Record<string, never> | null;
+            read: boolean;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @enum {string} */
+        AnnotationType: "note" | "suggestion" | "question";
+        CreateAnnotationRequest: {
+            body: string;
+            annotation_type: components["schemas"]["AnnotationType"];
+            anchor_start: number;
+            anchor_end: number;
+        };
+        UpdateAnnotationRequest: {
+            body?: string;
+            resolved?: boolean;
+        };
+        AnnotationResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            scene_id: string;
+            /** Format: uuid */
+            project_id?: string;
+            /** Format: uuid */
+            author_id: string;
+            author_name?: string;
+            body: string;
+            annotation_type: components["schemas"]["AnnotationType"];
+            anchor_start: number;
+            anchor_end: number;
+            resolved: boolean;
+            /** Format: uuid */
+            resolved_by?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at?: string;
         };
     };
     responses: {
@@ -2889,6 +4013,1434 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getGuideProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guide steps with completion status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideProgressResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    saveGuideStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                step: components["schemas"]["GuideStepKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveGuideStepRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved step state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideStepResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    completeGuideStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                step: components["schemas"]["GuideStepKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveGuideStepRequest"];
+            };
+        };
+        responses: {
+            /** @description Completed step state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideStepResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAIInstructions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description AI instructions text. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIInstructionsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateAIInstructions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAIInstructionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated AI instructions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIInstructionsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    generateAIInstructions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Generated AI instructions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIInstructionsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listPrompts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of prompts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createPrompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePromptRequest"];
+            };
+        };
+        responses: {
+            /** @description Created prompt. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    exportPrompts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON array of prompt objects. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    importPrompts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePromptRequest"][];
+            };
+        };
+        responses: {
+            /** @description Imported prompts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updatePrompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                promptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePromptRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated prompt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deletePrompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                promptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Prompt deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listExportJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent export jobs (up to 20). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJobResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    startExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Markdown export streamed as a zip file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            /** @description EPUB or DOCX job enqueued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportEnqueueResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getExportJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export job details (download_url populated when status=done). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJobResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    testAIConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connection test result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestConnectionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    aiComplete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-NexusTale-Branch"?: string;
+            };
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Server-Sent Events stream of text tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    aiChat: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-NexusTale-Branch"?: string;
+            };
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Server-Sent Events stream of text tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    aiSummarize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SummarizeRequest"];
+            };
+        };
+        responses: {
+            /** @description AI-generated summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummarizeResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAIUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUsageResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getBeatHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent beat history entries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BeatHistoryEntry"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getContextPreview: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-NexusTale-Branch"?: string;
+            };
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rendered context string. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        context?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listContextPins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of context pins. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextPinResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createContextPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateContextPinRequest"];
+            };
+        };
+        responses: {
+            /** @description Created context pin. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextPinResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteContextPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                pinId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pin removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getChapterSummary: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-NexusTale-Branch"?: string;
+            };
+            path: {
+                projectId: string;
+                chapterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Chapter summary (summary may be null if not yet generated). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterSummaryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    regenerateChapterSummary: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-NexusTale-Branch"?: string;
+            };
+            path: {
+                projectId: string;
+                chapterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Freshly generated chapter summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterSummaryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listWorkshopSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of workshop sessions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkshopSession"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createWorkshopSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkshopSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Created workshop session. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkshopSession"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getWorkshopSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workshop session with messages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkshopSession"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateWorkshopSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkshopSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated workshop session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkshopSession"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteWorkshopSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    workshopChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkshopChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Server-Sent Events stream. Each event is a text token or a tool_call/tool_result JSON event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listResearchNotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of research notes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchNoteResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createResearchNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateResearchNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Created research note. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchNoteResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getResearchNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Research note. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchNoteResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteResearchNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Note deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateResearchNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateResearchNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated research note. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchNoteResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getInvitePreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invite preview showing project and role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreviewResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    acceptInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted — returns the new collaborator record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollaboratorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPendingInvites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending invites. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingInviteResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    inviteCollaborator: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteCollaboratorRequest"];
+            };
+        };
+        responses: {
+            /** @description Invite created — returns the invite token URL. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token?: string;
+                        invite_url?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listCollaborators: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of collaborators. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollaboratorResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    removeCollaborator: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Collaborator removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMergeRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of merge requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeRequestResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    openMergeRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenMergeRequestRequest"];
+            };
+        };
+        responses: {
+            /** @description Opened merge request. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeRequestResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getMergeRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Merge request details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeRequestResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resolveMergeRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveMergeRequestRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated merge request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeRequestResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMergeRequestDiff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scene-level diffs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MRDiffResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of notifications. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    markAllNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All notifications marked read. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    markNotificationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notificationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Notification marked read. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAnnotations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of annotations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAnnotationRequest"];
+            };
+        };
+        responses: {
+            /** @description Created annotation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+                annotationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAnnotationRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated annotation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+                annotationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Annotation deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

@@ -65,6 +65,58 @@ func RequireProjectAccess(queries *sqlcgen.Queries) gin.HandlerFunc {
 	}
 }
 
+// RequireChapterAccess is a Gin middleware for routes that use :cid (chapter ID)
+// instead of :id (project ID), such as GET/POST /chapters/:cid/scenes.
+// It looks up the chapter's parent project and applies the same owner/collaborator
+// check as RequireProjectAccess, setting "collab_role" identically.
+//
+// Must be applied after RequireAuth.
+func RequireChapterAccess(queries *sqlcgen.Queries) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := auth.GetUserID(c)
+		if userID == uuid.Nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+			return
+		}
+
+		chapterID, err := uuid.Parse(c.Param("cid"))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "invalid chapter id"})
+			return
+		}
+
+		chapter, err := queries.GetChapter(c.Request.Context(), chapterID)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "chapter not found"})
+			return
+		}
+
+		p, err := queries.GetProject(c.Request.Context(), chapter.ProjectID)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "project not found"})
+			return
+		}
+
+		if p.OwnerID == userID {
+			c.Set(contextKeyCollabRole, "owner")
+			c.Next()
+			return
+		}
+
+		collab, err := queries.GetCollaborator(c.Request.Context(), sqlcgen.GetCollaboratorParams{
+			ProjectID: chapter.ProjectID,
+			UserID:    userID,
+		})
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"message": "you are not a member of this project"})
+			return
+		}
+
+		c.Set(contextKeyCollabRole, collab.Role)
+		c.Next()
+	}
+}
+
 // GetCollabRole returns the resolved role for the current request.
 // Returns "owner" for project owners, the collaborator role for members,
 // or "" if the middleware was not applied.

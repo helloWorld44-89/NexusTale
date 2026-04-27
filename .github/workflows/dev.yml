@@ -101,8 +101,11 @@ jobs:
           cat > /tmp/nexustale-deploy-vars.yml << 'EOF'
           image_tag: "${{ github.sha }}"
           ghcr_token: "${{ secrets.GHCR_PULL_TOKEN }}"
+          nexustale_domain: "${{ secrets.NEXUSTALE_DOMAIN || '' }}"
+          nexustale_alert_email: "${{ secrets.NEXUSTALE_ALERT_EMAIL || '' }}"
           nexustale_db_password: "${{ secrets.NEXUSTALE_DB_PASSWORD }}"
           nexustale_jwt_secret: "${{ secrets.NEXUSTALE_JWT_SECRET }}"
+          nexustale_encryption_key: "${{ secrets.NEXUSTALE_ENCRYPTION_KEY }}"
           nexustale_minio_accesskey: "${{ secrets.NEXUSTALE_MINIO_ACCESSKEY }}"
           nexustale_minio_secretkey: "${{ secrets.NEXUSTALE_MINIO_SECRETKEY }}"
           EOF

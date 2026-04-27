@@ -69,6 +69,11 @@ export default function WorkshopPanel({
   // Stable run ID for the current send(), so all tool events share one group.
   const runIdRef    = useRef<string>('')
 
+  // Abort any in-flight stream when the component unmounts.
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
   // ── load session list ──────────────────────────────────────────────────────
 
   useEffect(() => {

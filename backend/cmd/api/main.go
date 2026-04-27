@@ -127,6 +127,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	authService.WithStorage(storageClient)
+
 	wikiService := wiki.NewService(queries, storageClient)
 	exportService := export.NewService(queries, storageClient)
 	exportService.StartWorkers(2)
@@ -163,6 +165,7 @@ func main() {
 	// Router
 	gin.SetMode(cfg.Server.Mode)
 	router := gin.Default()
+	router.MaxMultipartMemory = 5 << 20 // 5 MiB — matches the per-file size limit in UploadEntityImage
 	router.Use(corsMiddleware(cfg.Server.AllowedOrigin))
 
 	router.GET("/healthz", func(c *gin.Context) {
@@ -177,11 +180,14 @@ func main() {
 		authHandler.RegisterAPIKeyRoutes(v1)
 
 		requireAccess := collaboration.RequireProjectAccess(queries)
+		requireChapterAccess := collaboration.RequireChapterAccess(queries)
 
 		// projectsGroup serves both collection routes (/projects) and member routes
 		// (/projects/:id/...). requireAccess is a no-op when :id is absent.
 		projectsGroup := v1.Group("/projects", auth.RequireAuth(authService), requireAccess)
-		chaptersGroup := v1.Group("/chapters", auth.RequireAuth(authService))
+		// chaptersGroup carries RequireChapterAccess so scene routes are protected
+		// even though they don't have a project :id in the URL.
+		chaptersGroup := v1.Group("/chapters", auth.RequireAuth(authService), requireChapterAccess)
 		projectHandler.RegisterRoutes(projectsGroup, chaptersGroup)
 
 		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService), requireAccess)
