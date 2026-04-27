@@ -64,7 +64,8 @@ export default function Editor() {
   const [pendingAnnotation,  setPendingAnnotation]  = useState<Annotation | null>(null)
   const [annotationCount,    setAnnotationCount]    = useState(0)
 
-  const saveTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingSaveRef  = useRef<(() => void) | null>(null)
   const scribeEditorRef = useRef<ScribeEditorHandle>(null)
 
   // ── Focus mode keyboard shortcuts ──────────────────────────────────────────
@@ -170,14 +171,44 @@ export default function Editor() {
   const handleContentChange = useCallback((sceneId: string, value: string) => {
     setSceneContents((prev) => ({ ...prev, [sceneId]: value }))
 
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(() => {
+    const doSave = () => {
       const chapterId = sceneToChapter[sceneId]
       if (!chapterId || !accessToken) return
       api.scenes.update(accessToken, chapterId, sceneId, { content: value }, currentBranch)
         .catch(() => {})
+    }
+
+    pendingSaveRef.current = doSave
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      pendingSaveRef.current = null
+      doSave()
     }, AUTOSAVE_MS)
   }, [accessToken, sceneToChapter, currentBranch])
+
+  // Flush any pending autosave when the selected scene changes so edits are
+  // never lost when the writer clicks to a different scene before the debounce fires.
+  useEffect(() => {
+    return () => {
+      if (pendingSaveRef.current) {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+        pendingSaveRef.current()
+        pendingSaveRef.current = null
+      }
+    }
+  }, [selectedSceneId])
+
+  // Best-effort flush on tab/window close.
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current()
+        pendingSaveRef.current = null
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
 
   const handleSelectScene = useCallback((chapterId: string, sceneId: string) => {
     setSelectedChapterId(chapterId)

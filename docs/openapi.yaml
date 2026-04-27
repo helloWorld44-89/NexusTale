@@ -566,6 +566,441 @@ components:
           type: object
           nullable: true
 
+    # ── Guide ─────────────────────────────────────────────────────────────────
+    GuideStepKey:
+      type: string
+      enum: [premise, characters, world, outline, first_scene]
+
+    GuideStepResponse:
+      type: object
+      required: [step, completed]
+      properties:
+        step:      { $ref: '#/components/schemas/GuideStepKey' }
+        data:      { type: object, nullable: true }
+        completed: { type: boolean }
+
+    GuideProgressResponse:
+      type: object
+      required: [steps]
+      properties:
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/GuideStepResponse' }
+
+    SaveGuideStepRequest:
+      type: object
+      properties:
+        data: { type: object }
+
+    AIInstructionsResponse:
+      type: object
+      required: [ai_instructions]
+      properties:
+        ai_instructions: { type: string }
+
+    UpdateAIInstructionsRequest:
+      type: object
+      required: [ai_instructions]
+      properties:
+        ai_instructions: { type: string }
+
+    # ── Prompts ───────────────────────────────────────────────────────────────
+    PromptCategory:
+      type: string
+      enum: [style, voice, workshop, system]
+
+    CreatePromptRequest:
+      type: object
+      required: [name, content]
+      properties:
+        name:     { type: string }
+        content:  { type: string }
+        category: { $ref: '#/components/schemas/PromptCategory' }
+
+    UpdatePromptRequest:
+      type: object
+      properties:
+        name:     { type: string }
+        content:  { type: string }
+        category: { $ref: '#/components/schemas/PromptCategory' }
+
+    PromptResponse:
+      type: object
+      required: [id, project_id, name, content, category, created_at, updated_at]
+      properties:
+        id:         { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        name:       { type: string }
+        content:    { type: string }
+        category:   { $ref: '#/components/schemas/PromptCategory' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    # ── Export ────────────────────────────────────────────────────────────────
+    ExportFormat:
+      type: string
+      enum: [markdown, epub, docx]
+
+    ExportRequest:
+      type: object
+      required: [format]
+      properties:
+        format: { $ref: '#/components/schemas/ExportFormat' }
+
+    ExportJobStatus:
+      type: string
+      enum: [pending, processing, done, failed]
+
+    ExportJobResponse:
+      type: object
+      required: [id, project_id, user_id, format, status, created_at, updated_at]
+      properties:
+        id:          { type: string, format: uuid }
+        project_id:  { type: string, format: uuid }
+        user_id:     { type: string, format: uuid }
+        format:      { $ref: '#/components/schemas/ExportFormat' }
+        status:      { $ref: '#/components/schemas/ExportJobStatus' }
+        download_url: { type: string, nullable: true }
+        error_msg:   { type: string, nullable: true }
+        expires_at:  { type: string, format: date-time, nullable: true }
+        created_at:  { type: string, format: date-time }
+        updated_at:  { type: string, format: date-time }
+
+    ExportEnqueueResponse:
+      type: object
+      required: [job_id]
+      properties:
+        job_id: { type: string, format: uuid }
+
+    # ── AI ────────────────────────────────────────────────────────────────────
+    CompleteMode:
+      type: string
+      enum: [continue, beat]
+
+    CompleteRequest:
+      type: object
+      properties:
+        scene_id:    { type: string, format: uuid }
+        mode:        { $ref: '#/components/schemas/CompleteMode' }
+        beat:        { type: string, description: "Required when mode=beat" }
+        instruction: { type: string }
+        provider:    { type: string }
+        max_tokens:  { type: integer }
+        prompt_id:   { type: string, format: uuid }
+
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:    { type: string, enum: [user, assistant, system] }
+        content: { type: string }
+
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        scene_id:   { type: string, format: uuid }
+        messages:   { type: array, items: { $ref: '#/components/schemas/ChatMessage' } }
+        provider:   { type: string }
+        max_tokens: { type: integer }
+
+    SummarizeRequest:
+      type: object
+      properties:
+        text:     { type: string }
+        scene_id: { type: string, format: uuid }
+        provider: { type: string }
+
+    SummarizeResponse:
+      type: object
+      required: [summary]
+      properties:
+        summary: { type: string }
+
+    AIUsageResponse:
+      type: object
+      required: [total_calls, total_cost_usd, total_tokens]
+      properties:
+        total_calls:     { type: integer }
+        total_cost_usd:  { type: number, format: double }
+        total_tokens:    { type: integer }
+        calls_by_provider:
+          type: object
+          additionalProperties: { type: integer }
+
+    BeatHistoryEntry:
+      type: object
+      required: [beat_text, mode, created_at]
+      properties:
+        beat_text:  { type: string }
+        mode:       { type: string }
+        scene_id:   { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    ChapterSummaryResponse:
+      type: object
+      required: [chapter_id]
+      properties:
+        chapter_id: { type: string, format: uuid }
+        summary:    { type: string, nullable: true }
+        branch:     { type: string, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    TestConnectionResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:      { type: boolean }
+        message: { type: string }
+
+    ContextPinType:
+      type: string
+      enum: [entity, chapter, scene, note]
+
+    ContextPinMode:
+      type: string
+      enum: [summary, full]
+
+    CreateContextPinRequest:
+      type: object
+      required: [pin_type, ref_id]
+      properties:
+        pin_type: { $ref: '#/components/schemas/ContextPinType' }
+        ref_id:   { type: string, format: uuid }
+        mode:     { $ref: '#/components/schemas/ContextPinMode' }
+
+    ContextPinResponse:
+      type: object
+      required: [id, project_id, user_id, pin_type, ref_id, mode, created_at]
+      properties:
+        id:         { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        user_id:    { type: string, format: uuid }
+        pin_type:   { $ref: '#/components/schemas/ContextPinType' }
+        ref_id:     { type: string, format: uuid }
+        mode:       { $ref: '#/components/schemas/ContextPinMode' }
+        label:      { type: string }
+        created_at: { type: string, format: date-time }
+
+    # ── Workshop ──────────────────────────────────────────────────────────────
+    WorkshopMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:    { type: string, enum: [user, assistant] }
+        content: { type: string }
+
+    WorkshopSession:
+      type: object
+      required: [id, project_id, title, messages, created_at, updated_at]
+      properties:
+        id:         { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        title:      { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/WorkshopMessage' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateWorkshopSessionRequest:
+      type: object
+      properties:
+        title: { type: string }
+
+    UpdateWorkshopSessionRequest:
+      type: object
+      properties:
+        title: { type: string }
+
+    WorkshopChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message:       { type: string }
+        tools_enabled: { type: boolean }
+        max_rounds:    { type: integer }
+
+    # ── Research notes ────────────────────────────────────────────────────────
+    CreateResearchNoteRequest:
+      type: object
+      required: [title]
+      properties:
+        title:      { type: string }
+        body:       { type: string }
+        source_url: { type: string }
+        tags:       { type: array, items: { type: string } }
+
+    UpdateResearchNoteRequest:
+      type: object
+      properties:
+        title:      { type: string }
+        body:       { type: string }
+        source_url: { type: string }
+        tags:       { type: array, items: { type: string } }
+
+    ResearchNoteResponse:
+      type: object
+      required: [id, project_id, title, created_at, updated_at]
+      properties:
+        id:         { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        title:      { type: string }
+        body:       { type: string, nullable: true }
+        source_url: { type: string, nullable: true }
+        tags:       { type: array, items: { type: string } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    # ── Collaboration ─────────────────────────────────────────────────────────
+    CollaboratorRole:
+      type: string
+      enum: [coauthor, editor, reviewer]
+
+    InviteCollaboratorRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email: { type: string, format: email }
+        role:  { $ref: '#/components/schemas/CollaboratorRole' }
+
+    InvitePreviewResponse:
+      type: object
+      required: [project_title, invited_by, role]
+      properties:
+        project_title: { type: string }
+        invited_by:    { type: string }
+        role:          { $ref: '#/components/schemas/CollaboratorRole' }
+
+    PendingInviteResponse:
+      type: object
+      required: [id, project_id, email, role, expires_at, created_at]
+      properties:
+        id:         { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        email:      { type: string }
+        role:       { $ref: '#/components/schemas/CollaboratorRole' }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    CollaboratorResponse:
+      type: object
+      required: [user_id, display_name, email, role, joined_at]
+      properties:
+        user_id:      { type: string, format: uuid }
+        display_name: { type: string }
+        email:        { type: string }
+        role:         { $ref: '#/components/schemas/CollaboratorRole' }
+        branch_name:  { type: string }
+        joined_at:    { type: string, format: date-time }
+
+    # ── Merge requests ────────────────────────────────────────────────────────
+    MRStatus:
+      type: string
+      enum: [open, merged, rejected]
+
+    OpenMergeRequestRequest:
+      type: object
+      required: [title, from_branch, to_branch]
+      properties:
+        title:       { type: string }
+        description: { type: string }
+        from_branch: { type: string }
+        to_branch:   { type: string }
+
+    ResolveMergeRequestRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [merge, reject] }
+
+    MergeRequestResponse:
+      type: object
+      required: [id, project_id, title, from_branch, to_branch, status, created_at, updated_at]
+      properties:
+        id:             { type: string, format: uuid }
+        project_id:     { type: string, format: uuid }
+        title:          { type: string }
+        description:    { type: string, nullable: true }
+        from_branch:    { type: string }
+        to_branch:      { type: string }
+        status:         { $ref: '#/components/schemas/MRStatus' }
+        requester_name: { type: string, nullable: true }
+        merged_sha:     { type: string, nullable: true }
+        created_at:     { type: string, format: date-time }
+        updated_at:     { type: string, format: date-time }
+
+    SceneDiff:
+      type: object
+      required: [scene_id, scene_title, diff]
+      properties:
+        scene_id:    { type: string, format: uuid }
+        scene_title: { type: string }
+        diff:        { type: string, description: Unified diff text }
+
+    MRDiffResponse:
+      type: object
+      required: [merge_request_id, scene_diffs]
+      properties:
+        merge_request_id: { type: string, format: uuid }
+        scene_diffs:
+          type: array
+          items: { $ref: '#/components/schemas/SceneDiff' }
+
+    # ── Notifications ─────────────────────────────────────────────────────────
+    NotificationType:
+      type: string
+      enum: [mr_opened, mr_merged, mr_rejected, invite_accepted, collab_removed]
+
+    NotificationResponse:
+      type: object
+      required: [id, user_id, type, read, created_at]
+      properties:
+        id:         { type: string, format: uuid }
+        user_id:    { type: string, format: uuid }
+        type:       { $ref: '#/components/schemas/NotificationType' }
+        payload:    { type: object, nullable: true }
+        read:       { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    # ── Annotations ───────────────────────────────────────────────────────────
+    AnnotationType:
+      type: string
+      enum: [note, suggestion, question]
+
+    CreateAnnotationRequest:
+      type: object
+      required: [body, annotation_type, anchor_start, anchor_end]
+      properties:
+        body:            { type: string }
+        annotation_type: { $ref: '#/components/schemas/AnnotationType' }
+        anchor_start:    { type: integer }
+        anchor_end:      { type: integer }
+
+    UpdateAnnotationRequest:
+      type: object
+      properties:
+        body:     { type: string }
+        resolved: { type: boolean }
+
+    AnnotationResponse:
+      type: object
+      required: [id, scene_id, author_id, body, annotation_type, anchor_start, anchor_end, resolved, created_at]
+      properties:
+        id:              { type: string, format: uuid }
+        scene_id:        { type: string, format: uuid }
+        project_id:      { type: string, format: uuid }
+        author_id:       { type: string, format: uuid }
+        author_name:     { type: string }
+        body:            { type: string }
+        annotation_type: { $ref: '#/components/schemas/AnnotationType' }
+        anchor_start:    { type: integer }
+        anchor_end:      { type: integer }
+        resolved:        { type: boolean }
+        resolved_by:     { type: string, format: uuid, nullable: true }
+        created_at:      { type: string, format: date-time }
+        updated_at:      { type: string, format: date-time }
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Paths
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1905,3 +2340,996 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/AutolinkMatch' }
         "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ── Guide ────────────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/guide:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getGuideProgress
+      summary: Get guide wizard progress for a project
+      tags: [guide]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Guide steps with completion status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuideProgressResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/guide/{step}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: step, in: path, required: true, schema: { $ref: '#/components/schemas/GuideStepKey' } }
+    post:
+      operationId: saveGuideStep
+      summary: Save (draft) data for a guide step
+      tags: [guide]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveGuideStepRequest' }
+      responses:
+        "200":
+          description: Saved step state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuideStepResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/guide/{step}/complete:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: step, in: path, required: true, schema: { $ref: '#/components/schemas/GuideStepKey' } }
+    post:
+      operationId: completeGuideStep
+      summary: Mark a guide step as complete and apply its side effects
+      tags: [guide]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveGuideStepRequest' }
+      responses:
+        "200":
+          description: Completed step state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuideStepResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai-instructions:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAIInstructions
+      summary: Get the project's AI Story Bible
+      tags: [guide]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: AI instructions text.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AIInstructionsResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    put:
+      operationId: updateAIInstructions
+      summary: Save the project's AI Story Bible
+      tags: [guide]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAIInstructionsRequest' }
+      responses:
+        "200":
+          description: Updated AI instructions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AIInstructionsResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai-instructions/generate:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: generateAIInstructions
+      summary: Generate AI Story Bible from wiki and project data
+      tags: [guide]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Generated AI instructions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AIInstructionsResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ── Prompts ──────────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/prompts:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listPrompts
+      summary: List writing-style prompts for a project
+      tags: [prompts]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of prompts.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PromptResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createPrompt
+      summary: Create a writing-style prompt
+      tags: [prompts]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePromptRequest' }
+      responses:
+        "201":
+          description: Created prompt.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromptResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/prompts/export:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: exportPrompts
+      summary: Export all prompts as a portable JSON array
+      tags: [prompts]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: JSON array of prompt objects.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PromptResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/prompts/import:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: importPrompts
+      summary: Import a prompt array (upserts by name)
+      tags: [prompts]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: array, items: { $ref: '#/components/schemas/CreatePromptRequest' } }
+      responses:
+        "200":
+          description: Imported prompts.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PromptResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/prompts/{promptId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: promptId,  in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: updatePrompt
+      summary: Update a writing-style prompt
+      tags: [prompts]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePromptRequest' }
+      responses:
+        "200":
+          description: Updated prompt.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromptResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deletePrompt
+      summary: Delete a writing-style prompt
+      tags: [prompts]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Prompt deleted.
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Export ───────────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/export:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: startExport
+      summary: Start an export job (markdown streams immediately; epub/docx are async)
+      tags: [export]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExportRequest' }
+      responses:
+        "200":
+          description: Markdown export streamed as a zip file.
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        "202":
+          description: EPUB or DOCX job enqueued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportEnqueueResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    get:
+      operationId: listExportJobs
+      summary: List recent export jobs for a project
+      tags: [export]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Recent export jobs (up to 20).
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ExportJobResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/export/{jobId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: jobId,     in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getExportJob
+      summary: Poll an export job and retrieve a download URL when done
+      tags: [export]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Export job details (download_url populated when status=done).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJobResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── AI ───────────────────────────────────────────────────────────────────────
+
+  /ai/test-connection:
+    post:
+      operationId: testAIConnection
+      summary: Test whether any AI provider is reachable with the user's API keys
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Connection test result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestConnectionResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai/complete:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiComplete
+      summary: Stream a scene continuation or beat expansion as SSE
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: X-NexusTale-Branch, in: header, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteRequest' }
+      responses:
+        "200":
+          description: Server-Sent Events stream of text tokens.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai/chat:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiChat
+      summary: Stream a multi-turn Nexus chat response as SSE
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: X-NexusTale-Branch, in: header, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatRequest' }
+      responses:
+        "200":
+          description: Server-Sent Events stream of text tokens.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai/summarize:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiSummarize
+      summary: Summarize a block of text or a scene
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SummarizeRequest' }
+      responses:
+        "200":
+          description: AI-generated summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SummarizeResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai/usage:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAIUsage
+      summary: Get AI token and cost usage summary for a project
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Usage summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AIUsageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai/beat-history:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getBeatHistory
+      summary: Get recent beat prompts for the project (for re-use suggestions)
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Recent beat history entries.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/BeatHistoryEntry' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai/context-preview:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getContextPreview
+      summary: Preview the AI context window that will be sent with the next request
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: X-NexusTale-Branch, in: header, schema: { type: string } }
+      responses:
+        "200":
+          description: Rendered context string.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  context: { type: string }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai/context-pins:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listContextPins
+      summary: List context pins for a project
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of context pins.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ContextPinResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createContextPin
+      summary: Pin an entity, chapter, scene, or research note to the AI context
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateContextPinRequest' }
+      responses:
+        "201":
+          description: Created context pin.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContextPinResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai/context-pins/{pinId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: pinId,     in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: deleteContextPin
+      summary: Remove a context pin
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Pin removed.
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/chapters/{chapterId}/summary:
+    parameters:
+      - { name: projectId,  in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: chapterId,  in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getChapterSummary
+      summary: Get the AI-generated summary for a chapter on the active branch
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: X-NexusTale-Branch, in: header, schema: { type: string } }
+      responses:
+        "200":
+          description: Chapter summary (summary may be null if not yet generated).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChapterSummaryResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/chapters/{chapterId}/summarize:
+    parameters:
+      - { name: projectId,  in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: chapterId,  in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: regenerateChapterSummary
+      summary: Trigger an immediate chapter summary regeneration
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: X-NexusTale-Branch, in: header, schema: { type: string } }
+      responses:
+        "200":
+          description: Freshly generated chapter summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChapterSummaryResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ── Workshop ─────────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/ai/workshop:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listWorkshopSessions
+      summary: List workshop sessions for a project
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of workshop sessions.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/WorkshopSession' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createWorkshopSession
+      summary: Create a new workshop session
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateWorkshopSessionRequest' }
+      responses:
+        "201":
+          description: Created workshop session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkshopSession' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/ai/workshop/{sid}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: sid,       in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getWorkshopSession
+      summary: Get a workshop session with its full message history
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Workshop session with messages.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkshopSession' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    put:
+      operationId: updateWorkshopSession
+      summary: Rename a workshop session
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateWorkshopSessionRequest' }
+      responses:
+        "200":
+          description: Updated workshop session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkshopSession' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteWorkshopSession
+      summary: Delete a workshop session
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Session deleted.
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/ai/workshop/{sid}/chat:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: sid,       in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: workshopChat
+      summary: Send a message in a workshop session (SSE stream)
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkshopChatRequest' }
+      responses:
+        "200":
+          description: Server-Sent Events stream. Each event is a text token or a tool_call/tool_result JSON event.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ── Research notes ────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/research-notes:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listResearchNotes
+      summary: List research notes for a project
+      tags: [research]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of research notes.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ResearchNoteResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createResearchNote
+      summary: Create a research note
+      tags: [research]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateResearchNoteRequest' }
+      responses:
+        "201":
+          description: Created research note.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResearchNoteResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/research-notes/{noteId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: noteId,    in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getResearchNote
+      summary: Get a research note
+      tags: [research]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Research note.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResearchNoteResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateResearchNote
+      summary: Update a research note
+      tags: [research]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateResearchNoteRequest' }
+      responses:
+        "200":
+          description: Updated research note.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResearchNoteResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteResearchNote
+      summary: Delete a research note
+      tags: [research]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Note deleted.
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Collaboration ─────────────────────────────────────────────────────────────
+
+  /invites/{token}:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getInvitePreview
+      summary: Get a public preview of an invite link (no auth required)
+      tags: [collaboration]
+      responses:
+        "200":
+          description: Invite preview showing project and role.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitePreviewResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /invites/{token}/accept:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: acceptInvite
+      summary: Accept a collaboration invite (creates clone and collaborator record)
+      tags: [collaboration]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Accepted — returns the new collaborator record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CollaboratorResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/invites:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listPendingInvites
+      summary: List pending (unaccepted, non-expired) invites for a project
+      tags: [collaboration]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Pending invites.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PendingInviteResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: inviteCollaborator
+      summary: Send a collaboration invite by email
+      tags: [collaboration]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteCollaboratorRequest' }
+      responses:
+        "201":
+          description: Invite created — returns the invite token URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  invite_url: { type: string }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/collaborators:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listCollaborators
+      summary: List accepted collaborators for a project
+      tags: [collaboration]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of collaborators.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/CollaboratorResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/collaborators/{userId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: userId,    in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: removeCollaborator
+      summary: Remove a collaborator from a project
+      tags: [collaboration]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Collaborator removed.
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Merge requests ────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/merge-requests:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listMergeRequests
+      summary: List merge requests for a project
+      tags: [mergeRequests]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of merge requests.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/MergeRequestResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: openMergeRequest
+      summary: Open a merge request from a collaborator branch into canon
+      tags: [mergeRequests]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenMergeRequestRequest' }
+      responses:
+        "201":
+          description: Opened merge request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MergeRequestResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/merge-requests/{mid}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: mid,       in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getMergeRequest
+      summary: Get a merge request
+      tags: [mergeRequests]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Merge request details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MergeRequestResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    put:
+      operationId: resolveMergeRequest
+      summary: Merge or reject a merge request (owner only)
+      tags: [mergeRequests]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResolveMergeRequestRequest' }
+      responses:
+        "200":
+          description: Updated merge request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MergeRequestResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/merge-requests/{mid}/diff:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: mid,       in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getMergeRequestDiff
+      summary: Get the per-scene diff for a merge request
+      tags: [mergeRequests]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Scene-level diffs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MRDiffResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Notifications ─────────────────────────────────────────────────────────────
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      summary: List notifications for the authenticated user
+      tags: [notifications]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of notifications.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/NotificationResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /notifications/read-all:
+    put:
+      operationId: markAllNotificationsRead
+      summary: Mark all notifications as read
+      tags: [notifications]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: All notifications marked read.
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /notifications/{notificationId}/read:
+    parameters:
+      - { name: notificationId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: markNotificationRead
+      summary: Mark a single notification as read
+      tags: [notifications]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Notification marked read.
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Annotations ───────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/scenes/{sceneId}/annotations:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: sceneId,   in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAnnotations
+      summary: List annotations for a scene
+      tags: [annotations]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of annotations.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/AnnotationResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createAnnotation
+      summary: Create an annotation on a scene
+      tags: [annotations]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAnnotationRequest' }
+      responses:
+        "201":
+          description: Created annotation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnnotationResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/scenes/{sceneId}/annotations/{annotationId}:
+    parameters:
+      - { name: projectId,    in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: sceneId,      in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: annotationId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: updateAnnotation
+      summary: Update an annotation body or mark it resolved
+      tags: [annotations]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAnnotationRequest' }
+      responses:
+        "200":
+          description: Updated annotation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnnotationResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteAnnotation
+      summary: Delete an annotation
+      tags: [annotations]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Annotation deleted.
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }

@@ -54,6 +54,8 @@ function extractTexts(unifiedDiff: string): { canon: string; coauthor: string } 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 20
+
 export default function ProseDiffViewer({ mr, token, projectId, onClose, onMerged }: Props) {
   const [diffData, setDiffData] = useState<MRDiffResponse | null>(null)
   const [loading, setLoading]   = useState(true)
@@ -61,6 +63,7 @@ export default function ProseDiffViewer({ mr, token, projectId, onClose, onMerge
   const [resolutions, setResolutions] = useState<Map<string, SceneResolution>>(new Map())
   const [merging, setMerging]   = useState(false)
   const [mergeError, setMergeError] = useState<string | null>(null)
+  const [page, setPage]         = useState(0)
 
   useEffect(() => {
     api.mergeRequests.getDiff(token, projectId, mr.id)
@@ -69,10 +72,12 @@ export default function ProseDiffViewer({ mr, token, projectId, onClose, onMerge
       .finally(() => setLoading(false))
   }, [token, projectId, mr.id])
 
-  const sceneDiffs  = diffData?.scene_diffs ?? []
-  const totalScenes = sceneDiffs.length
+  const sceneDiffs   = diffData?.scene_diffs ?? []
+  const totalScenes  = sceneDiffs.length
+  const totalPages   = Math.max(1, Math.ceil(totalScenes / PAGE_SIZE))
+  const pagedDiffs   = sceneDiffs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
   const resolvedCount = resolutions.size
-  const allResolved = totalScenes === 0 || resolvedCount === totalScenes
+  const allResolved  = totalScenes === 0 || resolvedCount === totalScenes
 
   function setResolution(key: string, res: SceneResolution) {
     setResolutions(prev => new Map(prev).set(key, res))
@@ -160,8 +165,8 @@ export default function ProseDiffViewer({ mr, token, projectId, onClose, onMerge
               </span>
             </div>
 
-            {/* Per-scene diff cards */}
-            {sceneDiffs.map(sd => (
+            {/* Per-scene diff cards (paginated) */}
+            {pagedDiffs.map(sd => (
               <SceneDiffCard
                 key={sdKey(sd)}
                 sd={sd}
@@ -169,6 +174,28 @@ export default function ProseDiffViewer({ mr, token, projectId, onClose, onMerge
                 onResolve={res => setResolution(sdKey(sd), res)}
               />
             ))}
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  disabled={page === 0}
+                  onClick={() => setPage(p => p - 1)}
+                  className="px-3 py-1.5 rounded text-xs bg-brand-border/40 text-brand-muted hover:bg-brand-border/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  ← Prev
+                </button>
+                <span className="text-xs text-brand-muted">
+                  Page {page + 1} of {totalPages}
+                </span>
+                <button
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage(p => p + 1)}
+                  className="px-3 py-1.5 rounded text-xs bg-brand-border/40 text-brand-muted hover:bg-brand-border/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

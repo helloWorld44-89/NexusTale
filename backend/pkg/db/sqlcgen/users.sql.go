@@ -154,6 +154,91 @@ func (q *Queries) ListProjectGitPaths(ctx context.Context, ownerID uuid.UUID) ([
 	return items, nil
 }
 
+const listUserCollaboratorClonePaths = `-- name: ListUserCollaboratorClonePaths :many
+SELECT clone_path
+FROM project_collaborators
+WHERE user_id = $1
+  AND clone_path IS NOT NULL
+  AND clone_path != ''
+`
+
+func (q *Queries) ListUserCollaboratorClonePaths(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listUserCollaboratorClonePaths, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var clone_path string
+		if err := rows.Scan(&clone_path); err != nil {
+			return nil, err
+		}
+		items = append(items, clone_path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserExportMinioKeys = `-- name: ListUserExportMinioKeys :many
+SELECT minio_key
+FROM export_jobs
+WHERE user_id = $1
+  AND minio_key IS NOT NULL
+  AND minio_key != ''
+`
+
+func (q *Queries) ListUserExportMinioKeys(ctx context.Context, userID uuid.UUID) ([]pgtype.Text, error) {
+	rows, err := q.db.Query(ctx, listUserExportMinioKeys, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Text{}
+	for rows.Next() {
+		var minio_key pgtype.Text
+		if err := rows.Scan(&minio_key); err != nil {
+			return nil, err
+		}
+		items = append(items, minio_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserWikiImageKeys = `-- name: ListUserWikiImageKeys :many
+SELECT we.image_key
+FROM wiki_entities we
+JOIN projects p ON p.id = we.project_id
+WHERE p.owner_id = $1
+  AND we.image_key IS NOT NULL
+  AND we.image_key != ''
+`
+
+func (q *Queries) ListUserWikiImageKeys(ctx context.Context, ownerID uuid.UUID) ([]pgtype.Text, error) {
+	rows, err := q.db.Query(ctx, listUserWikiImageKeys, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Text{}
+	for rows.Next() {
+		var image_key pgtype.Text
+		if err := rows.Scan(&image_key); err != nil {
+			return nil, err
+		}
+		items = append(items, image_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
 SET display_name = COALESCE($2, display_name),

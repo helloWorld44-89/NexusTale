@@ -29,6 +29,11 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const abortRef                  = useRef<AbortController | null>(null)
 
+  // Abort any in-flight stream when the component unmounts.
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
   // Fetch beat history once when beat mode is opened for the first time.
   useEffect(() => {
     if (!open || mode !== 'beat' || historyLoaded) return

@@ -26,3 +26,25 @@ DELETE FROM users WHERE id = $1;
 
 -- name: ListProjectGitPaths :many
 SELECT git_repo_path FROM projects WHERE owner_id = $1 AND git_repo_path != '';
+
+-- name: ListUserWikiImageKeys :many
+SELECT we.image_key
+FROM wiki_entities we
+JOIN projects p ON p.id = we.project_id
+WHERE p.owner_id = $1
+  AND we.image_key IS NOT NULL
+  AND we.image_key != '';
+
+-- name: ListUserExportMinioKeys :many
+SELECT minio_key
+FROM export_jobs
+WHERE user_id = $1
+  AND minio_key IS NOT NULL
+  AND minio_key != '';
+
+-- name: ListUserCollaboratorClonePaths :many
+SELECT clone_path
+FROM project_collaborators
+WHERE user_id = $1
+  AND clone_path IS NOT NULL
+  AND clone_path != '';

@@ -55,6 +55,11 @@ export default function ChatBar({ token, projectId, sceneId, branch, onInsertToS
       })
   }, [token])
 
+  // Abort any in-flight stream when the component unmounts.
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
   // Scroll to bottom whenever messages change.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
