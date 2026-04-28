@@ -59,6 +59,9 @@ jobs:
           sqlc generate
           git diff --exit-code pkg/db/sqlcgen/
 
+      - name: Prune Docker build cache and unused images
+        run: docker system prune -af
+
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
@@ -81,10 +84,6 @@ jobs:
             .
           docker push ghcr.io/helloworld44-89/nexustale/frontend:dev
           docker push ghcr.io/helloworld44-89/nexustale/frontend:${{ github.sha }}
-
-      - name: Prune Docker images
-        if: always()
-        run: docker image prune -af
 
   # ── Job 2: Deploy via Ansible ───────────────────────────────────────────────
   deploy:
