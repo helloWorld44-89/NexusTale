@@ -18,6 +18,16 @@ function SunIcon() {
   )
 }
 
+function InfoIcon() {
+  return (
+    <svg className="w-5 h-5 shrink-0 text-brand-muted group-hover:text-brand-cyan transition-colors" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="10" r="8" />
+      <path d="M10 9v5" />
+      <circle cx="10" cy="6.5" r="0.5" fill="currentColor" />
+    </svg>
+  )
+}
+
 function GitHubIcon() {
   return (
     <svg className="w-5 h-5 shrink-0 text-brand-muted group-hover:text-brand-cyan transition-colors" viewBox="0 0 20 20" fill="currentColor">
@@ -460,22 +470,38 @@ export default function Settings() {
           <p className="text-sm text-brand-text-muted mb-4">
             NexusTale is in early alpha. Bug reports and feature ideas help a lot.
           </p>
-          <a
-            href="https://github.com/helloWorld44-89/NexusTale/issues"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-3 border border-brand-border rounded-xl px-5 py-4 bg-brand-bg-card hover:border-brand-cyan/40 transition-colors group"
-          >
-            <GitHubIcon />
-            <div>
-              <p className="text-sm font-medium text-brand-text group-hover:text-brand-cyan transition-colors">
-                Open a GitHub issue
-              </p>
-              <p className="text-xs text-brand-text-muted mt-0.5">
-                Report bugs, request features, or share feedback
-              </p>
-            </div>
-          </a>
+          <div className="space-y-3">
+            <a
+              href="https://github.com/helloWorld44-89/NexusTale/issues"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-3 border border-brand-border rounded-xl px-5 py-4 bg-brand-bg-card hover:border-brand-cyan/40 transition-colors group"
+            >
+              <GitHubIcon />
+              <div>
+                <p className="text-sm font-medium text-brand-text group-hover:text-brand-cyan transition-colors">
+                  Open a GitHub issue
+                </p>
+                <p className="text-xs text-brand-text-muted mt-0.5">
+                  Report bugs, request features, or share feedback
+                </p>
+              </div>
+            </a>
+            <Link
+              to="/about"
+              className="flex items-center gap-3 border border-brand-border rounded-xl px-5 py-4 bg-brand-bg-card hover:border-brand-cyan/40 transition-colors group"
+            >
+              <InfoIcon />
+              <div>
+                <p className="text-sm font-medium text-brand-text group-hover:text-brand-cyan transition-colors">
+                  Known limitations
+                </p>
+                <p className="text-xs text-brand-text-muted mt-0.5">
+                  What to expect during the alpha period
+                </p>
+              </div>
+            </Link>
+          </div>
         </section>
 
         {/* Danger Zone */}

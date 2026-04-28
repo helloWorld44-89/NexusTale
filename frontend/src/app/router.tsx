@@ -9,6 +9,7 @@ import Guide from '@/pages/Guide'
 import WikiHub from '@/pages/WikiHub'
 import Settings from '@/pages/Settings'
 import InviteAccept from '@/pages/InviteAccept'
+import About from '@/pages/About'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -74,6 +75,8 @@ export function AppRouter() {
           </ProtectedRoute>
         }
       />
+
+      <Route path="/about" element={<About />} />
 
       {/* Invite accept — works logged in or out; page handles both states */}
       <Route path="/invites/:token" element={<InviteAccept />} />
