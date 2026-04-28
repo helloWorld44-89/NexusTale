@@ -129,6 +129,17 @@ export default function TopBar({
           </span>
         )}
 
+        {/* Feedback */}
+        <a
+          href="https://github.com/helloWorld44-89/NexusTale/issues"
+          target="_blank"
+          rel="noreferrer"
+          title="Report a bug or give feedback"
+          className="p-1.5 rounded text-brand-muted hover:text-brand-text hover:bg-brand-border/40 transition-colors"
+        >
+          <FeedbackIcon />
+        </a>
+
         {/* Settings */}
         <Link
           to="/settings"
@@ -230,6 +241,16 @@ function FocusIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M7 3H3v4M13 3h4v4M7 17H3v-4M13 17h4v-4" />
+    </svg>
+  )
+}
+
+function FeedbackIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="10" r="8" />
+      <path d="M10 6v5" />
+      <circle cx="10" cy="14" r="0.5" fill="currentColor" />
     </svg>
   )
 }
