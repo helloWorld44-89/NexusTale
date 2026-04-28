@@ -18,6 +18,8 @@
 #
 # Optional extra-vars (TLS — leave unset to deploy HTTP-only):
 #   nexustale_domain      — public domain name (e.g. nexustale.example.com)
+#                           When set: SERVER_MODE=release, ALLOWEDORIGIN=https://<domain>
+#                           When unset: SERVER_MODE=debug, ALLOWEDORIGIN=* (plain-HTTP staging)
 #   nexustale_alert_email — email for Let's Encrypt expiry notices
 
 - name: Deploy NexusTale to dev VM
@@ -53,7 +55,8 @@
       ansible.builtin.copy:
         content: |
           IMAGE_TAG={{ image_tag }}
-          NEXUSTALE_SERVER_MODE=release
+          NEXUSTALE_SERVER_MODE={{ 'release' if nexustale_domain | length > 0 else 'debug' }}
+          NEXUSTALE_SERVER_ALLOWEDORIGIN={{ 'https://' + nexustale_domain if nexustale_domain | length > 0 else '*' }}
           NEXUSTALE_DB_PASSWORD={{ nexustale_db_password }}
           NEXUSTALE_AUTH_JWTSECRET={{ nexustale_jwt_secret }}
           NEXUSTALE_ENCRYPTION_KEY={{ nexustale_encryption_key }}
