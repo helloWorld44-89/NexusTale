@@ -168,6 +168,23 @@
           && find /opt/backups/nexustale/repos -name "*.tar.gz" -mtime +7 -delete
 
 
+    - name: Set up healthz uptime monitor cron
+      ansible.builtin.cron:
+        name: "nexustale healthz monitor"
+        minute: "*/5"
+        job: >-
+          if curl -sf --max-time 5 http://localhost:8080/healthz > /dev/null; then
+            rm -f /tmp/nexustale_healthz_fail;
+          else
+            echo "$(date)" >> /tmp/nexustale_healthz_fail;
+            FAILS=$(wc -l < /tmp/nexustale_healthz_fail);
+            if [ "$FAILS" -ge 2 ]; then
+              echo "NexusTale /healthz failed ${FAILS} consecutive times on $(hostname) at $(date)" |
+              mail -s "NexusTale DOWN" {{ nexustale_alert_email }};
+            fi;
+          fi
+
+
     - name: Set up disk usage alert cron
       ansible.builtin.cron:
         name: "nexustale disk alert"
