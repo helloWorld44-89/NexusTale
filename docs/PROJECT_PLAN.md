@@ -788,8 +788,8 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - [ ] **P0** All P0 code review items resolved
 - [ ] **P0** All P0 security review items resolved
 - [x] **P1** `govulncheck` + `npm audit` clean
-- [ ] **P1** `npx tsc --noEmit` and `go build ./...` clean on the release commit
-- [ ] Full smoke test on alpha env: register → guide wizard → write scene → Chronicle → wiki entity → Markdown export → invite collaborator → open MR → resolve → merge
+- [x] **P1** `npx tsc --noEmit` and `go build ./...` clean on the release commit
+- [x] Full smoke test on alpha env: register → guide wizard → write scene → Chronicle → wiki entity → Markdown export → invite collaborator → open MR → resolve → merge
 
 **Alpha UX / onboarding**
 - No Go stack traces or raw DB errors in any API response (`apperror` messages audited)
