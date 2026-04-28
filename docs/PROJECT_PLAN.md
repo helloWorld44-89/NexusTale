@@ -703,8 +703,8 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 #### Security review
 
 **Auth & secrets**
-- [ ] **P0** JWT secret + encryption key rotated to ≥32-byte random values in prod (not dev defaults) — `config.ValidateProd()` exits on startup if defaults detected in release mode
-- [ ] **P0** MinIO root credentials changed from defaults — `config.ValidateProd()` rejects defaults in release mode
+- [x] **P0** JWT secret + encryption key rotated to ≥32-byte random values in prod (not dev defaults) — `config.ValidateProd()` exits on startup if defaults detected in release mode
+- [x] **P0** MinIO root credentials changed from defaults — `config.ValidateProd()` rejects defaults in release mode
 - [x] **P0** CORS `AllowOrigins` locked to the app domain, not `*`, in prod Gin config — `corsMiddleware` + `NEXUSTALE_SERVER_ALLOWEDORIGIN`
 - [ ] **P0** TLS on all external traffic — nginx terminates (Let's Encrypt / certbot); HSTS header set
 - [x] **P1** Refresh token revocation: tokens invalidated on use (rotation), not only on logout — `Refresh()` already calls `DeleteRefreshToken` before issuing new pair; audited clean
@@ -722,14 +722,14 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - [x] **P0** Only project owner can approve/reject/merge MRs — `ResolveMergeRequest` checks `p.OwnerID != callerID` (verified correct)
 - [x] **P0** Only project owner can resolve annotations — `Resolve` in `annotations/service.go` now checks `p.OwnerID != resolverID`
 - [x] **P1** `repoPathForUser` cannot be bypassed via an arbitrary `userID` parameter — all callers pass `auth.GetUserID(c)` / `claims.UserID` from JWT; path sourced from DB columns set at creation time
-- [ ] **P1** `DELETE /users/me` cascade: git repos + MinIO objects cleaned from disk after DB delete; no orphan files
+- [x] **P1** `DELETE /users/me` cascade: git repos + MinIO objects cleaned from disk after DB delete; no orphan files — `auth.Service.DeleteMe` collects repo/clone paths + wiki/export MinIO keys pre-cascade, removes best-effort after `DeleteUser`
 - [ ] **P2** Rate limiting on `POST /auth/login` and `POST /auth/register` (brute-force + account enumeration)
 - [ ] **P2** Rate limiting on AI endpoints (`/ai/complete`, `/ai/chat`) — cost-abuse protection
 
 **Dependencies**
-- [ ] **P1** `govulncheck ./...` — zero High/Critical CVEs in Go dependencies
-- [ ] **P1** `npm audit --audit-level=high` — zero High/Critical CVEs; `diff-match-patch` and `d3` are new additions to check
-- [ ] **P1** Audit `go-git` version for known path traversal CVEs
+- [x] **P1** `govulncheck ./...` — zero High/Critical CVEs in Go dependencies; 2 imported vulns not called
+- [x] **P1** `npm audit --audit-level=high` — zero High/Critical CVEs; 2 moderate in esbuild dev server (prod build unaffected)
+- [x] **P1** Audit `go-git` version for known path traversal CVEs — upgraded to v5.17.1 in security hardening; govulncheck clean
 
 #### Code review
 
@@ -739,15 +739,15 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - [x] **P1** Git operations: no per-repo concurrency lock — `GitService` now holds a `map[string]*sync.Mutex` (guarded by a top-level `sync.Mutex`); `Chronicle`, `Diverge`, `TravelTo`, `Canonize`, `FetchBranchFromClone` each acquire the per-repo lock before touching the working tree
 - [x] **P1** All handlers route errors through `handleError(c, err)` — all 12 handler packages now log via `slog.Error` in the fallback; direct `c.JSON(500)` in `wiki` upload handler also fixed
 - [x] **P1** SSE goroutines: `pw.Close()` called on every exit path — audited; all three SSE pipes (`Complete`, `Chat`, `WorkshopChat`) use `defer pw.Close()`
-- [ ] **P1** `buildPinnedContext` / `appendPinnedNote` (full mode): no length cap — add a per-section token estimate and hard cap (~2000 tokens per pin) to avoid blowing model context windows
-- [ ] **P2** `numericToFloat64()`: verify nil handling when SUM returns NULL over an empty set
+- [x] **P1** `buildPinnedContext` / `appendPinnedNote` (full mode): no length cap — `pinnedContentLimit = 2000` rune cap applied in `appendPinnedChapter`, `appendPinnedScene`, `appendPinnedNote`
+- [x] **P2** `numericToFloat64()`: verify nil handling when SUM returns NULL over an empty set — nil interface fails type assertion → returns 0; Numeric with Valid=false → Float64Value returns invalid → returns 0; both safe
 - [ ] **P2** Request handlers must not use `context.Background()` — all queries should propagate the Gin request context for timeout/cancellation
 
 **Frontend**
 - [x] **P0** React error boundaries — `ErrorBoundary.tsx` created; all major Editor panels wrapped with label + "Try again" reset
-- [ ] **P1** `ScribeEditor` navigate-away: autosave debounce (1500ms) means the last edit can be lost on fast navigation; flush pending save on scene ID change or `beforeunload`
-- [ ] **P1** SSE cleanup: `EventSource` closed in `useEffect` cleanup in `ChatBar`, `WorkshopPanel`, `BeatInput` — a stale connection replays events on re-mount
-- [ ] **P1** `ProseDiffViewer`: all `SceneDiffCard` components rendered synchronously — large MRs (100+ scenes) will freeze the UI; add virtualization or paginated scene list
+- [x] **P1** `ScribeEditor` navigate-away: autosave debounce (1500ms) means the last edit can be lost on fast navigation; flush pending save on scene ID change or `beforeunload` — `pendingSaveRef` fires on `selectedSceneId` change and `beforeunload`
+- [x] **P1** SSE cleanup: `EventSource` closed in `useEffect` cleanup in `ChatBar`, `WorkshopPanel`, `BeatInput` — a stale connection replays events on re-mount — `AbortController` cleanup added to all three
+- [x] **P1** `ProseDiffViewer`: all `SceneDiffCard` components rendered synchronously — large MRs (100+ scenes) will freeze the UI; add virtualization or paginated scene list — 20-per-page pagination added
 - [ ] **P2** Access token in `localStorage` — evaluate moving to in-memory module-scope variable to reduce XSS exposure (refresh token already handles persistence across reloads)
 - [ ] **P2** `api.ts` fetch wrapper: assert request URL is relative or matches configured base URL before appending the Authorization header
 
@@ -777,17 +777,17 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 **Environment checklist**
 - [ ] **P0** TLS certificate provisioned for the alpha domain (certbot added to Ansible deploy playbook)
 - [ ] **P0** All P0 security items resolved
-- [ ] **P0** Postgres daily backup: `pg_dump` cron → compressed dump → off-host storage (7-day retention)
-- [ ] **P0** Git repo backup: nightly tar of `repos/` alongside DB dump
-- [ ] **P1** Structured log capture: Docker `json-file` driver with `max-size=50m`, `max-file=5`
-- [ ] **P1** Uptime monitor on `GET /healthz` with email alert on 2 consecutive failures
-- [ ] **P1** Disk usage alert at 70% — `repos/` and MinIO grow unboundedly
+- [x] **P0** Postgres daily backup: `pg_dump` cron → compressed dump → off-host storage (7-day retention) — Ansible cron at 02:00; 7-day rotation
+- [x] **P0** Git repo backup: nightly tar of `repos/` alongside DB dump — Ansible cron at 02:15
+- [x] **P1** Structured log capture: Docker `json-file` driver with `max-size=50m`, `max-file=5` — `x-logging` anchor in `docker-compose.deploy.yml` applied to all services
+- [x] **P1** Uptime monitor on `GET /healthz` with email alert on 2 consecutive failures — Ansible cron every 5 min; failure counter in `/tmp/nexustale_healthz_fail`; mails on ≥2 failures
+- [x] **P1** Disk usage alert at 70% — `repos/` and MinIO grow unboundedly — Ansible cron every 4 hours; mails `nexustale_alert_email`
 - [ ] **P2** Admin AI usage view: `ai_usage` table queryable via psql or a simple Grafana panel
 
 **Pre-launch code checklist**
 - [ ] **P0** All P0 code review items resolved
 - [ ] **P0** All P0 security review items resolved
-- [ ] **P1** `govulncheck` + `npm audit` clean
+- [x] **P1** `govulncheck` + `npm audit` clean
 - [ ] **P1** `npx tsc --noEmit` and `go build ./...` clean on the release commit
 - [ ] Full smoke test on alpha env: register → guide wizard → write scene → Chronicle → wiki entity → Markdown export → invite collaborator → open MR → resolve → merge
 
