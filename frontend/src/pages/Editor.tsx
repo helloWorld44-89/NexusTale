@@ -63,6 +63,10 @@ export default function Editor() {
   const [refreshKey,         setRefreshKey]         = useState(0)
   const [pendingAnnotation,  setPendingAnnotation]  = useState<Annotation | null>(null)
   const [annotationCount,    setAnnotationCount]    = useState(0)
+  // Track which panels have ever been opened so we can keep them mounted
+  // (CSS hidden) instead of unmounting — preserves conversation history in
+  // ChatBar and WorkshopPanel across panel switches.
+  const [panelsMounted,      setPanelsMounted]      = useState<Set<LeftPanel>>(() => new Set(['chat']))
 
   const saveTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSaveRef  = useRef<(() => void) | null>(null)
@@ -258,6 +262,12 @@ export default function Editor() {
 
   const toggleLeftPanel = useCallback((panel: LeftPanel) => {
     setLeftPanel((prev) => (prev === panel ? 'none' : panel))
+    setPanelsMounted((prev) => {
+      if (prev.has(panel)) return prev
+      const next = new Set(prev)
+      next.add(panel)
+      return next
+    })
   }, [])
 
   // ── Derived display values ──────────────────────────────────────────────────
@@ -355,16 +365,18 @@ export default function Editor() {
             annotationCount={annotationCount}
           />
         )}
-        {!focusMode && leftPanel === 'chat' && projectId && accessToken && (
-          <ErrorBoundary label="Nexus chat">
-            <ChatBar
-              token={accessToken}
-              projectId={projectId}
-              sceneId={selectedSceneId ?? undefined}
-              branch={currentBranch}
-              onInsertToScene={activeScene ? handleInsertToScene : undefined}
-            />
-          </ErrorBoundary>
+        {!focusMode && panelsMounted.has('chat') && projectId && accessToken && (
+          <div style={{ display: leftPanel === 'chat' ? 'flex' : 'none' }}>
+            <ErrorBoundary label="Nexus chat">
+              <ChatBar
+                token={accessToken}
+                projectId={projectId}
+                sceneId={selectedSceneId ?? undefined}
+                branch={currentBranch}
+                onInsertToScene={activeScene ? handleInsertToScene : undefined}
+              />
+            </ErrorBoundary>
+          </div>
         )}
         {!focusMode && leftPanel === 'context' && projectId && accessToken && (
           <div className="w-72 shrink-0 flex flex-col border-r border-brand-border bg-brand-bg overflow-hidden">
@@ -373,18 +385,20 @@ export default function Editor() {
             </ErrorBoundary>
           </div>
         )}
-        {!focusMode && leftPanel === 'workshop' && projectId && accessToken && (
-          <ErrorBoundary label="Workshop">
-            <WorkshopPanel
-              token={accessToken}
-              projectId={projectId}
-              sceneId={selectedSceneId ?? undefined}
-              branch={currentBranch}
-              onInsertToScene={activeScene ? handleInsertToScene : undefined}
-              onToolWrite={handleToolWrite}
-              onStructureChange={handleTreeRefresh}
-            />
-          </ErrorBoundary>
+        {!focusMode && panelsMounted.has('workshop') && projectId && accessToken && (
+          <div style={{ display: leftPanel === 'workshop' ? 'flex' : 'none' }}>
+            <ErrorBoundary label="Workshop">
+              <WorkshopPanel
+                token={accessToken}
+                projectId={projectId}
+                sceneId={selectedSceneId ?? undefined}
+                branch={currentBranch}
+                onInsertToScene={activeScene ? handleInsertToScene : undefined}
+                onToolWrite={handleToolWrite}
+                onStructureChange={handleTreeRefresh}
+              />
+            </ErrorBoundary>
+          </div>
         )}
         {!focusMode && leftPanel === 'git' && projectId && accessToken && (
           <ErrorBoundary label="Chronicle panel">

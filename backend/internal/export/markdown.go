@@ -14,7 +14,7 @@ import (
 // WriteMarkdownZip streams a project's chapters and scenes as a zip of Markdown files.
 // One .md file per chapter: "01-chapter-title.md", containing all scenes in order.
 // Writes directly to w — no temp file is needed.
-func WriteMarkdownZip(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUID, w io.Writer) error {
+func WriteMarkdownZip(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUID, repoPath string, w io.Writer) error {
 	chapters, err := queries.ListChaptersByProject(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("list chapters: %w", err)
@@ -38,11 +38,12 @@ func WriteMarkdownZip(ctx context.Context, queries *sqlcgen.Queries, projectID u
 		}
 
 		for _, sc := range scenes {
+			content := sceneFileContent(repoPath, ch.ID, sc.ID, "")
 			if sc.Title != "" {
 				fmt.Fprintf(fw, "## %s\n\n", sc.Title)
 			}
-			if sc.Content != "" {
-				fmt.Fprintf(fw, "%s\n\n", sc.Content)
+			if content != "" {
+				fmt.Fprintf(fw, "%s\n\n", content)
 			}
 		}
 	}

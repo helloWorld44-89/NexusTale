@@ -39,10 +39,14 @@ export default function ChatBar({ token, projectId, sceneId, branch, onInsertToS
   const [connected, setConnected]   = useState<boolean | null>(null) // null = checking
   const bottomRef  = useRef<HTMLDivElement>(null)
   const abortRef   = useRef<AbortController | null>(null)
+  // Guard: run the connection check exactly once. Without this, token rotation
+  // (silent access token refresh) would re-trigger the effect and wipe messages.
+  const initRef = useRef(false)
 
-  // On mount, check if any API keys are configured; show intro only if yes.
+  // On first mount, check if any API keys are configured; show intro only if yes.
   useEffect(() => {
-    if (!token) return
+    if (!token || initRef.current) return
+    initRef.current = true
     api.apiKeys.list(token)
       .then((keys) => {
         const hasKeys = keys.length > 0

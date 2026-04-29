@@ -988,4 +988,13 @@ export const api = {
     delete: (token: string, projectId: string, sceneId: string, annotationId: string) =>
       request<void>('DELETE', `/projects/${projectId}/scenes/${sceneId}/annotations/${annotationId}`, undefined, token),
   },
+
+  waitlist: {
+    join: (email: string, whatTheyWrite: string) =>
+      request<{ id: string; email: string; what_they_write: string; created_at: string }>(
+        'POST',
+        '/waitlist',
+        { email, what_they_write: whatTheyWrite },
+      ),
+  },
 }

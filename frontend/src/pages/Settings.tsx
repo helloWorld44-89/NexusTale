@@ -6,7 +6,7 @@ import { useThemeStore } from '@/app/store/themeStore'
 import { api } from '@/services/api'
 import type { APIKeyResponse } from '@/services/api'
 
-const PROVIDERS = ['openai', 'anthropic', 'gemini', 'mistral', 'custom'] as const
+const PROVIDERS = ['openai', 'anthropic', 'openrouter', 'gemini', 'groq', 'deepseek', 'mistral', 'custom'] as const
 type Provider = typeof PROVIDERS[number]
 
 function SunIcon() {
@@ -45,11 +45,14 @@ function MoonIcon() {
 }
 
 const PROVIDER_LABELS: Record<Provider, string> = {
-  openai:    'OpenAI',
-  anthropic: 'Anthropic',
-  gemini:    'Google Gemini',
-  mistral:   'Mistral',
-  custom:    'Custom (OpenAI-compatible)',
+  openai:      'OpenAI',
+  anthropic:   'Anthropic',
+  openrouter:  'OpenRouter',
+  gemini:      'Google Gemini',
+  groq:        'Groq',
+  deepseek:    'DeepSeek',
+  mistral:     'Mistral',
+  custom:      'Custom (OpenAI-compatible)',
 }
 
 export default function Settings() {
@@ -81,6 +84,26 @@ export default function Settings() {
   const [ollamaModelSaving,  setOllamaModelSaving]  = useState(false)
   const [ollamaModelOk,      setOllamaModelOk]      = useState(false)
   const [ollamaModelErr,     setOllamaModelErr]     = useState<string | null>(null)
+
+  // OpenRouter model selection state
+  const [orModelSaving, setOrModelSaving] = useState(false)
+  const [orModelOk,     setOrModelOk]     = useState(false)
+  const [orModelErr,    setOrModelErr]    = useState<string | null>(null)
+
+  // Gemini model selection state
+  const [geminiModelSaving, setGeminiModelSaving] = useState(false)
+  const [geminiModelOk,     setGeminiModelOk]     = useState(false)
+  const [geminiModelErr,    setGeminiModelErr]    = useState<string | null>(null)
+
+  // Groq model selection state
+  const [groqModelSaving, setGroqModelSaving] = useState(false)
+  const [groqModelOk,     setGroqModelOk]     = useState(false)
+  const [groqModelErr,    setGroqModelErr]    = useState<string | null>(null)
+
+  // DeepSeek model selection state
+  const [dsModelSaving, setDsModelSaving] = useState(false)
+  const [dsModelOk,     setDsModelOk]     = useState(false)
+  const [dsModelErr,    setDsModelErr]    = useState<string | null>(null)
 
   // Danger zone state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -198,6 +221,68 @@ export default function Settings() {
     }
   }
 
+  const handleSetOpenRouterModel = async (model: string) => {
+    if (!accessToken) return
+    setOrModelSaving(true)
+    setOrModelOk(false)
+    setOrModelErr(null)
+    try {
+      const saved = await api.apiKeys.upsert(accessToken, 'openrouter_model', model)
+      setKeys((prev) => {
+        const filtered = prev.filter((k) => k.provider !== 'openrouter_model')
+        return [...filtered, saved].sort((a, b) => a.provider.localeCompare(b.provider))
+      })
+      setOrModelOk(true)
+      setTimeout(() => setOrModelOk(false), 2500)
+    } catch (e: unknown) {
+      setOrModelErr(e instanceof Error ? e.message : 'Failed to save model')
+    } finally {
+      setOrModelSaving(false)
+    }
+  }
+
+  const handleSetGeminiModel = async (model: string) => {
+    if (!accessToken) return
+    setGeminiModelSaving(true)
+    setGeminiModelOk(false)
+    setGeminiModelErr(null)
+    try {
+      const saved = await api.apiKeys.upsert(accessToken, 'gemini_model', model)
+      setKeys((prev) => {
+        const filtered = prev.filter((k) => k.provider !== 'gemini_model')
+        return [...filtered, saved].sort((a, b) => a.provider.localeCompare(b.provider))
+      })
+      setGeminiModelOk(true)
+      setTimeout(() => setGeminiModelOk(false), 2500)
+    } catch (e: unknown) {
+      setGeminiModelErr(e instanceof Error ? e.message : 'Failed to save model')
+    } finally {
+      setGeminiModelSaving(false)
+    }
+  }
+
+  const handleSetGroqModel = async (model: string) => {
+    if (!accessToken) return
+    setGroqModelSaving(true); setGroqModelOk(false); setGroqModelErr(null)
+    try {
+      const saved = await api.apiKeys.upsert(accessToken, 'groq_model', model)
+      setKeys((prev) => [...prev.filter((k) => k.provider !== 'groq_model'), saved].sort((a, b) => a.provider.localeCompare(b.provider)))
+      setGroqModelOk(true); setTimeout(() => setGroqModelOk(false), 2500)
+    } catch (e: unknown) { setGroqModelErr(e instanceof Error ? e.message : 'Failed to save model') }
+    finally { setGroqModelSaving(false) }
+  }
+
+  const handleSetDeepSeekModel = async (model: string) => {
+    if (!accessToken) return
+    setDsModelSaving(true); setDsModelOk(false); setDsModelErr(null)
+    try {
+      const saved = await api.apiKeys.upsert(accessToken, 'deepseek_model', model)
+      setKeys((prev) => [...prev.filter((k) => k.provider !== 'deepseek_model'), saved].sort((a, b) => a.provider.localeCompare(b.provider)))
+      setDsModelOk(true); setTimeout(() => setDsModelOk(false), 2500)
+    } catch (e: unknown) { setDsModelErr(e instanceof Error ? e.message : 'Failed to save model') }
+    finally { setDsModelSaving(false) }
+  }
+
   const handleTestConnection = async (provider: string) => {
     if (!accessToken) return
     setTestStates((prev) => ({ ...prev, [provider]: { testing: true } }))
@@ -241,7 +326,7 @@ export default function Settings() {
             <p className="text-sm text-red-400">{error}</p>
           ) : keys.length > 0 ? (
             <div className="mb-6 space-y-3">
-              {keys.filter((k) => k.provider !== 'ollama' && k.provider !== 'ollama_model').map((k) => {
+              {keys.filter((k) => !['ollama', 'ollama_model', 'openrouter_model', 'gemini_model', 'groq_model', 'deepseek_model'].includes(k.provider)).map((k) => {
                 const ts = testStates[k.provider]
                 return (
                   <div key={k.id} className="rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
@@ -333,6 +418,253 @@ export default function Settings() {
             </button>
           </form>
         </section>
+
+        {/* OpenRouter */}
+        {keys.find((k) => k.provider === 'openrouter') && (() => {
+          const orKey      = keys.find((k) => k.provider === 'openrouter')!
+          const orModelKey = keys.find((k) => k.provider === 'openrouter_model')
+          const ts         = testStates['openrouter']
+          const modelList  = ts?.result?.ok ? (ts.result.models ?? []) : []
+          return (
+            <section>
+              <h2 className="text-lg font-semibold text-brand-text mb-1">OpenRouter</h2>
+              <p className="text-sm text-brand-text-muted mb-4">
+                Route AI calls through OpenRouter to access Anthropic, OpenAI, Google, and open models
+                with a single key. Models use the <span className="font-mono text-brand-text">provider/model-name</span> format.
+              </p>
+              <div className="rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <span className="text-sm font-medium text-brand-text">OpenRouter key</span>
+                    <span className="ml-3 text-xs text-brand-text-muted font-mono">
+                      ••••{orKey.key_hint}
+                    </span>
+                    {orModelKey && (
+                      <span className="ml-3 text-xs text-brand-purple font-mono" title="Active model">
+                        model: ••••{orModelKey.key_hint}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleTestConnection('openrouter')}
+                      disabled={ts?.testing}
+                      className="text-xs text-brand-cyan hover:text-brand-cyan/80 border border-brand-cyan/30 hover:border-brand-cyan/60 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+                    >
+                      {ts?.testing ? 'Testing…' : 'Test Connection'}
+                    </button>
+                    <button
+                      onClick={() => handleDelete('openrouter')}
+                      className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+
+                {ts?.result && (
+                  <div className={`px-4 py-3 border-t text-xs ${ts.result.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                    {ts.result.ok ? (
+                      <div className="space-y-2">
+                        <p className="text-emerald-400 font-medium">Connected — click a model to activate it:</p>
+                        {orModelErr && <p className="text-red-400">{orModelErr}</p>}
+                        {orModelOk  && <p className="text-emerald-400">Model saved.</p>}
+                        <div className="space-y-1">
+                          {modelList.map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => handleSetOpenRouterModel(m)}
+                              disabled={orModelSaving}
+                              className="block w-full text-left font-mono text-brand-text hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-red-400">{ts.result.error}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+          )
+        })()}
+
+        {/* Gemini */}
+        {keys.find((k) => k.provider === 'gemini') && (() => {
+          const geminiKey      = keys.find((k) => k.provider === 'gemini')!
+          const geminiModelKey = keys.find((k) => k.provider === 'gemini_model')
+          const ts             = testStates['gemini']
+          const modelList      = ts?.result?.ok ? (ts.result.models ?? []) : []
+          return (
+            <section>
+              <h2 className="text-lg font-semibold text-brand-text mb-1">Google Gemini</h2>
+              <p className="text-sm text-brand-text-muted mb-4">
+                Gemini 2.0 Flash is the recommended default — fast and has a generous free tier.
+                Switch to <span className="font-mono text-brand-text">gemini-1.5-pro</span> for the
+                1M-token context window (fits an entire novel in context).
+              </p>
+              <div className="rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <span className="text-sm font-medium text-brand-text">Gemini key</span>
+                    <span className="ml-3 text-xs text-brand-text-muted font-mono">
+                      ••••{geminiKey.key_hint}
+                    </span>
+                    {geminiModelKey && (
+                      <span className="ml-3 text-xs text-brand-purple font-mono" title="Active model">
+                        model: ••••{geminiModelKey.key_hint}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleTestConnection('gemini')}
+                      disabled={ts?.testing}
+                      className="text-xs text-brand-cyan hover:text-brand-cyan/80 border border-brand-cyan/30 hover:border-brand-cyan/60 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+                    >
+                      {ts?.testing ? 'Testing…' : 'Test Connection'}
+                    </button>
+                    <button
+                      onClick={() => handleDelete('gemini')}
+                      className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+
+                {ts?.result && (
+                  <div className={`px-4 py-3 border-t text-xs ${ts.result.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                    {ts.result.ok ? (
+                      <div className="space-y-2">
+                        <p className="text-emerald-400 font-medium">Connected — click a model to activate it:</p>
+                        {geminiModelErr && <p className="text-red-400">{geminiModelErr}</p>}
+                        {geminiModelOk  && <p className="text-emerald-400">Model saved.</p>}
+                        <div className="space-y-1">
+                          {modelList.map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => handleSetGeminiModel(m)}
+                              disabled={geminiModelSaving}
+                              className="block w-full text-left font-mono text-brand-text hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-red-400">{ts.result.error}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+          )
+        })()}
+
+        {/* Groq */}
+        {keys.find((k) => k.provider === 'groq') && (() => {
+          const groqKey      = keys.find((k) => k.provider === 'groq')!
+          const groqModelKey = keys.find((k) => k.provider === 'groq_model')
+          const ts           = testStates['groq']
+          const modelList    = ts?.result?.ok ? (ts.result.models ?? []) : []
+          return (
+            <section>
+              <h2 className="text-lg font-semibold text-brand-text mb-1">Groq</h2>
+              <p className="text-sm text-brand-text-muted mb-4">
+                Fastest inference available — Beat mode responds near-instantly.
+                Free tier with generous daily limits. Default model is <span className="font-mono text-brand-text">llama-3.1-70b-versatile</span>.
+              </p>
+              <div className="rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <span className="text-sm font-medium text-brand-text">Groq key</span>
+                    <span className="ml-3 text-xs text-brand-text-muted font-mono">••••{groqKey.key_hint}</span>
+                    {groqModelKey && <span className="ml-3 text-xs text-brand-purple font-mono">model: ••••{groqModelKey.key_hint}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleTestConnection('groq')} disabled={ts?.testing} className="text-xs text-brand-cyan hover:text-brand-cyan/80 border border-brand-cyan/30 hover:border-brand-cyan/60 px-2 py-0.5 rounded transition-colors disabled:opacity-50">
+                      {ts?.testing ? 'Testing…' : 'Test Connection'}
+                    </button>
+                    <button onClick={() => handleDelete('groq')} className="text-xs text-red-400 hover:text-red-300 transition-colors">Remove</button>
+                  </div>
+                </div>
+                {ts?.result && (
+                  <div className={`px-4 py-3 border-t text-xs ${ts.result.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                    {ts.result.ok ? (
+                      <div className="space-y-2">
+                        <p className="text-emerald-400 font-medium">Connected — click a model to activate it:</p>
+                        {groqModelErr && <p className="text-red-400">{groqModelErr}</p>}
+                        {groqModelOk  && <p className="text-emerald-400">Model saved.</p>}
+                        <div className="space-y-1">
+                          {modelList.map((m) => (
+                            <button key={m} onClick={() => handleSetGroqModel(m)} disabled={groqModelSaving} className="block w-full text-left font-mono text-brand-text hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50">{m}</button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : <p className="text-red-400">{ts.result.error}</p>}
+                  </div>
+                )}
+              </div>
+            </section>
+          )
+        })()}
+
+        {/* DeepSeek */}
+        {keys.find((k) => k.provider === 'deepseek') && (() => {
+          const dsKey      = keys.find((k) => k.provider === 'deepseek')!
+          const dsModelKey = keys.find((k) => k.provider === 'deepseek_model')
+          const ts         = testStates['deepseek']
+          const modelList  = ts?.result?.ok ? (ts.result.models ?? []) : []
+          return (
+            <section>
+              <h2 className="text-lg font-semibold text-brand-text mb-1">DeepSeek</h2>
+              <p className="text-sm text-brand-text-muted mb-3">
+                GPT-4o-class quality at roughly 3% of the cost. Default model is <span className="font-mono text-brand-text">deepseek-chat</span>.
+                Switch to <span className="font-mono text-brand-text">deepseek-reasoner</span> for chain-of-thought tasks (non-streaming).
+              </p>
+              <div className="flex items-start gap-2 mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-300">
+                <span className="shrink-0 mt-0.5">⚠</span>
+                <span>DeepSeek servers are operated by a Chinese company. Writers with data-sensitivity concerns should use Anthropic, OpenAI, Gemini, or Ollama instead.</span>
+              </div>
+              <div className="rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <span className="text-sm font-medium text-brand-text">DeepSeek key</span>
+                    <span className="ml-3 text-xs text-brand-text-muted font-mono">••••{dsKey.key_hint}</span>
+                    {dsModelKey && <span className="ml-3 text-xs text-brand-purple font-mono">model: ••••{dsModelKey.key_hint}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleTestConnection('deepseek')} disabled={ts?.testing} className="text-xs text-brand-cyan hover:text-brand-cyan/80 border border-brand-cyan/30 hover:border-brand-cyan/60 px-2 py-0.5 rounded transition-colors disabled:opacity-50">
+                      {ts?.testing ? 'Testing…' : 'Test Connection'}
+                    </button>
+                    <button onClick={() => handleDelete('deepseek')} className="text-xs text-red-400 hover:text-red-300 transition-colors">Remove</button>
+                  </div>
+                </div>
+                {ts?.result && (
+                  <div className={`px-4 py-3 border-t text-xs ${ts.result.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                    {ts.result.ok ? (
+                      <div className="space-y-2">
+                        <p className="text-emerald-400 font-medium">Connected — click a model to activate it:</p>
+                        {dsModelErr && <p className="text-red-400">{dsModelErr}</p>}
+                        {dsModelOk  && <p className="text-emerald-400">Model saved.</p>}
+                        <div className="space-y-1">
+                          {modelList.map((m) => (
+                            <button key={m} onClick={() => handleSetDeepSeekModel(m)} disabled={dsModelSaving} className="block w-full text-left font-mono text-brand-text hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50">{m}</button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : <p className="text-red-400">{ts.result.error}</p>}
+                  </div>
+                )}
+              </div>
+            </section>
+          )
+        })()}
 
         {/* Ollama (local AI) */}
         <section>

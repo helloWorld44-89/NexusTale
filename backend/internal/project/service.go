@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 // Using an interface here breaks the import cycle between project ↔ ai.
 type SummaryNotifier interface {
 	// ScheduleSummarize marks a chapter summary stale and debounces LLM regen.
-	ScheduleSummarize(userID, chapterID uuid.UUID, branchName string)
+	ScheduleSummarize(userID, chapterID, projectID uuid.UUID, branchName string)
 	// CancelSummarize cancels any pending debounce timers for the given chapter
 	// so deleted chapters don't trigger spurious LLM calls.
 	CancelSummarize(chapterID uuid.UUID)
@@ -338,7 +339,6 @@ func (s *Service) CreateScene(ctx context.Context, chapterID uuid.UUID, req Crea
 	sc, err := s.queries.CreateScene(ctx, sqlcgen.CreateSceneParams{
 		ChapterID: chapterID,
 		Title:     req.Title,
-		Content:   req.Content,
 		Pov:       req.POV,
 		Tense:     req.Tense,
 		Tags:      tags,
@@ -349,10 +349,22 @@ func (s *Service) CreateScene(ctx context.Context, chapterID uuid.UUID, req Crea
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("create scene: %v", err))
 	}
-	return toSceneResponse(sc), nil
+
+	// Write content to git working tree (content is no longer stored in Postgres).
+	if req.ProjectID != uuid.Nil {
+		if repoPath, _, rErr := s.repoPathForUser(ctx, req.ProjectID, req.UserID); rErr == nil {
+			if wErr := s.git.WriteSceneFile(repoPath, sc.ChapterID, sc.ID, req.Content); wErr != nil {
+				slog.Warn("git scene write failed on create", "scene_id", sc.ID, "error", wErr)
+			}
+		}
+	}
+
+	resp := toSceneResponse(sc)
+	resp.Content = req.Content // carry from request; not stored in DB
+	return resp, nil
 }
 
-func (s *Service) GetScene(ctx context.Context, id uuid.UUID) (*SceneResponse, error) {
+func (s *Service) GetScene(ctx context.Context, id, projectID, userID uuid.UUID) (*SceneResponse, error) {
 	sc, err := s.queries.GetScene(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, apperror.NotFound("scene", id.String())
@@ -360,17 +372,37 @@ func (s *Service) GetScene(ctx context.Context, id uuid.UUID) (*SceneResponse, e
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("get scene: %v", err))
 	}
-	return toSceneResponse(sc), nil
+	resp := toSceneResponse(sc)
+	if projectID != uuid.Nil && s.git != nil {
+		if repoPath, _, rErr := s.repoPathForUser(ctx, projectID, userID); rErr == nil {
+			if content, ok, _ := s.git.ReadSceneFile(repoPath, sc.ChapterID, sc.ID); ok {
+				resp.Content = content
+			}
+		}
+	}
+	return resp, nil
 }
 
-func (s *Service) ListScenes(ctx context.Context, chapterID uuid.UUID) ([]SceneResponse, error) {
+func (s *Service) ListScenes(ctx context.Context, chapterID, projectID, userID uuid.UUID) ([]SceneResponse, error) {
 	scenes, err := s.queries.ListScenesByChapter(ctx, chapterID)
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("list scenes: %v", err))
 	}
+	var repoPath string
+	if projectID != uuid.Nil && s.git != nil {
+		if rp, _, rErr := s.repoPathForUser(ctx, projectID, userID); rErr == nil {
+			repoPath = rp
+		}
+	}
 	result := make([]SceneResponse, len(scenes))
 	for i, sc := range scenes {
-		result[i] = *toSceneResponse(sc)
+		r := toSceneResponse(sc)
+		if repoPath != "" {
+			if content, ok, _ := s.git.ReadSceneFile(repoPath, sc.ChapterID, sc.ID); ok {
+				r.Content = content
+			}
+		}
+		result[i] = *r
 	}
 	return result, nil
 }
@@ -381,7 +413,7 @@ func (s *Service) UpdateScene(ctx context.Context, id uuid.UUID, req UpdateScene
 		params.Title = pgtype.Text{String: *req.Title, Valid: true}
 	}
 	if req.Content != nil {
-		params.Content = pgtype.Text{String: *req.Content, Valid: true}
+		// Content no longer stored in DB; compute word count from incoming value.
 		params.WordCount = pgtype.Int4{Int32: countWords(*req.Content), Valid: true}
 	}
 	if req.POV != nil {
@@ -411,6 +443,15 @@ func (s *Service) UpdateScene(ctx context.Context, id uuid.UUID, req UpdateScene
 		return nil, apperror.Internal(fmt.Sprintf("update scene: %v", err))
 	}
 
+	// Write updated content to git working tree (not stored in DB after Step 4).
+	if req.Content != nil && req.ProjectID != uuid.Nil {
+		if repoPath, _, rErr := s.repoPathForUser(ctx, req.ProjectID, req.NotifyUserID); rErr == nil {
+			if wErr := s.git.WriteSceneFile(repoPath, sc.ChapterID, sc.ID, *req.Content); wErr != nil {
+				slog.Warn("git scene write failed on update", "scene_id", sc.ID, "error", wErr)
+			}
+		}
+	}
+
 	// Notify the AI service to mark the chapter summary stale and schedule
 	// re-summarization — only when content was actually updated.
 	if req.Content != nil && s.notifier != nil && req.NotifyUserID != uuid.Nil {
@@ -418,10 +459,14 @@ func (s *Service) UpdateScene(ctx context.Context, id uuid.UUID, req UpdateScene
 		if branch == "" {
 			branch = CanonBranch
 		}
-		s.notifier.ScheduleSummarize(req.NotifyUserID, sc.ChapterID, branch)
+		s.notifier.ScheduleSummarize(req.NotifyUserID, sc.ChapterID, req.ProjectID, branch)
 	}
 
-	return toSceneResponse(sc), nil
+	result := toSceneResponse(sc)
+	if req.Content != nil {
+		result.Content = *req.Content // carry from request; not stored in DB
+	}
+	return result, nil
 }
 
 func (s *Service) DeleteScene(ctx context.Context, id uuid.UUID) error {
@@ -455,8 +500,9 @@ func (s *Service) repoPathForUser(ctx context.Context, projectID, userID uuid.UU
 	return collab.ClonePath, &collab, nil
 }
 
-// Chronicle snapshots all scene content for the project into the git repo and
-// creates a new commit (Chronicle) on the current Timeline.
+// Chronicle stages all working-tree changes and creates a commit (Chronicle)
+// on the current Timeline. Scene files are already current in the working tree
+// from Step 1 dual-write; no Postgres snapshot is needed.
 // Reviewers have read-only access and cannot create commits.
 func (s *Service) Chronicle(ctx context.Context, projectID, userID uuid.UUID, req ChronicleRequest) (*ChronicleEntry, error) {
 	repoPath, collab, err := s.repoPathForUser(ctx, projectID, userID)
@@ -467,25 +513,7 @@ func (s *Service) Chronicle(ctx context.Context, projectID, userID uuid.UUID, re
 		return nil, apperror.Forbidden("reviewers have read-only access and cannot chronicle")
 	}
 
-	// Build a snapshot of all scene files: chapters/<chID>/scenes/<scID>.md
-	chapters, err := s.queries.ListChaptersByProject(ctx, projectID)
-	if err != nil {
-		return nil, apperror.Internal(fmt.Sprintf("list chapters: %v", err))
-	}
-
-	files := make(map[string]string)
-	for _, ch := range chapters {
-		scenes, err := s.queries.ListScenesByChapter(ctx, ch.ID)
-		if err != nil {
-			return nil, apperror.Internal(fmt.Sprintf("list scenes: %v", err))
-		}
-		for _, sc := range scenes {
-			path := fmt.Sprintf("chapters/%s/scenes/%s.md", ch.ID, sc.ID)
-			files[path] = sc.Content
-		}
-	}
-
-	sha, err := s.git.Chronicle(repoPath, req.Note, files)
+	sha, err := s.git.Chronicle(repoPath, req.Note)
 	if errors.Is(err, ErrNothingToChronicle) {
 		entries, _ := s.git.Lore(repoPath, 1, 1)
 		if len(entries) > 0 {
@@ -703,7 +731,7 @@ func toSceneResponse(sc sqlcgen.Scene) *SceneResponse {
 		ID:           sc.ID,
 		ChapterID:    sc.ChapterID,
 		Title:        sc.Title,
-		Content:      sc.Content,
+		Content:      "", // populated from git working tree in GetScene / ListScenes
 		POV:          sc.Pov,
 		Tense:        sc.Tense,
 		Tags:         sc.Tags,

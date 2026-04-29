@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
@@ -19,9 +20,19 @@ import (
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
-// ManuscriptTools defines the 5 tools Nexus may call when tools_enabled=true.
+// ManuscriptTools defines the tools Nexus may call when tools_enabled=true.
 // Input schemas follow JSON Schema draft 7 (type:"object").
 var ManuscriptTools = []adapters.ToolDefinition{
+	{
+		Name: "list_project_structure",
+		Description: "Read the current act → chapter → scene tree for this project, including IDs. " +
+			"Call this FIRST before any write operation so you know which IDs already exist and can " +
+			"target them precisely. Returns act_ids, chapter_ids, and scene_ids with titles and word counts.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {}
+		}`),
+	},
 	{
 		Name:        "append_to_scene",
 		Description: "Append text to the end of an existing scene's content. Use this to add new paragraphs, dialogue, or description to a scene that already exists.",
@@ -109,6 +120,28 @@ type ToolEvent struct {
 
 // executeToolCall dispatches a single tool invocation and returns both the
 // model-facing ToolResult and the frontend-facing ToolEvent.
+// writeSceneFileIfPossible resolves the git repo path for a scene's project and
+// writes the content file. Non-fatal — logs on failure. Called after every
+// direct DB write in tool functions so the working tree stays current.
+func (s *Service) writeSceneFileIfPossible(ctx context.Context, chapterID, sceneID uuid.UUID, content string) {
+	if s.sceneWriter == nil {
+		return
+	}
+	ch, err := s.queries.GetChapter(ctx, chapterID)
+	if err != nil {
+		slog.Warn("git dual-write: chapter lookup failed", "chapter_id", chapterID, "error", err)
+		return
+	}
+	proj, err := s.queries.GetProject(ctx, ch.ProjectID)
+	if err != nil {
+		slog.Warn("git dual-write: project lookup failed", "project_id", ch.ProjectID, "error", err)
+		return
+	}
+	if wErr := s.sceneWriter.WriteSceneFile(proj.GitRepoPath, chapterID, sceneID, content); wErr != nil {
+		slog.Warn("git dual-write: write failed", "scene_id", sceneID, "error", wErr)
+	}
+}
+
 func (s *Service) executeToolCall(ctx context.Context, projectID uuid.UUID, tc adapters.ToolCall) (adapters.ToolResult, ToolEvent) {
 	evt, err := s.runTool(ctx, projectID, tc)
 	evt.Tool = tc.Name
@@ -121,6 +154,8 @@ func (s *Service) executeToolCall(ctx context.Context, projectID uuid.UUID, tc a
 
 func (s *Service) runTool(ctx context.Context, projectID uuid.UUID, tc adapters.ToolCall) (ToolEvent, error) {
 	switch tc.Name {
+	case "list_project_structure":
+		return s.toolListProjectStructure(ctx, projectID)
 	case "append_to_scene":
 		return s.toolAppendToScene(ctx, tc.Input)
 	case "replace_scene_content":
@@ -155,9 +190,9 @@ func (s *Service) toolAppendToScene(ctx context.Context, input json.RawMessage) 
 		return ToolEvent{}, fmt.Errorf("scene not found: %w", err)
 	}
 
-	beforeContent := scene.Content
+	beforeContent := s.readSceneContent(ctx, scene.ChapterID, scene.ID)
 
-	newContent := scene.Content
+	newContent := beforeContent
 	if newContent != "" {
 		if !strings.HasSuffix(newContent, "\n") {
 			newContent += "\n"
@@ -167,11 +202,12 @@ func (s *Service) toolAppendToScene(ctx context.Context, input json.RawMessage) 
 	newContent += args.Text
 
 	if _, err := s.queries.UpdateScene(ctx, sqlcgen.UpdateSceneParams{
-		ID:      sceneID,
-		Content: pgtype.Text{String: newContent, Valid: true},
+		ID:        sceneID,
+		WordCount: pgtype.Int4{Int32: int32(len(strings.Fields(newContent))), Valid: true},
 	}); err != nil {
 		return ToolEvent{}, fmt.Errorf("update scene: %w", err)
 	}
+	s.writeSceneFileIfPossible(ctx, scene.ChapterID, scene.ID, newContent)
 	return ToolEvent{
 		Result:        fmt.Sprintf("Appended %d characters to scene %q (ID: %s).", len(args.Text), scene.Title, scene.ID),
 		SceneID:       scene.ID.String(),
@@ -197,14 +233,15 @@ func (s *Service) toolReplaceSceneContent(ctx context.Context, input json.RawMes
 		return ToolEvent{}, fmt.Errorf("scene not found: %w", err)
 	}
 
-	beforeContent := scene.Content
+	beforeContent := s.readSceneContent(ctx, scene.ChapterID, scene.ID)
 
 	if _, err := s.queries.UpdateScene(ctx, sqlcgen.UpdateSceneParams{
-		ID:      sceneID,
-		Content: pgtype.Text{String: args.Content, Valid: true},
+		ID:        sceneID,
+		WordCount: pgtype.Int4{Int32: int32(len(strings.Fields(args.Content))), Valid: true},
 	}); err != nil {
 		return ToolEvent{}, fmt.Errorf("update scene: %w", err)
 	}
+	s.writeSceneFileIfPossible(ctx, scene.ChapterID, scene.ID, args.Content)
 	return ToolEvent{
 		Result:        fmt.Sprintf("Replaced content of scene %q (ID: %s) with %d characters.", scene.Title, scene.ID, len(args.Content)),
 		SceneID:       scene.ID.String(),
@@ -230,12 +267,13 @@ func (s *Service) toolCreateScene(ctx context.Context, input json.RawMessage) (T
 	scene, err := s.queries.CreateScene(ctx, sqlcgen.CreateSceneParams{
 		ChapterID: chapterID,
 		Title:     args.Title,
-		Content:   args.Content,
 		SortOrder: int32(len(existing) + 1),
+		WordCount: int32(len(strings.Fields(args.Content))),
 	})
 	if err != nil {
 		return ToolEvent{}, fmt.Errorf("create scene: %w", err)
 	}
+	s.writeSceneFileIfPossible(ctx, scene.ChapterID, scene.ID, args.Content)
 	return ToolEvent{
 		Result:      fmt.Sprintf("Created scene %q (ID: %s) in chapter %s.", scene.Title, scene.ID, chapterID),
 		CreatedID:   scene.ID.String(),
@@ -273,6 +311,63 @@ func (s *Service) toolCreateChapter(ctx context.Context, projectID uuid.UUID, in
 		ActID:       actID.String(),
 		ProjectID:   projectID.String(),
 	}, nil
+}
+
+// toolListProjectStructure reads the live act→chapter→scene tree and returns a
+// formatted text block the model can use to find IDs before writing.
+func (s *Service) toolListProjectStructure(ctx context.Context, projectID uuid.UUID) (ToolEvent, error) {
+	acts, err := s.queries.ListActsByProject(ctx, projectID)
+	if err != nil {
+		return ToolEvent{}, fmt.Errorf("list acts: %w", err)
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Project structure (use these IDs when targeting existing content):\n\n")
+
+	if len(acts) == 0 {
+		sb.WriteString("No acts yet. Use create_act to add the first act.\n")
+		return ToolEvent{Result: sb.String()}, nil
+	}
+
+	for _, act := range acts {
+		fmt.Fprintf(&sb, "Act %d: %q  (act_id: %s)\n", act.SortOrder, act.Title, act.ID)
+
+		chapters, err := s.queries.ListChaptersByAct(ctx, act.ID)
+		if err != nil {
+			fmt.Fprintf(&sb, "  [error loading chapters: %v]\n", err)
+			continue
+		}
+		if len(chapters) == 0 {
+			sb.WriteString("  (no chapters)\n")
+			continue
+		}
+
+		for _, ch := range chapters {
+			fmt.Fprintf(&sb, "  Chapter %d: %q  (chapter_id: %s)\n", ch.SortOrder, ch.Title, ch.ID)
+
+			scenes, err := s.queries.ListScenesByChapter(ctx, ch.ID)
+			if err != nil {
+				fmt.Fprintf(&sb, "    [error loading scenes: %v]\n", err)
+				continue
+			}
+			if len(scenes) == 0 {
+				sb.WriteString("    (no scenes)\n")
+				continue
+			}
+
+			for _, sc := range scenes {
+				if sc.WordCount > 0 {
+					fmt.Fprintf(&sb, "    Scene %d: %q  (scene_id: %s, %d words)\n",
+						sc.SortOrder, sc.Title, sc.ID, sc.WordCount)
+				} else {
+					fmt.Fprintf(&sb, "    Scene %d: %q  (scene_id: %s, empty)\n",
+						sc.SortOrder, sc.Title, sc.ID)
+				}
+			}
+		}
+	}
+
+	return ToolEvent{Result: sb.String()}, nil
 }
 
 func (s *Service) toolCreateAct(ctx context.Context, projectID uuid.UUID, input json.RawMessage) (ToolEvent, error) {

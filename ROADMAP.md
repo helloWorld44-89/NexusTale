@@ -334,6 +334,7 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 
 ### Pre-launch code checklist
 
+- [x] **P0** Git-first architecture migration (Steps 1–4) complete — `scenes.content` dropped (migration 029); scene prose lives in git working tree; Postgres is metadata-only; export, BuildContext, Chronicle, and agent tools all read/write from the working tree; Step 5 (wiki JSON files) explicitly deferred (N+1 concern does not exist in current implementation)
 - [ ] All **P0** code review items resolved
 - [ ] All **P0** security review items resolved
 - [ ] `govulncheck` and `npm audit` clean (P1 items)
@@ -351,7 +352,7 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 ### Rollback plan
 
 - Docker images are tagged by git SHA (`:{sha}`) — rollback = re-run Ansible with previous SHA tag
-- DB migration `.down.sql` files exist for all 28 migrations; test rollback from 028 → 027 on a staging DB before launch
+- DB migration `.down.sql` files exist for all 29 migrations; test rollback from 029 → 028 on a staging DB before launch (note: 029 down restores `scenes.content` with `DEFAULT ''` — content cannot be recovered from rollback alone; use a DB backup)
 - Alpha user data export: any user can export their full manuscript as Markdown at any time (no lock-in)
 
 ### Alpha → beta graduation criteria
@@ -411,4 +412,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-04-27: Phase C3 complete. Phase C+ (security review, code review, alpha release plan) added as a mandatory pre-alpha gate. Alpha targets 20–50 invite-only writers on the dev VM; graduation criteria defined before beta opens. Phase D (maps, image gen, Scrivener export, workspaces, monetization, MinIO → S3 migration) follows after beta.*
+*Last updated 2026-04-29: Git-first architecture migration (Steps 1–4) complete — scenes.content dropped (migration 029), Postgres metadata-only for scenes, alpha gate cleared. Step 5 (wiki JSON files) explicitly deferred. Phase C+ security + code review items and environment checklist remain before first alpha invite.*

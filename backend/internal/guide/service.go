@@ -24,13 +24,26 @@ var stepLabels = map[string]string{
 	"first_scene": "First Scene",
 }
 
+// SceneFileWriter writes scene content to the git working tree.
+// Implemented by *project.GitService; injected via WithSceneWriter.
+type SceneFileWriter interface {
+	WriteSceneFile(repoPath string, chapterID, sceneID uuid.UUID, content string) error
+}
+
 // Service handles guide wizard state and side effects.
 type Service struct {
-	queries *sqlcgen.Queries
+	queries     *sqlcgen.Queries
+	sceneWriter SceneFileWriter
 }
 
 func NewService(queries *sqlcgen.Queries) *Service {
 	return &Service{queries: queries}
+}
+
+// WithSceneWriter wires the git scene file writer (called from main after both
+// services are constructed — same pattern as WithNotifier on project.Service).
+func (s *Service) WithSceneWriter(w SceneFileWriter) {
+	s.sceneWriter = w
 }
 
 // ── response types ────────────────────────────────────────────────────────────
@@ -219,11 +232,11 @@ func (s *Service) GenerateAIInstructions(ctx context.Context, projectID uuid.UUI
 	// Fetch project for title/genres.
 	p, err := s.queries.GetProject(ctx, projectID)
 	if err == nil && p.Title != "" {
-		sb.WriteString("You are writing \"" + p.Title + "\"")
 		if len(p.Genres) > 0 {
-			sb.WriteString(" — a " + strings.Join(p.Genres, "/") + " story")
+			sb.WriteString("\"" + p.Title + "\" is a " + strings.Join(p.Genres, "/") + " story.\n")
+		} else {
+			sb.WriteString("\"" + p.Title + "\" is a story.\n")
 		}
-		sb.WriteString(".\n")
 	}
 
 	// Premise block.
@@ -296,7 +309,21 @@ func (s *Service) GenerateAIInstructions(ctx context.Context, projectID uuid.UUI
 		}
 	}
 
-	return strings.TrimSpace(sb.String()), nil
+	out := strings.TrimSpace(sb.String())
+
+	// Cap at ~1,200 characters, trimming at the last sentence boundary so the
+	// bible doesn't bloat every AI call for verbose guide wizard entries.
+	const maxBibleChars = 1200
+	if runes := []rune(out); len(runes) > maxBibleChars {
+		trimmed := string(runes[:maxBibleChars])
+		// Walk back to the last sentence-ending punctuation so we don't cut mid-word.
+		if i := strings.LastIndexAny(trimmed, ".!?"); i > 0 {
+			trimmed = trimmed[:i+1]
+		}
+		out = trimmed
+	}
+
+	return out, nil
 }
 
 // GetAIInstructionsText returns the stored ai_instructions text for a project.
@@ -481,14 +508,23 @@ func (s *Service) effectFirstScene(ctx context.Context, projectID uuid.UUID, raw
 	sortOrder := int32(len(existing) + 1)
 
 	wc := int32(len([]rune(d.Content)) / 5) // rough word count estimate
-	if _, err := s.queries.CreateScene(ctx, sqlcgen.CreateSceneParams{
+	scene, err := s.queries.CreateScene(ctx, sqlcgen.CreateSceneParams{
 		ChapterID: chapterID,
 		Title:     title,
-		Content:   d.Content,
 		SortOrder: sortOrder,
 		WordCount: wc,
-	}); err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("create first scene: %w", err)
+	}
+
+	// Write content to git working tree (not stored in DB after Step 4).
+	if s.sceneWriter != nil {
+		if proj, pErr := s.queries.GetProject(ctx, projectID); pErr == nil {
+			if wErr := s.sceneWriter.WriteSceneFile(proj.GitRepoPath, scene.ChapterID, scene.ID, d.Content); wErr != nil {
+				slog.Warn("guide: git dual-write failed", "scene_id", scene.ID, "error", wErr)
+			}
+		}
 	}
 	return nil
 }

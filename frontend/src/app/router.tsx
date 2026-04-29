@@ -10,6 +10,7 @@ import WikiHub from '@/pages/WikiHub'
 import Settings from '@/pages/Settings'
 import InviteAccept from '@/pages/InviteAccept'
 import About from '@/pages/About'
+import Landing from '@/pages/Landing'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -19,6 +20,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export function AppRouter() {
   return (
     <Routes>
+      <Route path="/"         element={<Landing />} />
       <Route path="/login"    element={<Login />} />
       <Route path="/register" element={<Register />} />
 
@@ -81,7 +83,7 @@ export function AppRouter() {
       {/* Invite accept — works logged in or out; page handles both states */}
       <Route path="/invites/:token" element={<InviteAccept />} />
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

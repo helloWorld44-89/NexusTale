@@ -13,15 +13,14 @@ import (
 )
 
 const createScene = `-- name: CreateScene :one
-INSERT INTO scenes (chapter_id, title, content, pov, tense, tags, summary, sort_order, word_count)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+INSERT INTO scenes (chapter_id, title, pov, tense, tags, summary, sort_order, word_count)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 `
 
 type CreateSceneParams struct {
 	ChapterID uuid.UUID `json:"chapter_id"`
 	Title     string    `json:"title"`
-	Content   string    `json:"content"`
 	Pov       string    `json:"pov"`
 	Tense     string    `json:"tense"`
 	Tags      []string  `json:"tags"`
@@ -34,7 +33,6 @@ func (q *Queries) CreateScene(ctx context.Context, arg CreateSceneParams) (Scene
 	row := q.db.QueryRow(ctx, createScene,
 		arg.ChapterID,
 		arg.Title,
-		arg.Content,
 		arg.Pov,
 		arg.Tense,
 		arg.Tags,
@@ -47,7 +45,6 @@ func (q *Queries) CreateScene(ctx context.Context, arg CreateSceneParams) (Scene
 		&i.ID,
 		&i.ChapterID,
 		&i.Title,
-		&i.Content,
 		&i.Pov,
 		&i.Tense,
 		&i.Tags,
@@ -71,7 +68,7 @@ func (q *Queries) DeleteScene(ctx context.Context, id uuid.UUID) error {
 }
 
 const getScene = `-- name: GetScene :one
-SELECT id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+SELECT id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 FROM scenes
 WHERE id = $1
 `
@@ -83,7 +80,6 @@ func (q *Queries) GetScene(ctx context.Context, id uuid.UUID) (Scene, error) {
 		&i.ID,
 		&i.ChapterID,
 		&i.Title,
-		&i.Content,
 		&i.Pov,
 		&i.Tense,
 		&i.Tags,
@@ -98,7 +94,7 @@ func (q *Queries) GetScene(ctx context.Context, id uuid.UUID) (Scene, error) {
 }
 
 const listScenesByChapter = `-- name: ListScenesByChapter :many
-SELECT id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+SELECT id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 FROM scenes
 WHERE chapter_id = $1
 ORDER BY sort_order ASC
@@ -117,7 +113,6 @@ func (q *Queries) ListScenesByChapter(ctx context.Context, chapterID uuid.UUID) 
 			&i.ID,
 			&i.ChapterID,
 			&i.Title,
-			&i.Content,
 			&i.Pov,
 			&i.Tense,
 			&i.Tags,
@@ -141,23 +136,21 @@ func (q *Queries) ListScenesByChapter(ctx context.Context, chapterID uuid.UUID) 
 const updateScene = `-- name: UpdateScene :one
 UPDATE scenes
 SET title = COALESCE($2, title),
-    content = COALESCE($3, content),
-    pov = COALESCE($4, pov),
-    tense = COALESCE($5, tense),
-    tags = COALESCE($6, tags),
-    summary = COALESCE($7, summary),
-    summary_stale = COALESCE($8, summary_stale),
-    sort_order = COALESCE($9, sort_order),
-    word_count = COALESCE($10, word_count),
+    pov = COALESCE($3, pov),
+    tense = COALESCE($4, tense),
+    tags = COALESCE($5, tags),
+    summary = COALESCE($6, summary),
+    summary_stale = COALESCE($7, summary_stale),
+    sort_order = COALESCE($8, sort_order),
+    word_count = COALESCE($9, word_count),
     updated_at = now()
 WHERE id = $1
-RETURNING id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+RETURNING id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 `
 
 type UpdateSceneParams struct {
 	ID           uuid.UUID   `json:"id"`
 	Title        pgtype.Text `json:"title"`
-	Content      pgtype.Text `json:"content"`
 	Pov          pgtype.Text `json:"pov"`
 	Tense        pgtype.Text `json:"tense"`
 	Tags         []string    `json:"tags"`
@@ -171,7 +164,6 @@ func (q *Queries) UpdateScene(ctx context.Context, arg UpdateSceneParams) (Scene
 	row := q.db.QueryRow(ctx, updateScene,
 		arg.ID,
 		arg.Title,
-		arg.Content,
 		arg.Pov,
 		arg.Tense,
 		arg.Tags,
@@ -185,7 +177,6 @@ func (q *Queries) UpdateScene(ctx context.Context, arg UpdateSceneParams) (Scene
 		&i.ID,
 		&i.ChapterID,
 		&i.Title,
-		&i.Content,
 		&i.Pov,
 		&i.Tense,
 		&i.Tags,

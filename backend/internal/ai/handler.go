@@ -236,7 +236,7 @@ func (h *Handler) Chat(c *gin.Context) {
 //	{ "text": "Full scene content...", "provider": "anthropic" }
 //	{ "scene_id": "uuid" }          — fetches scene content from DB
 func (h *Handler) Summarize(c *gin.Context) {
-	_, userID, ok := resolveIDs(c)
+	projectID, userID, ok := resolveIDs(c)
 	if !ok {
 		return
 	}
@@ -254,12 +254,7 @@ func (h *Handler) Summarize(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid scene_id"})
 			return
 		}
-		sc, err := h.svc.queries.GetScene(c.Request.Context(), sceneID)
-		if err != nil {
-			handleError(c, apperror.NotFound("scene", req.SceneID))
-			return
-		}
-		text = sc.Content
+		text = h.svc.ReadSceneContent(c.Request.Context(), sceneID)
 	}
 
 	if text == "" {
@@ -267,7 +262,7 @@ func (h *Handler) Summarize(c *gin.Context) {
 		return
 	}
 
-	summary, _, err := h.svc.Summarize(c.Request.Context(), userID, req.Provider, text)
+	summary, _, err := h.svc.Summarize(c.Request.Context(), userID, projectID, req.Provider, text)
 	if err != nil {
 		handleError(c, err)
 		return
@@ -430,9 +425,7 @@ func (h *Handler) ContextPreview(c *gin.Context) {
 	// Resolve scene content for @[entity] parsing and current-scene block.
 	sceneContent := ""
 	if sceneID != uuid.Nil {
-		if sc, err := h.svc.queries.GetScene(c.Request.Context(), sceneID); err == nil {
-			sceneContent = sc.Content
-		}
+		sceneContent = h.svc.ReadSceneContent(c.Request.Context(), sceneID)
 	}
 
 	ctxBlock := h.svc.BuildContext(c.Request.Context(), projectID, userID, branch, sceneContent, sceneID)
@@ -465,7 +458,7 @@ func (h *Handler) RegenerateChapterSummary(c *gin.Context) {
 
 	branch := h.svc.ResolveBranch(c.Request.Context(), c.GetHeader("X-NexusTale-Branch"), userID, projectID)
 
-	summary, err := h.svc.RegenerateChapterSummary(c.Request.Context(), userID, chapterID, branch)
+	summary, err := h.svc.RegenerateChapterSummary(c.Request.Context(), userID, chapterID, projectID, branch)
 	if err != nil {
 		handleError(c, err)
 		return

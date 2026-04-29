@@ -90,18 +90,40 @@ func seedChapter(t *testing.T, ctx context.Context, q *sqlcgen.Queries, projectI
 	return ch.ID
 }
 
+// fakeSceneWriter is an in-memory SceneFileWriter used in tests. It stores
+// content keyed by scene ID so BuildContext can read it without hitting disk.
+type fakeSceneWriter struct {
+	content map[uuid.UUID]string
+}
+
+func (f *fakeSceneWriter) WriteSceneFile(_ string, _, sceneID uuid.UUID, content string) error {
+	if f.content == nil {
+		f.content = make(map[uuid.UUID]string)
+	}
+	f.content[sceneID] = content
+	return nil
+}
+
+func (f *fakeSceneWriter) ReadSceneFile(_ string, _, sceneID uuid.UUID) (string, bool, error) {
+	c, ok := f.content[sceneID]
+	return c, ok, nil
+}
+
 // seedScene inserts a scene under a chapter and returns its ID.
-func seedScene(t *testing.T, ctx context.Context, q *sqlcgen.Queries, chapterID uuid.UUID, title, content string) uuid.UUID {
+// Pass a non-nil fakeSceneWriter to also store content for BuildContext reads.
+func seedScene(t *testing.T, ctx context.Context, q *sqlcgen.Queries, chapterID uuid.UUID, title, content string, w *fakeSceneWriter) uuid.UUID {
 	t.Helper()
 	sc, err := q.CreateScene(ctx, sqlcgen.CreateSceneParams{
 		ChapterID: chapterID,
 		Title:     title,
-		Content:   content,
 		Tags:      []string{}, // tags is NOT NULL in the schema
 		SortOrder: 1,
 	})
 	if err != nil {
 		t.Fatalf("seed scene %q: %v", title, err)
+	}
+	if w != nil {
+		_ = w.WriteSceneFile("", chapterID, sc.ID, content)
 	}
 	return sc.ID
 }
@@ -179,7 +201,9 @@ func TestBuildContext_RawSceneFallback(t *testing.T) {
 	projectID := seedProject(t, ctx, q, user.ID, "The Glass Codex", nil, "")
 	actID := seedAct(t, ctx, q, projectID)
 	chapterID := seedChapter(t, ctx, q, projectID, actID, "Chapter One: The Arrival")
-	seedScene(t, ctx, q, chapterID, "Scene 1", "The ship descended through cloud cover. Captain Mira checked her instruments for the third time.")
+	writer := &fakeSceneWriter{}
+	svc.WithSceneWriter(writer)
+	seedScene(t, ctx, q, chapterID, "Scene 1", "The ship descended through cloud cover. Captain Mira checked her instruments for the third time.", writer)
 
 	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", "", uuid.Nil)
 
@@ -212,7 +236,9 @@ func TestBuildContext_RawFallbackTruncatedAt600Runes(t *testing.T) {
 
 	// Build a scene content string that's definitely longer than 600 runes.
 	longContent := strings.Repeat("The ancient hall was quiet. ", 30) // ~810 runes
-	seedScene(t, ctx, q, chapterID, "Opening", longContent)
+	writer := &fakeSceneWriter{}
+	svc.WithSceneWriter(writer)
+	seedScene(t, ctx, q, chapterID, "Opening", longContent, writer)
 
 	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", "", uuid.Nil)
 
@@ -233,7 +259,7 @@ func TestBuildContext_UsesSummaryWhenPresent(t *testing.T) {
 	projectID := seedProject(t, ctx, q, user.ID, "The Crystal Throne", nil, "")
 	actID := seedAct(t, ctx, q, projectID)
 	chapterID := seedChapter(t, ctx, q, projectID, actID, "Chapter Two")
-	seedScene(t, ctx, q, chapterID, "Scene", "Raw content that should not appear.")
+	seedScene(t, ctx, q, chapterID, "Scene", "Raw content that should not appear.", nil)
 
 	const summaryText = "The queen discovers a betrayal among her closest advisors."
 	if err := q.UpsertChapterSummary(ctx, sqlcgen.UpsertChapterSummaryParams{
@@ -270,7 +296,7 @@ func TestBuildContext_CurrentSceneBlock(t *testing.T) {
 	actID := seedAct(t, ctx, q, projectID)
 	chapterID := seedChapter(t, ctx, q, projectID, actID, "Ch1")
 	sceneContent := "She pushed open the iron gate and stepped into the garden."
-	sceneID := seedScene(t, ctx, q, chapterID, "The Garden Scene", sceneContent)
+	sceneID := seedScene(t, ctx, q, chapterID, "The Garden Scene", sceneContent, nil)
 
 	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", sceneContent, sceneID)
 
@@ -303,7 +329,7 @@ func TestBuildContext_EntityReferenceInjected(t *testing.T) {
 
 	// Scene references Captain Rael using @[...] syntax.
 	sceneContent := "@[Captain Rael] stepped onto the bridge."
-	sceneID := seedScene(t, ctx, q, chapterID, "Bridge", sceneContent)
+	sceneID := seedScene(t, ctx, q, chapterID, "Bridge", sceneContent, nil)
 
 	result := svc.BuildContext(ctx, projectID, uuid.Nil, "canon", sceneContent, sceneID)
 
@@ -343,7 +369,7 @@ func TestBuildContext_BranchFallsBackToCanon(t *testing.T) {
 	projectID := seedProject(t, ctx, q, user.ID, "Branch Fallback", nil, "")
 	actID := seedAct(t, ctx, q, projectID)
 	chapterID := seedChapter(t, ctx, q, projectID, actID, "Opening")
-	seedScene(t, ctx, q, chapterID, "S1", "placeholder")
+	seedScene(t, ctx, q, chapterID, "S1", "placeholder", nil)
 
 	const canonSummary = "The hero departs the village on the canon branch."
 	if err := q.UpsertChapterSummary(ctx, sqlcgen.UpsertChapterSummaryParams{
