@@ -9,7 +9,12 @@
       "Bash(go build:*)",
       "Bash(go test:*)",
       "Bash(npm install:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(make test:*)",
+      "Bash(grep:*)",
+      "Bash(npx tsc:*)",
+      "Bash(curl -s -X POST http://192.168.5.45/api/v1/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"test@test.dev\",\"password\":\"Baseball44\"}')",
+      "Bash(curl -s -X POST http://192.168.5.45/api/v1/projects -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiODUyNjQ5OWUtNTJhOC00ZDQwLWE2NjgtMDZjZmZmMjU2MzdlIiwiZW1haWwiOiJ0ZXN0QHRlc3QuZGV2IiwiZGlzcGxheV9uYW1lIjoidGVzdCIsInJvbGUiOiJhdXRob3IiLCJzdWIiOiI4NTI2NDk5ZS01MmE4LTRkNDAtYTY2OC0wNmNmZmYyNTYzN2UiLCJleHAiOjE3NzYxODUyOTcsImlhdCI6MTc3NjE4NDM5N30.yuZjkElxdjC0VROJu4SgPbzNIieUn3agtkcbGtq-zzQ' -H 'Content-Type: application/json' -d '{:*)"
     ]
   }
 }

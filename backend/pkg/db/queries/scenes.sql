@@ -1,15 +1,15 @@
 -- name: CreateScene :one
-INSERT INTO scenes (chapter_id, title, content, pov, tense, tags, summary, sort_order, word_count)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count;
+INSERT INTO scenes (chapter_id, title, pov, tense, tags, summary, sort_order, word_count)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count;
 
 -- name: GetScene :one
-SELECT id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+SELECT id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 FROM scenes
 WHERE id = $1;
 
 -- name: ListScenesByChapter :many
-SELECT id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+SELECT id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
 FROM scenes
 WHERE chapter_id = $1
 ORDER BY sort_order ASC;
@@ -17,7 +17,6 @@ ORDER BY sort_order ASC;
 -- name: UpdateScene :one
 UPDATE scenes
 SET title = COALESCE(sqlc.narg('title'), title),
-    content = COALESCE(sqlc.narg('content'), content),
     pov = COALESCE(sqlc.narg('pov'), pov),
     tense = COALESCE(sqlc.narg('tense'), tense),
     tags = COALESCE(sqlc.narg('tags'), tags),
@@ -27,7 +26,7 @@ SET title = COALESCE(sqlc.narg('title'), title),
     word_count = COALESCE(sqlc.narg('word_count'), word_count),
     updated_at = now()
 WHERE id = $1
-RETURNING id, chapter_id, title, content, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count;
+RETURNING id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count;
 
 -- name: DeleteScene :exec
 DELETE FROM scenes WHERE id = $1;

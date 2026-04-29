@@ -101,10 +101,14 @@ func (g *GitService) InitRepo(projectID uuid.UUID) (string, error) {
 	return repoPath, nil
 }
 
-// Chronicle writes the provided file snapshot to the working tree and creates
-// a commit on the current branch. Returns the full commit SHA.
-// Returns ErrNothingToChronicle if the snapshot is identical to the last commit.
-func (g *GitService) Chronicle(repoPath, note string, files map[string]string) (string, error) {
+// Chronicle stages all working-tree changes and creates a commit on the current
+// branch. Returns the full commit SHA.
+// Returns ErrNothingToChronicle if the working tree is identical to the last commit.
+//
+// Step 3 of git-first: scene files are written to disk by WriteSceneFile on every
+// autosave, so Chronicle no longer needs a Postgres snapshot — it just commits
+// whatever is already there.
+func (g *GitService) Chronicle(repoPath, note string) (string, error) {
 	mu := g.repoLock(repoPath)
 	mu.Lock()
 	defer mu.Unlock()
@@ -119,25 +123,26 @@ func (g *GitService) Chronicle(repoPath, note string, files map[string]string) (
 		return "", fmt.Errorf("get worktree: %w", err)
 	}
 
-	for relPath, content := range files {
-		full := filepath.Join(repoPath, relPath)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			return "", fmt.Errorf("mkdir %s: %w", relPath, err)
-		}
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			return "", fmt.Errorf("write %s: %w", relPath, err)
-		}
-		if _, err := wt.Add(relPath); err != nil {
-			return "", fmt.Errorf("stage %s: %w", relPath, err)
-		}
-	}
-
-	// Check worktree status before committing. go-git re-stages files by mtime
-	// even when the content hash is identical to HEAD, so ErrEmptyCommit is not
-	// reliable. Inspecting Status() catches this correctly.
+	// Stage every file that is dirty in the working tree (modified or untracked).
+	// WriteSceneFile writes content here on each autosave; we only need to commit it.
 	status, err := wt.Status()
 	if err != nil {
 		return "", fmt.Errorf("status: %w", err)
+	}
+	for relPath, s := range status {
+		if s.Worktree != git.Unmodified {
+			if _, err := wt.Add(relPath); err != nil {
+				return "", fmt.Errorf("stage %s: %w", relPath, err)
+			}
+		}
+	}
+
+	// Re-read staging status after the add pass. go-git re-stages files by mtime
+	// even when the content hash is identical to HEAD, so ErrEmptyCommit is not
+	// reliable; Status() is authoritative.
+	status, err = wt.Status()
+	if err != nil {
+		return "", fmt.Errorf("status after stage: %w", err)
 	}
 	allClean := true
 	for _, s := range status {
@@ -428,6 +433,34 @@ func (g *GitService) Canonize(repoPath, timelineName string) (*CanonizeResult, e
 	}
 
 	return &CanonizeResult{MergedSHA: timelineRef.Hash().String()}, nil
+}
+
+// ReadSceneFile reads a scene's content from the git working tree.
+// Returns (content, true, nil) when the file exists, ("", false, nil) when it
+// does not (file not yet written — caller should fall back to Postgres), and
+// ("", false, err) on unexpected I/O errors.
+func (g *GitService) ReadSceneFile(repoPath string, chapterID, sceneID uuid.UUID) (string, bool, error) {
+	path := filepath.Join(repoPath, "chapters", chapterID.String(), "scenes", sceneID.String()+".md")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return string(data), true, nil
+}
+
+// WriteSceneFile writes scene content to the working tree at
+// chapters/{chapterID}/scenes/{sceneID}.md. Does not stage or commit —
+// Chronicle picks it up on the writer's next explicit snapshot.
+// This is the Step 1 dual-write: Postgres remains the read authority until Step 2.
+func (g *GitService) WriteSceneFile(repoPath string, chapterID, sceneID uuid.UUID, content string) error {
+	dir := filepath.Join(repoPath, "chapters", chapterID.String(), "scenes")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	return os.WriteFile(filepath.Join(dir, sceneID.String()+".md"), []byte(content), 0o644)
 }
 
 // ErrNothingToChronicle is returned by Chronicle when the working tree is

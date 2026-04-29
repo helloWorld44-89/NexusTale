@@ -102,6 +102,10 @@ type CreateSceneRequest struct {
 	Tags      []string `json:"tags"`
 	Summary   string   `json:"summary"`
 	SortOrder int32    `json:"sort_order"`
+
+	// ProjectID and UserID are set by the handler (not from JSON) for git dual-write.
+	ProjectID uuid.UUID `json:"-"`
+	UserID    uuid.UUID `json:"-"`
 }
 
 type UpdateSceneRequest struct {
@@ -114,8 +118,8 @@ type UpdateSceneRequest struct {
 	SummaryStale *bool     `json:"summary_stale"`
 	SortOrder    *int32    `json:"sort_order"`
 
-	// NotifyUserID and NotifyBranch are set by the handler (not from JSON)
-	// so the service can fire the summary notifier after a content change.
+	// Handler-only fields (not from JSON): git dual-write + summary notifier.
+	ProjectID    uuid.UUID `json:"-"`
 	NotifyUserID uuid.UUID `json:"-"`
 	NotifyBranch string    `json:"-"`
 }

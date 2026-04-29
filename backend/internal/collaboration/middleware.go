@@ -10,6 +10,7 @@ import (
 )
 
 const contextKeyCollabRole = "collab_role"
+const contextKeyProjectID = "project_id"
 
 // RequireProjectAccess is a Gin middleware that passes if the authenticated
 // user is either the project owner or an accepted collaborator.
@@ -91,6 +92,10 @@ func RequireChapterAccess(queries *sqlcgen.Queries) gin.HandlerFunc {
 			return
 		}
 
+		// Store the project ID so scene handlers can resolve the repo path
+		// without an additional DB query (used by git dual-write in Step 1).
+		c.Set(contextKeyProjectID, chapter.ProjectID)
+
 		p, err := queries.GetProject(c.Request.Context(), chapter.ProjectID)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "project not found"})
@@ -115,6 +120,14 @@ func RequireChapterAccess(queries *sqlcgen.Queries) gin.HandlerFunc {
 		c.Set(contextKeyCollabRole, collab.Role)
 		c.Next()
 	}
+}
+
+// GetProjectID returns the project UUID stored by RequireChapterAccess.
+// Returns uuid.Nil if the middleware was not applied (e.g. project-scoped routes).
+func GetProjectID(c *gin.Context) uuid.UUID {
+	v, _ := c.Get(contextKeyProjectID)
+	id, _ := v.(uuid.UUID)
+	return id
 }
 
 // GetCollabRole returns the resolved role for the current request.

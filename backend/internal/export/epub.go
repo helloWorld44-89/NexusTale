@@ -14,7 +14,7 @@ import (
 // BuildEPUB assembles an EPUB 2 file from a project's chapters and scenes.
 // It writes to a temp file and returns the path; the caller must os.Remove it
 // after uploading to storage.
-func BuildEPUB(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUID, title string) (string, error) {
+func BuildEPUB(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUID, title, repoPath string) (string, error) {
 	e := epub.NewEpub(title)
 	e.SetAuthor("NexusTale")
 
@@ -31,12 +31,13 @@ func BuildEPUB(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUI
 
 		var body strings.Builder
 		for _, sc := range scenes {
+			content := sceneFileContent(repoPath, ch.ID, sc.ID, "")
 			if sc.Title != "" {
 				body.WriteString(fmt.Sprintf("<h2>%s</h2>\n", htmlEscape(sc.Title)))
 			}
-			if sc.Content != "" {
+			if content != "" {
 				// Split on double-newline paragraph breaks; single newlines become <br/>.
-				paras := strings.Split(strings.TrimSpace(sc.Content), "\n\n")
+				paras := strings.Split(strings.TrimSpace(content), "\n\n")
 				for _, p := range paras {
 					if p == "" {
 						continue

@@ -358,6 +358,10 @@ func (h *Handler) CreateScene(c *gin.Context) {
 		return
 	}
 
+	// Set handler-only fields for git dual-write.
+	req.ProjectID = collaboration.GetProjectID(c)
+	req.UserID = auth.GetUserID(c)
+
 	resp, err := h.svc.CreateScene(c.Request.Context(), chapterID, req)
 	if err != nil {
 		handleError(c, err)
@@ -373,7 +377,7 @@ func (h *Handler) GetScene(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.GetScene(c.Request.Context(), sceneID)
+	resp, err := h.svc.GetScene(c.Request.Context(), sceneID, collaboration.GetProjectID(c), auth.GetUserID(c))
 	if err != nil {
 		handleError(c, err)
 		return
@@ -388,7 +392,7 @@ func (h *Handler) ListScenes(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.ListScenes(c.Request.Context(), chapterID)
+	resp, err := h.svc.ListScenes(c.Request.Context(), chapterID, collaboration.GetProjectID(c), auth.GetUserID(c))
 	if err != nil {
 		handleError(c, err)
 		return
@@ -409,8 +413,9 @@ func (h *Handler) UpdateScene(c *gin.Context) {
 		return
 	}
 
-	// Populate notifier fields so the service can schedule summary regen.
+	// Populate handler-only fields for git dual-write and summary notifier.
 	if claims := auth.GetClaims(c); claims != nil {
+		req.ProjectID = collaboration.GetProjectID(c)
 		req.NotifyUserID = claims.UserID
 		req.NotifyBranch = c.GetHeader("X-NexusTale-Branch")
 	}

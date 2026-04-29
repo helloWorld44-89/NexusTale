@@ -37,8 +37,9 @@ type debounceKey struct {
 
 // pendingWork holds everything needed to perform the deferred summarization.
 type pendingWork struct {
-	timer  *time.Timer
-	userID uuid.UUID
+	timer     *time.Timer
+	userID    uuid.UUID
+	projectID uuid.UUID
 }
 
 // debouncer serialises access to the in-process timer map.
@@ -67,7 +68,7 @@ func (d *debouncer) cancelForChapter(chapterID uuid.UUID) {
 
 // schedule either resets an existing timer or creates a new one. When the
 // timer fires the supplied fn is called in a new goroutine.
-func (d *debouncer) schedule(key debounceKey, delay time.Duration, userID uuid.UUID, fn func(userID uuid.UUID)) {
+func (d *debouncer) schedule(key debounceKey, delay time.Duration, userID, projectID uuid.UUID, fn func(userID, projectID uuid.UUID)) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -76,16 +77,17 @@ func (d *debouncer) schedule(key debounceKey, delay time.Duration, userID uuid.U
 		// latest writer so we use their API key for the eventual summarization.
 		p.timer.Reset(delay)
 		p.userID = userID
+		p.projectID = projectID
 		return
 	}
 
-	p := &pendingWork{userID: userID}
+	p := &pendingWork{userID: userID, projectID: projectID}
 	p.timer = time.AfterFunc(delay, func() {
 		d.mu.Lock()
 		pw := d.pending[key]
 		delete(d.pending, key)
 		d.mu.Unlock()
-		fn(pw.userID)
+		fn(pw.userID, pw.projectID)
 	})
 	d.pending[key] = p
 }
@@ -119,7 +121,7 @@ func (s *Service) ResolveBranch(ctx context.Context, headerBranch string, userID
 // ScheduleSummarize marks the chapter summary for (chapterID, branchName) as
 // stale and schedules a debounced LLM summarization.  Designed to be called
 // non-blocking from scene-save handlers.
-func (s *Service) ScheduleSummarize(userID, chapterID uuid.UUID, branchName string) {
+func (s *Service) ScheduleSummarize(userID, chapterID, projectID uuid.UUID, branchName string) {
 	// Mark stale immediately so the frontend can show the indicator.
 	go func() {
 		if err := s.queries.MarkChapterSummaryStale(context.Background(), sqlcgen.MarkChapterSummaryStaleParams{
@@ -131,8 +133,8 @@ func (s *Service) ScheduleSummarize(userID, chapterID uuid.UUID, branchName stri
 	}()
 
 	key := debounceKey{chapterID: chapterID, branchName: branchName}
-	s.debounce.schedule(key, summarizeDebounce, userID, func(uid uuid.UUID) {
-		s.regenerateSummary(uid, chapterID, branchName)
+	s.debounce.schedule(key, summarizeDebounce, userID, projectID, func(uid, pid uuid.UUID) {
+		s.regenerateSummary(uid, chapterID, pid, branchName)
 	})
 }
 
@@ -175,7 +177,7 @@ func (s *Service) CleanupBranch(ctx context.Context, projectID uuid.UUID, branch
 
 // regenerateSummary fetches all scene content for the chapter, calls Summarize,
 // then stores the result.  Called by the debounce timer.
-func (s *Service) regenerateSummary(userID, chapterID uuid.UUID, branchName string) {
+func (s *Service) regenerateSummary(userID, chapterID, projectID uuid.UUID, branchName string) {
 	ctx := context.Background()
 
 	scenes, err := s.queries.ListScenesByChapter(ctx, chapterID)
@@ -192,10 +194,17 @@ func (s *Service) regenerateSummary(userID, chapterID uuid.UUID, branchName stri
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
-		sb.WriteString(sc.Content)
+		sb.WriteString(s.readSceneContent(ctx, chapterID, sc.ID))
 	}
 
-	summary, _, err := s.Summarize(ctx, userID, "", sb.String())
+	combined := strings.TrimSpace(sb.String())
+	if combined == "" {
+		// Git files not yet written or sceneWriter not wired — nothing to summarize.
+		slog.Warn("ai: regenerate summary — no scene content available", "chapter_id", chapterID)
+		return
+	}
+
+	summary, _, err := s.Summarize(ctx, userID, projectID, "", combined)
 	if err != nil {
 		slog.Warn("ai: regenerate summary — summarize failed", "chapter_id", chapterID, "error", err)
 		return
@@ -290,14 +299,30 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 			if err != nil || len(scenes) == 0 {
 				continue
 			}
-			var combined strings.Builder
+			// Skip the current scene's chapter in the fallback path — its full
+			// content is already included in section 3, so the excerpt would
+			// duplicate it at lower quality. (When a real AI summary exists the
+			// overlap is intentional: summary ≠ full prose.)
+			if currentSceneID != uuid.Nil {
+				isCurrentChapter := false
+				for _, sc := range scenes {
+					if sc.ID == currentSceneID {
+						isCurrentChapter = true
+						break
+					}
+				}
+				if isCurrentChapter {
+					continue
+				}
+			}
+			var rawSnippet strings.Builder
 			for i, sc := range scenes {
 				if i > 0 {
-					combined.WriteString(" ")
+					rawSnippet.WriteString(" ")
 				}
-				combined.WriteString(strings.TrimSpace(sc.Content))
+				rawSnippet.WriteString(strings.TrimSpace(s.readSceneContent(ctx, ch.ID, sc.ID)))
 			}
-			snippet := []rune(combined.String())
+			snippet := []rune(rawSnippet.String())
 			if len(snippet) > contentFallbackLimit {
 				snippet = append(snippet[:contentFallbackLimit], []rune("…")...)
 			}
@@ -535,7 +560,7 @@ func (s *Service) appendPinnedChapter(out *strings.Builder, ctx context.Context,
 		if i > 0 {
 			combined.WriteString("\n\n")
 		}
-		combined.WriteString(sc.Content)
+		combined.WriteString(s.readSceneContent(ctx, id, sc.ID))
 	}
 	content := []rune(combined.String())
 	if mode == "summary" && len(content) > contentFallbackLimit {
@@ -581,7 +606,7 @@ func (s *Service) appendPinnedScene(out *strings.Builder, ctx context.Context, i
 	}
 	out.WriteString("**" + label + "**\n")
 
-	content := []rune(sc.Content)
+	content := []rune(s.readSceneContent(ctx, sc.ChapterID, sc.ID))
 	if mode == "summary" && len(content) > contentFallbackLimit {
 		content = append(content[:contentFallbackLimit], []rune("…")...)
 	} else if mode == "full" && len(content) > pinnedContentLimit {

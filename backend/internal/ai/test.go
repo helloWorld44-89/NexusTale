@@ -78,6 +78,62 @@ func (s *Service) TestConnection(ctx context.Context, userID uuid.UUID, provider
 		res.OK = true
 		res.Models = models
 
+	case "openrouter":
+		key, err := s.authSvc.DecryptAPIKey(ctx, userID, "openrouter")
+		if err != nil {
+			res.Error = "No OpenRouter key stored."
+			return res
+		}
+		models, err := pingOpenRouter(ctx, key)
+		if err != nil {
+			res.Error = err.Error()
+			return res
+		}
+		res.OK = true
+		res.Models = models
+
+	case "gemini":
+		key, err := s.authSvc.DecryptAPIKey(ctx, userID, "gemini")
+		if err != nil {
+			res.Error = "No Gemini key stored."
+			return res
+		}
+		models, err := pingGemini(ctx, key)
+		if err != nil {
+			res.Error = err.Error()
+			return res
+		}
+		res.OK = true
+		res.Models = models
+
+	case "groq":
+		key, err := s.authSvc.DecryptAPIKey(ctx, userID, "groq")
+		if err != nil {
+			res.Error = "No Groq key stored."
+			return res
+		}
+		models, err := pingGroq(ctx, key)
+		if err != nil {
+			res.Error = err.Error()
+			return res
+		}
+		res.OK = true
+		res.Models = models
+
+	case "deepseek":
+		key, err := s.authSvc.DecryptAPIKey(ctx, userID, "deepseek")
+		if err != nil {
+			res.Error = "No DeepSeek key stored."
+			return res
+		}
+		models, err := pingDeepSeek(ctx, key)
+		if err != nil {
+			res.Error = err.Error()
+			return res
+		}
+		res.OK = true
+		res.Models = models
+
 	default:
 		// For gemini, mistral, custom — confirm key exists; no free test endpoint.
 		if _, err := s.authSvc.DecryptAPIKey(ctx, userID, provider); err != nil {
@@ -179,6 +235,236 @@ func pingOpenAI(ctx context.Context, key string) ([]string, error) {
 		}
 	}
 	if len(keep) == 0 {
+		keep = append(keep, fmt.Sprintf("%d models available", len(body.Data)))
+	}
+	return keep, nil
+}
+
+func pingGroq(ctx context.Context, key string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.groq.com/openai/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cannot reach Groq: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return nil, fmt.Errorf("Groq rejected the key — check it is valid")
+	case http.StatusOK:
+	default:
+		return nil, fmt.Errorf("Groq returned HTTP %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("unexpected Groq response: %w", err)
+	}
+
+	priority := []string{
+		"llama-3.1-70b-versatile",
+		"llama-3.1-8b-instant",
+		"llama3-70b-8192",
+		"mixtral-8x7b-32768",
+		"gemma2-9b-it",
+	}
+	available := map[string]bool{}
+	for _, m := range body.Data {
+		available[m.ID] = true
+	}
+	keep := []string{}
+	for _, p := range priority {
+		if available[p] {
+			keep = append(keep, p)
+		}
+	}
+	if len(keep) == 0 && len(body.Data) > 0 {
+		keep = append(keep, fmt.Sprintf("%d models available", len(body.Data)))
+	}
+	return keep, nil
+}
+
+func pingDeepSeek(ctx context.Context, key string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.deepseek.com/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cannot reach DeepSeek: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return nil, fmt.Errorf("DeepSeek rejected the key — check it is valid")
+	case http.StatusOK:
+	default:
+		return nil, fmt.Errorf("DeepSeek returned HTTP %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("unexpected DeepSeek response: %w", err)
+	}
+
+	priority := []string{"deepseek-chat", "deepseek-reasoner"}
+	available := map[string]bool{}
+	for _, m := range body.Data {
+		available[m.ID] = true
+	}
+	keep := []string{}
+	for _, p := range priority {
+		if available[p] {
+			keep = append(keep, p)
+		}
+	}
+	if len(keep) == 0 && len(body.Data) > 0 {
+		for _, m := range body.Data {
+			keep = append(keep, m.ID)
+		}
+	}
+	return keep, nil
+}
+
+func pingGemini(ctx context.Context, key string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://generativelanguage.googleapis.com/v1beta/openai/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cannot reach Gemini: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return nil, fmt.Errorf("Gemini rejected the key — check it is valid and the Generative Language API is enabled")
+	case http.StatusOK:
+		// ok
+	default:
+		return nil, fmt.Errorf("Gemini returned HTTP %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("unexpected Gemini response: %w", err)
+	}
+
+	// Return a curated set. gemini-2.0-flash is the recommended default
+	// (fast, generous free tier). gemini-1.5-pro has the 1M-token context window.
+	priority := []string{
+		"gemini-2.0-flash",
+		"gemini-2.0-flash-lite",
+		"gemini-2.5-flash",
+		"gemini-2.5-pro",
+		"gemini-1.5-flash",
+		"gemini-1.5-pro",
+	}
+	available := map[string]bool{}
+	for _, m := range body.Data {
+		available[m.ID] = true
+	}
+	keep := []string{}
+	for _, p := range priority {
+		if available[p] {
+			keep = append(keep, p)
+		}
+	}
+	if len(keep) == 0 && len(body.Data) > 0 {
+		keep = append(keep, fmt.Sprintf("%d models available", len(body.Data)))
+	}
+	return keep, nil
+}
+
+func pingOpenRouter(ctx context.Context, key string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openrouter.ai/api/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cannot reach OpenRouter: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return nil, fmt.Errorf("OpenRouter rejected the key — check it is valid")
+	case http.StatusOK:
+		// ok
+	default:
+		return nil, fmt.Errorf("OpenRouter returned HTTP %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("unexpected OpenRouter response: %w", err)
+	}
+
+	// Return a curated set of popular models so the picker stays usable.
+	priority := []string{
+		"anthropic/claude-3-5-haiku",
+		"anthropic/claude-3-5-sonnet",
+		"openai/gpt-4o-mini",
+		"openai/gpt-4o",
+		"google/gemini-flash-1.5",
+		"google/gemini-pro-1.5",
+		"meta-llama/llama-3.1-8b-instruct",
+		"mistralai/mistral-7b-instruct",
+	}
+	available := map[string]bool{}
+	for _, m := range body.Data {
+		available[m.ID] = true
+	}
+	keep := []string{}
+	for _, p := range priority {
+		if available[p] {
+			keep = append(keep, p)
+		}
+	}
+	if len(keep) == 0 && len(body.Data) > 0 {
 		keep = append(keep, fmt.Sprintf("%d models available", len(body.Data)))
 	}
 	return keep, nil

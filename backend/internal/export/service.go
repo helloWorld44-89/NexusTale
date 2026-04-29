@@ -57,7 +57,11 @@ func NewService(queries *sqlcgen.Queries, store *storage.Client) *Service {
 // ExportMarkdown streams the project as a zip of Markdown files directly into w.
 // The response can be piped straight to http.ResponseWriter; no temp file needed.
 func (s *Service) ExportMarkdown(ctx context.Context, projectID uuid.UUID, w io.Writer) error {
-	return WriteMarkdownZip(ctx, s.queries, projectID, w)
+	repoPath := ""
+	if proj, err := s.queries.GetProject(ctx, projectID); err == nil {
+		repoPath = proj.GitRepoPath
+	}
+	return WriteMarkdownZip(ctx, s.queries, projectID, repoPath, w)
 }
 
 // EnqueueEPUB inserts a pending export job and sends it to the background worker
@@ -141,6 +145,11 @@ func (s *Service) processAsync(job asyncJob) {
 		return
 	}
 
+	repoPath := ""
+	if proj, err := s.queries.GetProject(ctx, job.projectID); err == nil {
+		repoPath = proj.GitRepoPath
+	}
+
 	var (
 		tmpPath     string
 		contentType string
@@ -150,11 +159,11 @@ func (s *Service) processAsync(job asyncJob) {
 
 	switch job.format {
 	case "epub":
-		tmpPath, err = BuildEPUB(ctx, s.queries, job.projectID, job.title)
+		tmpPath, err = BuildEPUB(ctx, s.queries, job.projectID, job.title, repoPath)
 		contentType = "application/epub+zip"
 		ext = "epub"
 	case "docx":
-		tmpPath, err = BuildDOCX(ctx, s.queries, job.projectID, job.title)
+		tmpPath, err = BuildDOCX(ctx, s.queries, job.projectID, job.title, repoPath)
 		contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 		ext = "docx"
 	default:

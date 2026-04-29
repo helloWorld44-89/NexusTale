@@ -27,7 +27,7 @@ type docChapter struct {
 // Formatting: Times New Roman 12pt, double-spaced, 0.5-inch first-line indent,
 // 1-inch margins. Page breaks between chapters. Scene headings are italic,
 // centered. Scene breaks use "# # #".
-func BuildDOCX(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUID, title string) (string, error) {
+func BuildDOCX(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUID, title, repoPath string) (string, error) {
 	chapters, err := queries.ListChaptersByProject(ctx, projectID)
 	if err != nil {
 		return "", fmt.Errorf("list chapters: %w", err)
@@ -41,7 +41,7 @@ func BuildDOCX(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUI
 		}
 		var ss []docScene
 		for _, sc := range scenes {
-			ss = append(ss, docScene{title: sc.Title, content: sc.Content})
+			ss = append(ss, docScene{title: sc.Title, content: sceneFileContent(repoPath, ch.ID, sc.ID, "")})
 		}
 		docs = append(docs, docChapter{title: ch.Title, scenes: ss})
 	}

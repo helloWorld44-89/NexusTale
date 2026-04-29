@@ -23,6 +23,7 @@ import (
 	"github.com/jconder44/nexustale/internal/project"
 	"github.com/jconder44/nexustale/internal/prompts"
 	"github.com/jconder44/nexustale/internal/research"
+	"github.com/jconder44/nexustale/internal/waitlist"
 	"github.com/jconder44/nexustale/internal/wiki"
 	"github.com/jconder44/nexustale/pkg/db"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
@@ -114,6 +115,10 @@ func main() {
 	// debounced chapter-summary regeneration (B2).
 	projectService.WithNotifier(aiService)
 
+	// Wire git scene file writer into AI service so agent tool writes
+	// also dual-write to the working tree (Step 1 — guide wired below after creation).
+	aiService.WithSceneWriter(gitService)
+
 	// MinIO storage client (used by export service for EPUB uploads).
 	storageClient, err := storage.New(storage.Config{
 		Endpoint:  cfg.Minio.Endpoint,
@@ -142,6 +147,7 @@ func main() {
 	aiHandler := ai.NewHandler(aiService)
 	exportHandler := export.NewHandler(exportService)
 	guideService := guide.NewService(queries)
+	guideService.WithSceneWriter(gitService)
 	guideHandler := guide.NewHandler(guideService)
 	promptsHandler := prompts.NewHandler(promptsService)
 
@@ -161,6 +167,9 @@ func main() {
 
 	annotationService := annotations.NewService(queries)
 	annotationHandler := annotations.NewHandler(annotationService)
+
+	waitlistService := waitlist.NewService(queries)
+	waitlistHandler := waitlist.NewHandler(waitlistService)
 
 	// Router
 	gin.SetMode(cfg.Server.Mode)
@@ -232,6 +241,9 @@ func main() {
 		// Annotations — project + scene scoped.
 		annotationGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		annotationHandler.RegisterRoutes(annotationGroup)
+
+		// Waitlist — public, no auth.
+		waitlistHandler.RegisterRoutes(v1)
 	}
 
 	// Server with graceful shutdown

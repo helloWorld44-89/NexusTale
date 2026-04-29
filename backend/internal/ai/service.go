@@ -28,11 +28,19 @@ type AIConfig struct {
 // Service orchestrates AI operations for a project.
 // It resolves the user's stored API key to build the correct adapter,
 // then delegates to that adapter for completion, chat, and summarization.
+// SceneFileWriter reads and writes scene content in the git working tree.
+// Implemented by *project.GitService; injected via WithSceneWriter.
+type SceneFileWriter interface {
+	WriteSceneFile(repoPath string, chapterID, sceneID uuid.UUID, content string) error
+	ReadSceneFile(repoPath string, chapterID, sceneID uuid.UUID) (string, bool, error)
+}
+
 type Service struct {
-	authSvc  *auth.Service
-	queries  *sqlcgen.Queries
-	cfg      AIConfig
-	debounce *debouncer
+	authSvc     *auth.Service
+	queries     *sqlcgen.Queries
+	cfg         AIConfig
+	debounce    *debouncer
+	sceneWriter SceneFileWriter
 }
 
 func NewService(authSvc *auth.Service, queries *sqlcgen.Queries, cfg AIConfig) *Service {
@@ -44,19 +52,60 @@ func NewService(authSvc *auth.Service, queries *sqlcgen.Queries, cfg AIConfig) *
 	}
 }
 
+// WithSceneWriter wires the git scene file writer (called from main after both
+// services are constructed — same pattern as WithNotifier on project.Service).
+func (s *Service) WithSceneWriter(w SceneFileWriter) {
+	s.sceneWriter = w
+}
+
+// readSceneContent reads a scene's prose from the git working tree.
+// Returns "" when sceneWriter is nil, the file is missing, or any lookup fails.
+func (s *Service) readSceneContent(ctx context.Context, chapterID, sceneID uuid.UUID) string {
+	if s.sceneWriter == nil {
+		return ""
+	}
+	ch, err := s.queries.GetChapter(ctx, chapterID)
+	if err != nil {
+		return ""
+	}
+	proj, err := s.queries.GetProject(ctx, ch.ProjectID)
+	if err != nil {
+		return ""
+	}
+	content, _, _ := s.sceneWriter.ReadSceneFile(proj.GitRepoPath, chapterID, sceneID)
+	return content
+}
+
+// ReadSceneContent resolves a scene by ID and reads its prose from the git working
+// tree. Used by handler code that only has the scene ID in scope.
+func (s *Service) ReadSceneContent(ctx context.Context, sceneID uuid.UUID) string {
+	if s.sceneWriter == nil {
+		return ""
+	}
+	sc, err := s.queries.GetScene(ctx, sceneID)
+	if err != nil {
+		return ""
+	}
+	return s.readSceneContent(ctx, sc.ChapterID, sc.ID)
+}
+
 // ── adapter resolution ────────────────────────────────────────────────────────
 
 // providerPreference is the order in which stored keys are tried when the
 // caller does not specify a preferred provider.
-var providerPreference = []string{"anthropic", "openai"}
+var providerPreference = []string{"anthropic", "openai", "openrouter", "gemini", "groq", "deepseek"}
 
 // getAdapter resolves the adapter for the requesting user.
 // If provider is non-empty it is used directly; otherwise keys are tried in
 // providerPreference order, falling back to Ollama if none are stored.
 func (s *Service) getAdapter(ctx context.Context, userID uuid.UUID, provider string) (adapters.Adapter, error) {
 	adapterCfg := adapters.AdapterConfig{
-		OllamaURL:   s.ollamaURLForUser(ctx, userID),
-		OllamaModel: s.ollamaModelForUser(ctx, userID),
+		OllamaURL:       s.ollamaURLForUser(ctx, userID),
+		OllamaModel:     s.ollamaModelForUser(ctx, userID),
+		OpenRouterModel: s.openRouterModelForUser(ctx, userID),
+		GeminiModel:     s.geminiModelForUser(ctx, userID),
+		GroqModel:       s.groqModelForUser(ctx, userID),
+		DeepSeekModel:   s.deepSeekModelForUser(ctx, userID),
 	}
 
 	tryProvider := func(p string) (adapters.Adapter, bool) {
@@ -112,6 +161,42 @@ func (s *Service) ollamaModelForUser(ctx context.Context, userID uuid.UUID) stri
 		return model
 	}
 	return s.cfg.OllamaModel
+}
+
+// openRouterModelForUser returns the preferred OpenRouter model for the user.
+// Stored as provider="openrouter_model" in user_api_keys (e.g. "anthropic/claude-3-5-haiku").
+func (s *Service) openRouterModelForUser(ctx context.Context, userID uuid.UUID) string {
+	if model, err := s.authSvc.DecryptAPIKey(ctx, userID, "openrouter_model"); err == nil && model != "" {
+		return model
+	}
+	return ""
+}
+
+// geminiModelForUser returns the preferred Gemini model for the user.
+// Stored as provider="gemini_model" in user_api_keys (e.g. "gemini-1.5-pro").
+func (s *Service) geminiModelForUser(ctx context.Context, userID uuid.UUID) string {
+	if model, err := s.authSvc.DecryptAPIKey(ctx, userID, "gemini_model"); err == nil && model != "" {
+		return model
+	}
+	return ""
+}
+
+// groqModelForUser returns the preferred Groq model for the user.
+// Stored as provider="groq_model" in user_api_keys (e.g. "llama-3.1-8b-instant").
+func (s *Service) groqModelForUser(ctx context.Context, userID uuid.UUID) string {
+	if model, err := s.authSvc.DecryptAPIKey(ctx, userID, "groq_model"); err == nil && model != "" {
+		return model
+	}
+	return ""
+}
+
+// deepSeekModelForUser returns the preferred DeepSeek model for the user.
+// Stored as provider="deepseek_model" in user_api_keys (e.g. "deepseek-reasoner").
+func (s *Service) deepSeekModelForUser(ctx context.Context, userID uuid.UUID) string {
+	if model, err := s.authSvc.DecryptAPIKey(ctx, userID, "deepseek_model"); err == nil && model != "" {
+		return model
+	}
+	return ""
 }
 
 // ── beat system prompt ────────────────────────────────────────────────────────
@@ -225,23 +310,33 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 	adapterReq.MaxTokens = maxTok
 
 	// Build the AI context window (project identity + chapter content + @[entity] snippets + pins).
-	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, scene.Content, req.SceneID)
+	//
+	// For continue mode the scene text IS the user turn — pass uuid.Nil so
+	// BuildContext skips section 3 (current scene) and avoids duplicating it.
+	// Beat mode uses req.Beat as the user turn, so section 3 is useful there.
+	ctxSceneID := req.SceneID
+	if req.Mode == adapters.CompleteModeContinue {
+		ctxSceneID = uuid.Nil
+	}
+	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, scene.Content, ctxSceneID)
 
 	switch req.Mode {
 	case adapters.CompleteModeBeat:
 		if maxTok == 0 || maxTok > s.cfg.BeatMaxTokens {
 			adapterReq.MaxTokens = s.cfg.BeatMaxTokens
 		}
+		// Task instruction first so the model knows its role before reading context.
 		sysPrompt := beatSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov, "")
 		if ctxBlock != "" {
-			sysPrompt = ctxBlock + "\n\n" + sysPrompt
+			sysPrompt = sysPrompt + "\n\n" + ctxBlock
 		}
 		adapterReq.SystemPrompt = sysPrompt
 		adapterReq.Content = req.Beat
 	default:
+		// Task instruction first, then context.
 		sysPrompt := continueSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov)
 		if ctxBlock != "" {
-			sysPrompt = ctxBlock + "\n\n" + sysPrompt
+			sysPrompt = sysPrompt + "\n\n" + ctxBlock
 		}
 		adapterReq.SystemPrompt = sysPrompt
 		content := scene.Content
@@ -261,6 +356,21 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 	return usage, err
 }
 
+// chatHistoryWindow is the maximum number of user/assistant turns kept in the
+// sliding history window. Turns older than this are dropped before each call.
+// This caps token spend on long sessions and prevents context-limit errors.
+// 12 turns ≈ 6 complete exchanges — enough conversational memory for most sessions.
+const chatHistoryWindow = 12
+
+// applyHistoryWindow trims msgs to at most maxTurns entries, keeping the tail.
+// msgs must not include the system message (that is prepended separately).
+func applyHistoryWindow(msgs []adapters.Message, maxTurns int) []adapters.Message {
+	if len(msgs) <= maxTurns {
+		return msgs
+	}
+	return msgs[len(msgs)-maxTurns:]
+}
+
 // StreamChat streams a chat response to w.
 // A context window (chapter summaries + @[entity] snippets) is injected as a
 // system message prepended to the conversation.
@@ -278,12 +388,11 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 	// Resolve scene content for @[entity] parsing if a scene is in scope.
 	sceneContent := ""
 	if req.SceneID != uuid.Nil {
-		if sc, err := s.queries.GetScene(ctx, req.SceneID); err == nil {
-			sceneContent = sc.Content
-		}
+		sceneContent = s.ReadSceneContent(ctx, req.SceneID)
 	}
 
-	messages := req.Messages
+	// Trim history before building the request so long sessions don't grow unboundedly.
+	messages := applyHistoryWindow(req.Messages, chatHistoryWindow)
 
 	// Build the context window (project identity + chapter content + @[entity] snippets + pins).
 	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, sceneContent, req.SceneID)
@@ -296,7 +405,7 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 		nexusSystem = req.SystemPromptOverride + "\n\n" + ctxBlock
 	} else {
 		nexusSystem = "You are Nexus, an AI co-author and story intelligence embedded in NexusTale. " +
-			"You have full access to this project's chapters, wiki, and timeline. " +
+			"Your context includes this project's chapter summaries, wiki entries, and timeline. " +
 			"Answer questions about the story accurately, help develop the narrative, suggest improvements, " +
 			"and assist with writing. Be concise unless the user asks for detail.\n\n" + ctxBlock
 	}
@@ -343,9 +452,7 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 
 	sceneContent := ""
 	if req.SceneID != uuid.Nil {
-		if sc, err := s.queries.GetScene(ctx, req.SceneID); err == nil {
-			sceneContent = sc.Content
-		}
+		sceneContent = s.ReadSceneContent(ctx, req.SceneID)
 	}
 
 	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, sceneContent, req.SceneID)
@@ -355,14 +462,16 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 		nexusSystem = req.SystemPromptOverride + "\n\n" + ctxBlock
 	} else {
 		nexusSystem = "You are Nexus, an AI co-author and story intelligence embedded in NexusTale. " +
-			"You have full access to this project's chapters, wiki, and timeline. " +
+			"Your context includes this project's chapter summaries, wiki entries, and timeline. " +
 			"You may use tools to write directly to the manuscript — appending to scenes, " +
-			"replacing their content, or creating new scenes, chapters, and acts. " +
+			"replacing their content, or creating new scenes, chapters, and acts.\n\n" +
+			"IMPORTANT: Before targeting any existing act, chapter, or scene by ID, always call " +
+			"list_project_structure first so you have the correct UUIDs. Never guess or invent IDs.\n\n" +
 			"When the author asks you to write, expand, or create story content, use the appropriate tool. " +
 			"After each tool call, briefly confirm what you did and what comes next.\n\n" + ctxBlock
 	}
 
-	messages := append([]adapters.Message{{Role: "system", Content: nexusSystem}}, req.Messages...)
+	messages := append([]adapters.Message{{Role: "system", Content: nexusSystem}}, applyHistoryWindow(req.Messages, chatHistoryWindow)...)
 
 	var extraMsgs []json.RawMessage
 	var totalUsage adapters.Usage
@@ -424,13 +533,13 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 
 // Summarize generates a 2–3 sentence summary of the provided text.
 // Used by the auto-summarize goroutine in B2. Non-streaming.
-func (s *Service) Summarize(ctx context.Context, userID uuid.UUID, provider, text string) (string, adapters.Usage, error) {
+func (s *Service) Summarize(ctx context.Context, userID, projectID uuid.UUID, provider, text string) (string, adapters.Usage, error) {
 	adapter, err := s.getAdapter(ctx, userID, provider)
 	if err != nil {
 		return "", adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
 	}
 	summary, usage, err := adapter.Summarize(ctx, text)
-	s.recordUsage(uuid.Nil, userID, adapter.Provider(), usage, "summarize", "", uuid.Nil)
+	s.recordUsage(projectID, userID, adapter.Provider(), usage, "summarize", "", uuid.Nil)
 	return summary, usage, err
 }
 
@@ -499,7 +608,7 @@ func (s *Service) GetChapterSummary(ctx context.Context, chapterID uuid.UUID, br
 
 // RegenerateChapterSummary forces a synchronous LLM summarization of the
 // chapter, stores the result, and returns the new summary text.
-func (s *Service) RegenerateChapterSummary(ctx context.Context, userID, chapterID uuid.UUID, branchName string) (string, error) {
+func (s *Service) RegenerateChapterSummary(ctx context.Context, userID, chapterID, projectID uuid.UUID, branchName string) (string, error) {
 	scenes, err := s.queries.ListScenesByChapter(ctx, chapterID)
 	if err != nil {
 		return "", fmt.Errorf("list scenes: %w", err)
@@ -513,10 +622,15 @@ func (s *Service) RegenerateChapterSummary(ctx context.Context, userID, chapterI
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
-		sb.WriteString(sc.Content)
+		sb.WriteString(s.readSceneContent(ctx, sc.ChapterID, sc.ID))
 	}
 
-	summary, _, err := s.Summarize(ctx, userID, "", sb.String())
+	combined := strings.TrimSpace(sb.String())
+	if combined == "" {
+		return "", apperror.Validation("chapter scenes have no readable content — save scenes first")
+	}
+
+	summary, _, err := s.Summarize(ctx, userID, projectID, "", combined)
 	if err != nil {
 		return "", fmt.Errorf("summarize: %w", err)
 	}
@@ -662,7 +776,7 @@ func (s *Service) resolveContext(ctx context.Context, projectID, sceneID uuid.UU
 	if sceneID != uuid.Nil {
 		sc, err := s.queries.GetScene(ctx, sceneID)
 		if err == nil {
-			scene.Content = sc.Content
+			scene.Content = s.readSceneContent(ctx, sc.ChapterID, sc.ID)
 			scene.Tense = sc.Tense
 			scene.Pov = sc.Pov
 		}

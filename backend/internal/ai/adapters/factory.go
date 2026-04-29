@@ -7,8 +7,12 @@ import (
 
 // AdapterConfig holds provider-level configuration injected at startup.
 type AdapterConfig struct {
-	OllamaURL   string // default http://localhost:11434
-	OllamaModel string // default llama3.2
+	OllamaURL       string // default http://localhost:11434
+	OllamaModel     string // default llama3.2
+	OpenRouterModel string // default anthropic/claude-3-5-haiku
+	GeminiModel     string // default gemini-2.0-flash
+	GroqModel       string // default llama-3.1-70b-versatile
+	DeepSeekModel   string // default deepseek-chat
 }
 
 // thinkingModelSubstrings are substrings that identify chain-of-thought models.
@@ -61,6 +65,30 @@ func NewAdapter(provider, apiKey, model string, cfg AdapterConfig) (Adapter, err
 			m = model
 		}
 		return NewAnthropicAdapter(apiKey, m), nil
+	case "openrouter":
+		m := cfg.OpenRouterModel
+		if model != "" {
+			m = model
+		}
+		return NewOpenRouterAdapter(apiKey, m), nil
+	case "gemini":
+		m := cfg.GeminiModel
+		if model != "" {
+			m = model
+		}
+		return NewGeminiAdapter(apiKey, m), nil
+	case "groq":
+		m := cfg.GroqModel
+		if model != "" {
+			m = model
+		}
+		return NewGroqAdapter(apiKey, m), nil
+	case "deepseek":
+		m := cfg.DeepSeekModel
+		if model != "" {
+			m = model
+		}
+		return NewDeepSeekAdapter(apiKey, m), nil
 	default:
 		return nil, fmt.Errorf("unknown provider %q and no Ollama configured", provider)
 	}

@@ -269,7 +269,6 @@ type Scene struct {
 	ID           uuid.UUID          `json:"id"`
 	ChapterID    uuid.UUID          `json:"chapter_id"`
 	Title        string             `json:"title"`
-	Content      string             `json:"content"`
 	Pov          string             `json:"pov"`
 	Tense        string             `json:"tense"`
 	Tags         []string           `json:"tags"`
@@ -301,6 +300,13 @@ type UserApiKey struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 	ForceNonStreaming bool               `json:"force_non_streaming"`
+}
+
+type WaitlistSignup struct {
+	ID            uuid.UUID          `json:"id"`
+	Email         string             `json:"email"`
+	WhatTheyWrite string             `json:"what_they_write"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
 type WikiEntity struct {
