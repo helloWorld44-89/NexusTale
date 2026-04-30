@@ -313,7 +313,7 @@ func TestOllamaAdapter_Summarize_UsesSystemPrompt(t *testing.T) {
 	defer srv.Close()
 
 	adapter := adapters.NewOllamaAdapter(srv.URL, "llama3")
-	summary, _, err := adapter.Summarize(context.Background(), "Long scene text here...")
+	summary, _, err := adapter.Summarize(context.Background(), "Long scene text here...", "Summarize the scene in 2-3 sentences.")
 
 	if err != nil {
 		t.Fatalf("Summarize error: %v", err)

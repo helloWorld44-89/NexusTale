@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars and fill in real values.
+# NEVER commit terraform.tfvars — it contains secrets.
+# terraform.tfvars is gitignored by default when you run `terraform init`.
+
+hcloud_token   = "your_hetzner_api_token_here"
+ssh_public_key = "ssh-ed25519 AAAA... you@host"
+
+env    = "prod"
+domain = "app.nexustale.io"
+
+# Pick a server type from https://www.hetzner.com/cloud (check US availability).
+# Minimum recommendation: 4 vCPU / 8 GB RAM.
+# At time of writing, CPX31 (4 vCPU / 8 GB, AMD shared) is available in ash/hil.
+server_type = "cpx31"
+
+# ash = Ashburn, Virginia (east coast US)
+# hil = Hillsboro, Oregon (west coast US)
+location = "ash"
+
+# Hetzner volume size in GB. 80 GB covers ~50 projects with git history + exports.
+data_volume_size_gb = 80

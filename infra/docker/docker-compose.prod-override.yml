@@ -1,0 +1,23 @@
+# Production port override — merge on top of docker-compose.deploy.yml.
+#
+# Docker's iptables integration bypasses UFW: any port published as "8080:8080"
+# is reachable from the internet regardless of UFW rules. This override restricts
+# the API and MinIO ports to localhost so they are only accessible via the nginx
+# reverse proxy running inside the frontend container.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod-override.yml \
+#     --env-file .env up -d
+#
+# Ports intentionally left public (handled by nginx + TLS):
+#   frontend: 80, 443
+
+services:
+  api:
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  minio:
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"

@@ -695,6 +695,18 @@ export const api = {
         request<void>('DELETE', `/projects/${projectId}/ai/context-pins/${pinId}`, undefined, token),
     },
 
+    contextPreview: (token: string, projectId: string, sceneId?: string, branch?: string) => {
+      const params = sceneId ? `?scene_id=${sceneId}` : ''
+      const extra = branch ? { 'X-NexusTale-Branch': branch } : undefined
+      return request<{ context: string; branch: string; estimated_tokens: number }>(
+        'GET',
+        `/projects/${projectId}/ai/context-preview${params}`,
+        undefined,
+        token,
+        extra,
+      )
+    },
+
     workshop: {
       list: (token: string, projectId: string) =>
         request<WorkshopSession[]>('GET', `/projects/${projectId}/ai/workshop`, undefined, token),

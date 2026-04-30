@@ -978,56 +978,56 @@ Sourced from the 2026-04-29 full AI assessment (graded each surface on prompt qu
 
 **P1 — fix before beta opens (affects every active user)**
 
-- [ ] `[Medium]` **Chat history sliding window** — `StreamChat` sends the full `req.Messages` array on every call. After 20+ turns this causes steadily growing cost and eventually hits context limits. Implement a sliding window: keep the last 10–12 turns verbatim, drop or summarize older turns. Apply to both Nexus chatbar and Workshop sessions.
+- [x] `[Medium]` **Chat history sliding window** — `StreamChat` sends the full `req.Messages` array on every call. After 20+ turns this causes steadily growing cost and eventually hits context limits. Implement a sliding window: keep the last 10–12 turns verbatim, drop or summarize older turns. Apply to both Nexus chatbar and Workshop sessions.
   - Workshop needs a smarter strategy than hard truncation because sessions have multi-turn continuity. Preferred approach: summarize turns older than position -12 into a single `[Earlier in this session: ...]` assistant message rather than dropping them.
 
-- [ ] `[Medium]` **Workshop agent: read-only project structure tool** — `StreamChatWithTools` currently exposes 5 write-only tools. The agent has no way to inspect what already exists (acts/chapters/scenes + their UUIDs) before writing. It infers structure from context block summaries, which only have titles, not IDs. Add a `list_project_structure` read-only tool that returns the live act→chapter→scene tree with IDs. Without it the agent cannot reliably target pre-existing content and risks creating duplicate structural nodes.
+- [x] `[Medium]` **Workshop agent: read-only project structure tool** — `StreamChatWithTools` currently exposes 5 write-only tools. The agent has no way to inspect what already exists (acts/chapters/scenes + their UUIDs) before writing. It infers structure from context block summaries, which only have titles, not IDs. Add a `list_project_structure` read-only tool that returns the live act→chapter→scene tree with IDs. Without it the agent cannot reliably target pre-existing content and risks creating duplicate structural nodes.
 
 **P2 — fix before or at beta launch**
 
-- [ ] `[Light]` **@[Entity] query: fetch only referenced entities** — `BuildContext` section 4 calls `ListEntitiesByProject` (all entities for the project) then filters in Go. A project with 150+ entities pays for 150 DB rows + deserialization on every AI call even if only 2 are referenced. Replace with a targeted query: `SELECT ... WHERE project_id = $1 AND LOWER(name) = ANY($2)` where `$2` is the deduplicated name list from the regex. One SQL change, zero API impact.
+- [x] `[Light]` **@[Entity] query: fetch only referenced entities** — `BuildContext` section 4 calls `ListEntitiesByProject` (all entities for the project) then filters in Go. A project with 150+ entities pays for 150 DB rows + deserialization on every AI call even if only 2 are referenced. Replace with a targeted query: `SELECT ... WHERE project_id = $1 AND LOWER(name) = ANY($2)` where `$2` is the deduplicated name list from the regex. One SQL change, zero API impact.
 
-- [ ] `[Light]` **Summarize prompt consolidation** — the summarize system prompt is copy-pasted identically into all three adapter files (`anthropic.go`, `openai.go`, `ollama.go`). Move it to a single exported constant in `service.go`, pass it through as a parameter to each adapter's `Summarize` call. Also append project genre when available ("this is a chapter from a fantasy novel") so summaries use genre-appropriate vocabulary.
+- [x] `[Light]` **Summarize prompt consolidation** — the summarize system prompt is copy-pasted identically into all three adapter files (`anthropic.go`, `openai.go`, `ollama.go`). Move it to a single exported constant in `service.go`, pass it through as a parameter to each adapter's `Summarize` call. Also append project genre when available ("this is a chapter from a fantasy novel") so summaries use genre-appropriate vocabulary.
 
-- [ ] `[Light]` **Summarize usage: attribute to project** — `recordUsage` is called with `projectID=uuid.Nil` for auto-summarize (background goroutine has no project ID). The chapter→project join is one query away. Thread `projectID` through the debounce key and `regenerateSummary` signature so auto-summarize costs appear in the per-project usage dashboard.
+- [x] `[Light]` **Summarize usage: attribute to project** — `recordUsage` is called with `projectID=uuid.Nil` for auto-summarize (background goroutine has no project ID). The chapter→project join is one query away. Thread `projectID` through the debounce key and `regenerateSummary` signature so auto-summarize costs appear in the per-project usage dashboard.
 
-- [ ] `[Light]` **AI bible: cap length + neutral phrasing** — `GenerateAIInstructions` is uncapped. A user with verbose guide wizard entries can produce 3,000+ character bibles that bloat every AI call. Cap output at ~1,200 characters (trim at sentence boundary). Also change the opening from `"You are writing \"Title\""` (a directive embedded in context) to `"\"Title\" is a genre story."` (neutral framing that doesn't conflict with the Nexus persona).
+- [x] `[Light]` **AI bible: cap length + neutral phrasing** — `GenerateAIInstructions` is uncapped. A user with verbose guide wizard entries can produce 3,000+ character bibles that bloat every AI call. Cap output at ~1,200 characters (trim at sentence boundary). Also change the opening from `"You are writing \"Title\""` (a directive embedded in context) to `"\"Title\" is a genre story."` (neutral framing that doesn't conflict with the Nexus persona).
 
 **P3 — quality improvements (before beta or Phase D)**
 
-- [ ] `[Light]` **Beat mode: tail-of-scene context** — Beat injects the full current scene into the context block (however long) so the model can match the prose at the boundary. In practice only the final 3–4 paragraphs matter for style-matching. Inject the last ~400 tokens of the scene as `## Scene ending` and replace the full scene with a shorter summary excerpt. Reduces prompt tokens on long scenes significantly.
+- [x] `[Light]` **Beat mode: tail-of-scene context** — Beat injects the full current scene into the context block (however long) so the model can match the prose at the boundary. In practice only the final 3–4 paragraphs matter for style-matching. Inject the last ~400 tokens of the scene as `## Scene ending` and replace the full scene with a shorter summary excerpt. Reduces prompt tokens on long scenes significantly.
 
-- [ ] `[Light]` **Continue mode: last-N-paragraphs user turn** — the user turn for continue is the full scene text. For scenes over ~600 tokens, this is expensive and the model only reads the tail anyway. Cap the user turn at the last ~800 tokens of content; prepend earlier content as a labelled `## Earlier in this scene` excerpt in the system context.
+- [x] `[Light]` **Continue mode: last-N-paragraphs user turn** — the user turn for continue is the full scene text. For scenes over ~600 tokens, this is expensive and the model only reads the tail anyway. Cap the user turn at the last ~800 tokens of content; prepend earlier content as a labelled `## Earlier in this scene` excerpt in the system context.
 
-- [ ] `[Light]` **Context Pins: pin count soft cap + UI feedback** — no limit on the number of pins. 20 pins in full mode injects up to 40,000 runes (~10,000 tokens) into every call. Add a soft cap (warn at >8 pins) and show a live token-estimate badge in the Context Pins panel using the `GET /ai/context-preview` endpoint. Writers should see their context budget before pressing send.
+- [x] `[Light]` **Context Pins: pin count soft cap + UI feedback** — no limit on the number of pins. 20 pins in full mode injects up to 40,000 runes (~10,000 tokens) into every call. Add a soft cap (warn at >8 pins) and show a live token-estimate badge in the Context Pins panel using the `GET /ai/context-preview` endpoint. Writers should see their context budget before pressing send.
 
-- [ ] `[Light]` **Surface context preview in UI** — `GET /ai/context-preview` is a valuable debug endpoint but has no UI entry point. Show an estimated token count ("~1,240 tokens in context") in the chat header or Context Pins panel footer. Clicking it opens a read-only drawer showing the full assembled context so writers can see exactly what Nexus knows.
+- [x] `[Light]` **Surface context preview in UI** — `GET /ai/context-preview` is a valuable debug endpoint but has no UI entry point. Show an estimated token count ("~1,240 tokens in context") in the chat header or Context Pins panel footer. Clicking it opens a read-only drawer showing the full assembled context so writers can see exactly what Nexus knows.
 
 ---
 
-### C5 — AI provider expansion
+### C5 — AI provider expansion ✅ complete
 
-Current state: Anthropic ✅, OpenAI ✅, Ollama ✅, OpenRouter ❌ (stub only — `openrouter.go` is a comment file).
+Current state: Anthropic ✅, OpenAI ✅, Ollama ✅, OpenRouter ✅, Gemini ✅, Groq ✅, DeepSeek ✅
 
-All four additions below share the same OpenAI wire-format (`/v1/chat/completions`, `messages` array, SSE delta events) so each is implemented as a thin wrapper on the existing `OpenAIAdapter` with a different base URL, auth header, and default model. Combined implementation effort: ~1 day.
+All four additions were implemented with full feature parity (streaming, ChatTools, Summarize, cost estimation, thinking-model detection). Settings UI covers all providers with per-provider model selection, test-connection buttons, and privacy warnings (DeepSeek).
 
 **P1 — add before beta opens public sign-up**
 
-- [ ] `[Light]` **OpenRouter** — complete the existing stub. Base URL: `openrouter.ai/api/v1`. Auth: `Authorization: Bearer`. Requires `HTTP-Referer: https://<domain>` and `X-Title: NexusTale` per OpenRouter policy. Model format: `openai/gpt-4o`, `anthropic/claude-opus-4`, `meta-llama/llama-3.1-70b-instruct`. Strategic value: one key gives the writer access to 100+ models — cheap Llama variants, Mistral, Command R+, and the major cloud models as alternates. Removes the barrier for writers who don't want to commit to a paid Anthropic/OpenAI subscription.
+- [x] `[Light]` **OpenRouter** — complete the existing stub. Base URL: `openrouter.ai/api/v1`. Auth: `Authorization: Bearer`. Requires `HTTP-Referer: https://<domain>` and `X-Title: NexusTale` per OpenRouter policy. Model format: `openai/gpt-4o`, `anthropic/claude-opus-4`, `meta-llama/llama-3.1-70b-instruct`. Strategic value: one key gives the writer access to 100+ models — cheap Llama variants, Mistral, Command R+, and the major cloud models as alternates. Removes the barrier for writers who don't want to commit to a paid Anthropic/OpenAI subscription.
 
-- [ ] `[Medium]` **Google Gemini** — new adapter (or OpenAI-compatible wrapper via `generativelanguage.googleapis.com/v1beta/openai/`). Default model: `gemini-2.0-flash`. Also expose `gemini-1.5-pro` as a selectable model. Strategic value: (1) **1M-token context window** — Gemini 1.5 Pro can hold an entire 100k-word manuscript; no other provider comes close. This is a genuine product differentiator once the context assembly pipeline is mature. (2) **Free tier** — 15 RPM, 1M tokens/day free — the only path to zero-cost AI for alpha writers who don't want to pay for API access. Price table entry needed in the adapter.
+- [x] `[Medium]` **Google Gemini** — new adapter (or OpenAI-compatible wrapper via `generativelanguage.googleapis.com/v1beta/openai/`). Default model: `gemini-2.0-flash`. Also expose `gemini-1.5-pro` as a selectable model. Strategic value: (1) **1M-token context window** — Gemini 1.5 Pro can hold an entire 100k-word manuscript; no other provider comes close. This is a genuine product differentiator once the context assembly pipeline is mature. (2) **Free tier** — 15 RPM, 1M tokens/day free — the only path to zero-cost AI for alpha writers who don't want to pay for API access. Price table entry needed in the adapter.
 
 **P2 — add before or at beta, low effort given wire-format compatibility**
 
-- [ ] `[Light]` **Groq** — OpenAI-compatible wrapper. Base URL: `api.groq.com/openai/v1`. Default model: `llama-3.1-70b-versatile`. Strategic value: fastest inference available (~500 tokens/second on Llama 70B) — Beat mode feels instant rather than word-by-word. Free tier (generous daily limits). Good UX improvement for writers who use Beat heavily.
+- [x] `[Light]` **Groq** — OpenAI-compatible wrapper. Base URL: `api.groq.com/openai/v1`. Default model: `llama-3.1-70b-versatile`. Strategic value: fastest inference available (~500 tokens/second on Llama 70B) — Beat mode feels instant rather than word-by-word. Free tier (generous daily limits). Good UX improvement for writers who use Beat heavily.
 
-- [ ] `[Light]` **DeepSeek** — OpenAI-compatible wrapper. Base URL: `api.deepseek.com/v1`. Default model: `deepseek-chat` (V3). Strategic value: GPT-4o-class quality at ~3% of the cost ($0.27/M input tokens vs. $10/M for GPT-4o). Primary audience: cost-conscious writers doing high-volume beats or long chat sessions. **Note to surface in Settings:** DeepSeek servers are operated by a Chinese company; writers with privacy concerns about manuscript data should use Anthropic, OpenAI, Gemini, or Ollama instead.
+- [x] `[Light]` **DeepSeek** — OpenAI-compatible wrapper. Base URL: `api.deepseek.com/v1`. Default model: `deepseek-chat` (V3). Strategic value: GPT-4o-class quality at ~3% of the cost ($0.27/M input tokens vs. $10/M for GPT-4o). Primary audience: cost-conscious writers doing high-volume beats or long chat sessions. **Note to surface in Settings:** DeepSeek servers are operated by a Chinese company; writers with privacy concerns about manuscript data should use Anthropic, OpenAI, Gemini, or Ollama instead.
 
 **Provider selection UX changes needed alongside C5:**
 
-- Settings → AI Configuration panel needs a provider dropdown that includes the new providers, with per-provider model field and a brief description of each
-- `providerPreference` order in `service.go` should be reviewed when Gemini is added (free tier may warrant moving it earlier in the fallback chain for users without cloud keys)
-- Factory `NewAdapter` switch needs a case per new provider; `isThinkingModel` substring list already covers `deepseek-reasoner` and `r1`
+- [x] Settings → AI Configuration panel needs a provider dropdown that includes the new providers, with per-provider model field and a brief description of each
+- [x] `providerPreference` order in `service.go` should be reviewed when Gemini is added (free tier may warrant moving it earlier in the fallback chain for users without cloud keys)
+- [x] Factory `NewAdapter` switch needs a case per new provider; `isThinkingModel` substring list already covers `deepseek-reasoner` and `r1`
 
 ---
 

@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
@@ -357,27 +356,28 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 	// ── 4. @[Entity] inline references ───────────────────────────────────
 	matches := entityRefRE.FindAllStringSubmatch(sceneContent, -1)
 	if len(matches) > 0 {
+		// Deduplicate referenced names (case-insensitive) and query only those rows
+		// rather than fetching all project entities and filtering in Go.
 		seen := make(map[string]bool)
-		var entitySnippets []string
+		var names []string
+		for _, m := range matches {
+			lower := strings.ToLower(m[1])
+			if !seen[lower] {
+				seen[lower] = true
+				names = append(names, lower)
+			}
+		}
 
-		// Fetch all entities once; filter by name below.
-		entities, _ := s.queries.ListEntitiesByProject(ctx, sqlcgen.ListEntitiesByProjectParams{
+		entities, _ := s.queries.GetEntitiesByNames(ctx, sqlcgen.GetEntitiesByNamesParams{
 			ProjectID: projectID,
-			Type:      pgtype.Text{},
+			Names:     names,
 		})
 
-		for _, m := range matches {
-			name := m[1]
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			for _, e := range entities {
-				if strings.EqualFold(e.Name, name) && e.Summary != "" {
-					entitySnippets = append(entitySnippets,
-						fmt.Sprintf("**%s** (%s): %s", e.Name, e.Type, e.Summary))
-					break
-				}
+		var entitySnippets []string
+		for _, e := range entities {
+			if e.Summary != "" {
+				entitySnippets = append(entitySnippets,
+					fmt.Sprintf("**%s** (%s): %s", e.Name, e.Type, e.Summary))
 			}
 		}
 
