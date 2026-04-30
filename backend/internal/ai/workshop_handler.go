@@ -312,6 +312,7 @@ func (h *Handler) WorkshopChat(c *gin.Context) {
 		Provider:             req.Provider,
 		MaxTokens:            req.MaxTokens,
 		SystemPromptOverride: systemPrompt,
+		WorkshopMode:         true,
 	}
 
 	setSSeHeaders(c)

@@ -220,9 +220,9 @@ func (a *OllamaAdapter) StreamChat(ctx context.Context, req ChatRequest, w io.Wr
 
 // ── Summarize ─────────────────────────────────────────────────────────────────
 
-func (a *OllamaAdapter) Summarize(ctx context.Context, text string) (string, Usage, error) {
+func (a *OllamaAdapter) Summarize(ctx context.Context, text, systemPrompt string) (string, Usage, error) {
 	req := CompleteRequest{
-		SystemPrompt: "You are a writing assistant. Summarize the following scene or chapter content in 2–3 sentences, focusing on key plot events, character decisions, and narrative momentum. Be concise and factual.",
+		SystemPrompt: systemPrompt,
 		Content:      text,
 		MaxTokens:    200,
 	}

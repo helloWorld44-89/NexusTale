@@ -283,6 +283,7 @@ type ChatRequest struct {
 	Provider             string
 	MaxTokens            int
 	SystemPromptOverride string // if non-empty, replaces the default Nexus identity prompt
+	WorkshopMode         bool   // use digest-based history window instead of plain truncation
 }
 
 // StreamComplete streams the AI response for scene continuation or beat expansion.
@@ -311,13 +312,12 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 
 	// Build the AI context window (project identity + chapter content + @[entity] snippets + pins).
 	//
-	// For continue mode the scene text IS the user turn — pass uuid.Nil so
-	// BuildContext skips section 3 (current scene) and avoids duplicating it.
-	// Beat mode uses req.Beat as the user turn, so section 3 is useful there.
-	ctxSceneID := req.SceneID
-	if req.Mode == adapters.CompleteModeContinue {
-		ctxSceneID = uuid.Nil
-	}
+	// Both beat and continue suppress the full "Current scene" section (pass uuid.Nil):
+	//   • Continue: the full scene text IS the user turn — including it in context would duplicate it.
+	//   • Beat: we inject only the last ~400 tokens as "## Scene ending" (see below), which is
+	//     enough for style-matching without paying for the full text on long scenes.
+	// sceneContent is still passed for @[entity] parsing in BuildContext section 4.
+	ctxSceneID := uuid.Nil
 	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, scene.Content, ctxSceneID)
 
 	switch req.Mode {
@@ -330,6 +330,12 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 		if ctxBlock != "" {
 			sysPrompt = sysPrompt + "\n\n" + ctxBlock
 		}
+		// Append just the last ~400 tokens of the scene so the model can match prose
+		// style at the current boundary without reading the full text of long scenes.
+		if scene.Content != "" {
+			tail := sceneEndingExcerpt(scene.Content, beatSceneTailRunes)
+			sysPrompt += "\n\n## Scene ending\n" + tail
+		}
 		adapterReq.SystemPrompt = sysPrompt
 		adapterReq.Content = req.Beat
 	default:
@@ -338,8 +344,15 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 		if ctxBlock != "" {
 			sysPrompt = sysPrompt + "\n\n" + ctxBlock
 		}
+		// For long scenes, cap the user turn at the last ~800 tokens.
+		// The earlier content is preserved as a brief hint so the model knows
+		// the scene is not starting from scratch.
+		head, tail := splitSceneContent(scene.Content, continueSceneTailRunes, continueHeadExcerptRunes)
+		if head != "" {
+			sysPrompt += "\n\n## Earlier in this scene\n" + head
+		}
 		adapterReq.SystemPrompt = sysPrompt
-		content := scene.Content
+		content := tail
 		if req.Instruction != "" {
 			content += "\n\n[Instruction: " + req.Instruction + "]"
 		}
@@ -362,6 +375,43 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 // 12 turns ≈ 6 complete exchanges — enough conversational memory for most sessions.
 const chatHistoryWindow = 12
 
+// Scene-content trimming limits for beat and continue modes.
+// Rune counts approximate token counts at roughly 4 chars/token.
+const (
+	beatSceneTailRunes       = 1600 // ~400 tokens — the tail injected as "## Scene ending"
+	continueSceneTailRunes   = 3200 // ~800 tokens — max user-turn length for continue
+	continueHeadExcerptRunes = 600  // runes preserved as "## Earlier in this scene" hint
+)
+
+// sceneEndingExcerpt returns the last n runes of content.
+// Used by beat mode to inject only the prose boundary the model needs for style-matching.
+func sceneEndingExcerpt(content string, n int) string {
+	runes := []rune(content)
+	if len(runes) <= n {
+		return content
+	}
+	return string(runes[len(runes)-n:])
+}
+
+// splitSceneContent splits content for continue mode into a head excerpt and a tail.
+// The tail is the last tailRunes runes (used as the model's user turn).
+// The head is a short excerpt of the beginning (injected as "## Earlier in this scene").
+// When content fits within tailRunes, head is empty and tail is the full content.
+func splitSceneContent(content string, tailRunes, headExcerptRunes int) (head, tail string) {
+	runes := []rune(content)
+	if len(runes) <= tailRunes {
+		return "", content
+	}
+	tail = string(runes[len(runes)-tailRunes:])
+	headRunes := runes[:len(runes)-tailRunes]
+	if len(headRunes) > headExcerptRunes {
+		head = string(headRunes[:headExcerptRunes]) + "…"
+	} else {
+		head = string(headRunes)
+	}
+	return head, tail
+}
+
 // applyHistoryWindow trims msgs to at most maxTurns entries, keeping the tail.
 // msgs must not include the system message (that is prepended separately).
 func applyHistoryWindow(msgs []adapters.Message, maxTurns int) []adapters.Message {
@@ -369,6 +419,61 @@ func applyHistoryWindow(msgs []adapters.Message, maxTurns int) []adapters.Messag
 		return msgs
 	}
 	return msgs[len(msgs)-maxTurns:]
+}
+
+// workshopDigestMaxRunes is the per-turn character cap used when compressing
+// older workshop turns into the digest summary.
+const workshopDigestMaxRunes = 200
+
+// applyWorkshopHistoryWindow is like applyHistoryWindow but designed for workshop
+// sessions that have strong multi-turn continuity. Instead of silently dropping
+// older turns, it compresses them into a synthetic user+assistant digest pair so
+// the model retains context across long sessions.
+//
+// The digest message uses role "user" so that the result always starts with a
+// user turn, satisfying provider constraints (e.g. Anthropic requires the first
+// message to be role "user"). When the first retained tail message is also "user",
+// a brief assistant acknowledgment is inserted to maintain proper alternation.
+func applyWorkshopHistoryWindow(msgs []adapters.Message, maxTurns int) []adapters.Message {
+	if len(msgs) <= maxTurns {
+		return msgs
+	}
+
+	head := msgs[:len(msgs)-maxTurns]
+	tail := msgs[len(msgs)-maxTurns:]
+
+	var sb strings.Builder
+	sb.WriteString("[Earlier in this session:]\n")
+	for _, m := range head {
+		if m.Role != "user" && m.Role != "assistant" {
+			continue
+		}
+		label := "You"
+		if m.Role == "assistant" {
+			label = "Nexus"
+		}
+		runes := []rune(m.Content)
+		if len(runes) > workshopDigestMaxRunes {
+			runes = append(runes[:workshopDigestMaxRunes], '…')
+		}
+		fmt.Fprintf(&sb, "%s: %s\n", label, string(runes))
+	}
+
+	digest := adapters.Message{Role: "user", Content: strings.TrimRight(sb.String(), "\n")}
+
+	// When the first tail message is also "user", insert an assistant ack so the
+	// conversation maintains strict user/assistant alternation.
+	if len(tail) > 0 && tail[0].Role == "user" {
+		ack := adapters.Message{
+			Role:    "assistant",
+			Content: "Understood, I recall our earlier discussion. Continuing from here.",
+		}
+		result := make([]adapters.Message, 0, 2+len(tail))
+		return append(append(result, digest, ack), tail...)
+	}
+
+	result := make([]adapters.Message, 0, 1+len(tail))
+	return append(append(result, digest), tail...)
 }
 
 // StreamChat streams a chat response to w.
@@ -392,7 +497,13 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 	}
 
 	// Trim history before building the request so long sessions don't grow unboundedly.
-	messages := applyHistoryWindow(req.Messages, chatHistoryWindow)
+	// Workshop sessions compress dropped turns into a digest to preserve continuity.
+	var messages []adapters.Message
+	if req.WorkshopMode {
+		messages = applyWorkshopHistoryWindow(req.Messages, chatHistoryWindow)
+	} else {
+		messages = applyHistoryWindow(req.Messages, chatHistoryWindow)
+	}
 
 	// Build the context window (project identity + chapter content + @[entity] snippets + pins).
 	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, sceneContent, req.SceneID)
@@ -471,7 +582,13 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 			"After each tool call, briefly confirm what you did and what comes next.\n\n" + ctxBlock
 	}
 
-	messages := append([]adapters.Message{{Role: "system", Content: nexusSystem}}, applyHistoryWindow(req.Messages, chatHistoryWindow)...)
+	var historyMsgs []adapters.Message
+	if req.WorkshopMode {
+		historyMsgs = applyWorkshopHistoryWindow(req.Messages, chatHistoryWindow)
+	} else {
+		historyMsgs = applyHistoryWindow(req.Messages, chatHistoryWindow)
+	}
+	messages := append([]adapters.Message{{Role: "system", Content: nexusSystem}}, historyMsgs...)
 
 	var extraMsgs []json.RawMessage
 	var totalUsage adapters.Usage
@@ -531,6 +648,19 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 	return totalUsage, nil
 }
 
+// summarizeBasePrompt is the single source of truth for the summarize system prompt.
+// All adapters receive this via the Summarize interface; none hardcode it.
+const summarizeBasePrompt = "You are a writing assistant. Summarize the following scene or chapter content in 2–3 sentences, focusing on key plot events, character decisions, and narrative momentum. Be concise and factual."
+
+// summarizeSystemPrompt returns the base prompt with an optional genre suffix
+// so summaries use genre-appropriate vocabulary.
+func summarizeSystemPrompt(genre string) string {
+	if genre == "" {
+		return summarizeBasePrompt
+	}
+	return summarizeBasePrompt + " This is a chapter from a " + genre + " story."
+}
+
 // Summarize generates a 2–3 sentence summary of the provided text.
 // Used by the auto-summarize goroutine in B2. Non-streaming.
 func (s *Service) Summarize(ctx context.Context, userID, projectID uuid.UUID, provider, text string) (string, adapters.Usage, error) {
@@ -538,7 +668,13 @@ func (s *Service) Summarize(ctx context.Context, userID, projectID uuid.UUID, pr
 	if err != nil {
 		return "", adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
 	}
-	summary, usage, err := adapter.Summarize(ctx, text)
+	genre := ""
+	if projectID != uuid.Nil {
+		if p, err := s.queries.GetProject(ctx, projectID); err == nil && len(p.Genres) > 0 {
+			genre = strings.Join(p.Genres, "/")
+		}
+	}
+	summary, usage, err := adapter.Summarize(ctx, text, summarizeSystemPrompt(genre))
 	s.recordUsage(projectID, userID, adapter.Provider(), usage, "summarize", "", uuid.Nil)
 	return summary, usage, err
 }

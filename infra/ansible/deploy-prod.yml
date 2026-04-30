@@ -1,0 +1,396 @@
+---
+# deploy-prod.yml
+#
+# Full production provisioning and deployment for a fresh Hetzner server.
+# Idempotent — safe to re-run for updates; heavy bootstrap tasks are skipped
+# when already applied (Docker installed, volume mounted, etc.).
+#
+# Prerequisite: run `terraform apply` in infra/terraform first, then copy the
+# `ansible_run_command` output and fill in the secret placeholders.
+#
+# Required extra-vars:
+#   prod_vm_host         — server IPv4 (from `terraform output server_ip`)
+#   prod_vm_user         — SSH user (root for fresh Hetzner servers)
+#   workspace            — absolute path to the repo root on YOUR machine
+#   nexustale_domain     — public domain (DNS must already point to server IP)
+#   data_volume_device   — block device path (from `terraform output data_volume_device`)
+#   image_tag            — Docker image tag to deploy (git SHA or "dev")
+#   ghcr_token           — GitHub PAT with read:packages scope
+#   nexustale_db_password
+#   nexustale_jwt_secret
+#   nexustale_encryption_key  — 64 hex chars: openssl rand -hex 32
+#   nexustale_minio_accesskey
+#   nexustale_minio_secretkey
+#   nexustale_alert_email
+
+- name: Provision and deploy NexusTale (production)
+  hosts: "{{ prod_vm_host }}"
+  remote_user: "{{ prod_vm_user }}"
+  become: true
+  gather_facts: true
+
+  vars:
+    deploy_dir: /opt/docker/nexustale
+    compose_file: "{{ deploy_dir }}/docker-compose.yml"
+    compose_override: "{{ deploy_dir }}/docker-compose.prod-override.yml"
+    ghcr_registry: ghcr.io
+    ghcr_user: helloworld44-89
+    data_mount: /mnt/nexustale-data
+    docker_data_root: /mnt/nexustale-data/docker
+    backup_dir: /mnt/nexustale-data/backups
+
+  handlers:
+    - name: Restart Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+
+    - name: Reload sshd
+      ansible.builtin.systemd:
+        name: sshd
+        state: reloaded
+
+
+  tasks:
+
+    # ── System packages ───────────────────────────────────────────────────────
+
+    - name: Ensure apt cache is fresh
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install base utilities
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - ufw
+          - certbot
+          - mailutils
+          - fail2ban
+        state: present
+
+    - name: Add Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+        force: false  # skip if already present
+
+    - name: Add Docker apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu
+          {{ ansible_distribution_release }} stable
+        state: present
+        filename: docker
+
+    - name: Install Docker CE
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+
+    # ── Data volume ───────────────────────────────────────────────────────────
+    # Terraform pre-formats the volume with ext4. We mount it here and add an
+    # fstab entry so it survives reboots.
+
+    - name: Create data volume mount point
+      ansible.builtin.file:
+        path: "{{ data_mount }}"
+        state: directory
+        mode: "0755"
+
+    - name: Mount data volume
+      ansible.posix.mount:
+        path: "{{ data_mount }}"
+        src: "{{ data_volume_device }}"
+        fstype: ext4
+        opts: defaults,nofail
+        state: mounted
+
+
+    # ── Docker configuration ──────────────────────────────────────────────────
+    # Set data-root BEFORE starting Docker so all named volumes land on the
+    # persistent data volume. On reruns this is a no-op (file already correct).
+
+    - name: Create Docker config directory
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        mode: "0755"
+
+    - name: Configure Docker data-root on data volume
+      ansible.builtin.copy:
+        content: |
+          {
+            "data-root": "{{ docker_data_root }}",
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "50m",
+              "max-file": "5"
+            }
+          }
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+      notify: Restart Docker
+
+    - name: Create Docker data-root directory on volume
+      ansible.builtin.file:
+        path: "{{ docker_data_root }}"
+        state: directory
+        mode: "0710"
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+
+    # ── Security hardening ────────────────────────────────────────────────────
+
+    - name: Disable SSH password authentication
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PasswordAuthentication"
+        line: "PasswordAuthentication no"
+        state: present
+      notify: Reload sshd
+
+    - name: UFW — allow SSH
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+
+    - name: UFW — allow HTTP
+      community.general.ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+
+    - name: UFW — allow HTTPS
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+
+    - name: UFW — set default policy to deny incoming
+      community.general.ufw:
+        default: deny
+        direction: incoming
+
+    - name: UFW — enable
+      community.general.ufw:
+        state: enabled
+
+    - name: Enable and start fail2ban
+      ansible.builtin.systemd:
+        name: fail2ban
+        enabled: true
+        state: started
+
+
+    # ── Deploy directory + config ─────────────────────────────────────────────
+
+    - name: Ensure deploy directory exists
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}"
+        state: directory
+        mode: "0750"
+
+    - name: Copy base compose file
+      ansible.builtin.copy:
+        src: "{{ workspace }}/infra/docker/docker-compose.deploy.yml"
+        dest: "{{ compose_file }}"
+        mode: "0640"
+
+    - name: Copy prod port-override compose file
+      ansible.builtin.copy:
+        src: "{{ workspace }}/infra/docker/docker-compose.prod-override.yml"
+        dest: "{{ compose_override }}"
+        mode: "0640"
+
+    - name: Write .env file with secrets
+      ansible.builtin.copy:
+        content: |
+          IMAGE_TAG={{ image_tag }}
+          NEXUSTALE_SERVER_MODE=release
+          NEXUSTALE_SERVER_ALLOWEDORIGIN=https://{{ nexustale_domain }}
+          NEXUSTALE_DB_PASSWORD={{ nexustale_db_password }}
+          NEXUSTALE_AUTH_JWTSECRET={{ nexustale_jwt_secret }}
+          NEXUSTALE_ENCRYPTION_KEY={{ nexustale_encryption_key }}
+          NEXUSTALE_MINIO_ACCESSKEY={{ nexustale_minio_accesskey }}
+          NEXUSTALE_MINIO_SECRETKEY={{ nexustale_minio_secretkey }}
+        dest: "{{ deploy_dir }}/.env"
+        mode: "0600"
+      no_log: true
+
+
+    # ── TLS (certbot) ─────────────────────────────────────────────────────────
+    # TLS is required in production. DNS for nexustale_domain must point to
+    # this server before this task runs.
+
+    - name: Template SSL nginx config
+      ansible.builtin.template:
+        src: "{{ workspace }}/infra/ansible/templates/nginx.ssl.conf.j2"
+        dest: "{{ deploy_dir }}/nginx.ssl.conf"
+        mode: "0644"
+
+    - name: Check if TLS certificate already exists
+      ansible.builtin.stat:
+        path: "/etc/letsencrypt/live/{{ nexustale_domain }}/fullchain.pem"
+      register: cert_stat
+
+    - name: Stop frontend container for initial certificate issuance
+      ansible.builtin.shell: >
+        docker compose -f {{ compose_file }} -f {{ compose_override }}
+        --env-file {{ deploy_dir }}/.env stop frontend
+      args:
+        chdir: "{{ deploy_dir }}"
+      when: not cert_stat.stat.exists
+      ignore_errors: true
+      changed_when: true
+
+    - name: Obtain initial TLS certificate (standalone)
+      ansible.builtin.shell: >
+        certbot certonly --standalone --non-interactive --agree-tos
+        -d {{ nexustale_domain }}
+        -m {{ nexustale_alert_email }}
+      when: not cert_stat.stat.exists
+      changed_when: true
+
+    - name: Set up certbot renewal cron
+      ansible.builtin.cron:
+        name: "certbot renew nexustale"
+        minute: "0"
+        hour: "3"
+        weekday: "1"
+        job: >
+          certbot renew --standalone --quiet
+          --pre-hook  "cd {{ deploy_dir }} && docker compose -f docker-compose.yml -f docker-compose.prod-override.yml --env-file .env stop frontend"
+          --post-hook "cd {{ deploy_dir }} && docker compose -f docker-compose.yml -f docker-compose.prod-override.yml --env-file .env start frontend"
+
+
+    # ── Backups ───────────────────────────────────────────────────────────────
+    # Backups land on the persistent data volume. For production, add an
+    # off-host sync step (rclone → S3, Backblaze B2, etc.) before launch.
+
+    - name: Ensure backup directories exist on data volume
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - "{{ backup_dir }}/db"
+        - "{{ backup_dir }}/repos"
+
+    - name: Set up Postgres daily backup cron
+      ansible.builtin.cron:
+        name: "nexustale postgres backup"
+        minute: "0"
+        hour: "2"
+        job: >-
+          docker exec nexustale-postgres-1
+          pg_dump -U nexustale nexustale
+          | gzip > {{ backup_dir }}/db/nexustale_$(date +\%Y\%m\%d).sql.gz
+          && find {{ backup_dir }}/db -name "*.sql.gz" -mtime +14 -delete
+
+    - name: Set up git repos daily backup cron
+      ansible.builtin.cron:
+        name: "nexustale repos backup"
+        minute: "15"
+        hour: "2"
+        job: >-
+          docker run --rm
+          -v nexustale_git-repos:/data/repos:ro
+          -v {{ backup_dir }}/repos:/backup
+          alpine
+          tar czf /backup/repos_$(date +\%Y\%m\%d).tar.gz -C /data repos
+          && find {{ backup_dir }}/repos -name "*.tar.gz" -mtime +14 -delete
+
+
+    # ── Monitoring ────────────────────────────────────────────────────────────
+
+    - name: Write healthz monitor script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/nexustale-healthz-check
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          if curl -sf --max-time 5 http://localhost:8080/healthz > /dev/null; then
+            rm -f /tmp/nexustale_healthz_fail
+          else
+            echo "$(date)" >> /tmp/nexustale_healthz_fail
+            FAILS=$(wc -l < /tmp/nexustale_healthz_fail)
+            if [ "$FAILS" -ge 2 ]; then
+              echo "NexusTale /healthz failed ${FAILS} times on $(hostname) at $(date)" | \
+                mail -s "NexusTale DOWN" {{ nexustale_alert_email }}
+            fi
+          fi
+
+    - name: Set up healthz uptime monitor cron
+      ansible.builtin.cron:
+        name: "nexustale healthz monitor"
+        minute: "*/5"
+        job: /usr/local/bin/nexustale-healthz-check
+
+    - name: Set up data volume disk alert cron
+      ansible.builtin.cron:
+        name: "nexustale disk alert"
+        minute: "30"
+        hour: "*/4"
+        job: >-
+          USAGE=$(df {{ data_mount }} --output=pcent | tail -1 | tr -d ' %') &&
+          [ "$USAGE" -ge 70 ] &&
+          logger -t nexustale "DISK ALERT: {{ data_mount }} is ${USAGE}% full" &&
+          echo "NexusTale disk alert: {{ data_mount }} is ${USAGE}% full on $(hostname) at $(date)" |
+          mail -s "NexusTale disk alert: ${USAGE}% used" {{ nexustale_alert_email }} ||
+          true
+
+
+    # ── Deploy ────────────────────────────────────────────────────────────────
+
+    - name: Log in to GHCR
+      ansible.builtin.shell: |
+        echo "{{ ghcr_token }}" | docker login {{ ghcr_registry }} -u {{ ghcr_user }} --password-stdin
+      no_log: true
+      changed_when: true
+
+    - name: Pull latest images
+      ansible.builtin.shell: >
+        docker compose -f {{ compose_file }} -f {{ compose_override }}
+        --env-file {{ deploy_dir }}/.env pull
+      args:
+        chdir: "{{ deploy_dir }}"
+      register: pull_result
+      changed_when: "'Pull complete' in pull_result.stdout or 'Downloaded' in pull_result.stdout"
+
+    - name: Deploy stack
+      ansible.builtin.shell: >
+        docker compose -f {{ compose_file }} -f {{ compose_override }}
+        --env-file {{ deploy_dir }}/.env up -d --remove-orphans
+      args:
+        chdir: "{{ deploy_dir }}"
+      changed_when: true
+
+    - name: Remove stopped containers
+      ansible.builtin.shell: >
+        docker compose -f {{ compose_file }} -f {{ compose_override }}
+        --env-file {{ deploy_dir }}/.env ps -q --filter status=exited
+        | xargs -r docker rm
+      args:
+        chdir: "{{ deploy_dir }}"
+      changed_when: false
+      ignore_errors: true

@@ -1,13 +1,17 @@
 // ContextPanel — writer-curated AI context pins.
 // Writers can pin wiki entities, chapters, or scenes so Nexus always has
 // specific information in scope during every AI call in this session.
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
 import type { ContextPin, ContextPinType, ContextPinMode, WikiEntity, Chapter, ResearchNote } from '@/services/api'
+
+const PIN_SOFT_CAP = 8
 
 interface ContextPanelProps {
   token:     string
   projectId: string
+  sceneId?:  string
+  branch?:   string
 }
 
 // ── pin type badge colours ────────────────────────────────────────────────────
@@ -58,13 +62,17 @@ function ModeToggle({
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export default function ContextPanel({ token, projectId }: ContextPanelProps) {
-  const [pins,       setPins]       = useState<ContextPin[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState<string | null>(null)
-  const [searchTab,  setSearchTab]  = useState<SearchTab>('entity')
-  const [searchQ,    setSearchQ]    = useState('')
-  const [adding,     setAdding]     = useState(false)
+export default function ContextPanel({ token, projectId, sceneId, branch }: ContextPanelProps) {
+  const [pins,        setPins]        = useState<ContextPin[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState<string | null>(null)
+  const [searchTab,   setSearchTab]   = useState<SearchTab>('entity')
+  const [searchQ,     setSearchQ]     = useState('')
+  const [adding,      setAdding]      = useState(false)
+  const [tokenCount,  setTokenCount]  = useState<number | null>(null)
+  const [contextText, setContextText] = useState<string>('')
+  const [showContext, setShowContext] = useState(false)
+  const tokenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Searchable candidate lists
   const [entities,  setEntities]  = useState<WikiEntity[]>([])
@@ -87,6 +95,24 @@ export default function ContextPanel({ token, projectId }: ContextPanelProps) {
   }, [token, projectId])
 
   useEffect(() => { loadPins() }, [loadPins])
+
+  // ── token count (debounced, refreshes whenever pins change) ─────────────────
+
+  useEffect(() => {
+    if (tokenTimerRef.current) clearTimeout(tokenTimerRef.current)
+    tokenTimerRef.current = setTimeout(async () => {
+      try {
+        const preview = await api.ai.contextPreview(token, projectId, sceneId, branch)
+        setTokenCount(preview.estimated_tokens)
+        setContextText(preview.context)
+      } catch {
+        // non-fatal — token count is best-effort
+      }
+    }, 600)
+    return () => {
+      if (tokenTimerRef.current) clearTimeout(tokenTimerRef.current)
+    }
+  }, [token, projectId, sceneId, branch, pins])
 
   // ── load candidate lists (deferred until "Add" is opened) ──────────────────
 
@@ -226,6 +252,12 @@ export default function ContextPanel({ token, projectId }: ContextPanelProps) {
         <div className="mx-3 mt-2 text-xs text-red-400">{error}</div>
       )}
 
+      {pins.length > PIN_SOFT_CAP && (
+        <div className="mx-3 mt-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-400">
+          {pins.length} pins — context budget is high. Consider removing some to reduce token spend.
+        </div>
+      )}
+
       {/* ── pin list ── */}
       <div className="flex-1 overflow-y-auto">
         {!adding && (
@@ -340,6 +372,46 @@ export default function ContextPanel({ token, projectId }: ContextPanelProps) {
           </div>
         )}
       </div>
+
+      {/* ── token count footer ── */}
+      {tokenCount !== null && (
+        <div className="px-3 py-2 border-t border-brand-border shrink-0 flex items-center justify-between">
+          <button
+            onClick={() => setShowContext(true)}
+            title="View assembled context"
+            className="text-[11px] text-brand-muted hover:text-brand-cyan transition-colors"
+          >
+            ~{tokenCount.toLocaleString()} tokens in context
+          </button>
+          <span className="text-[10px] text-brand-muted opacity-50">click to inspect</span>
+        </div>
+      )}
+
+      {/* ── context drawer ── */}
+      {showContext && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowContext(false)}>
+          <div
+            className="bg-brand-bg-card border border-brand-border rounded-lg w-[600px] max-w-[90vw] max-h-[80vh] flex flex-col shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-brand-border shrink-0">
+              <span className="text-sm font-semibold text-brand-text">Assembled context</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-brand-muted">~{tokenCount?.toLocaleString()} tokens</span>
+                <button
+                  onClick={() => setShowContext(false)}
+                  className="text-brand-muted hover:text-brand-text transition-colors"
+                >
+                  <XIcon />
+                </button>
+              </div>
+            </div>
+            <pre className="flex-1 overflow-y-auto px-4 py-3 text-xs text-brand-muted font-mono whitespace-pre-wrap leading-relaxed">
+              {contextText || '(empty)'}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

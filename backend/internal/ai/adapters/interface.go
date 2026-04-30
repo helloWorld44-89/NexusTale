@@ -69,7 +69,8 @@ type Adapter interface {
 	StreamChat(ctx context.Context, req ChatRequest, w io.Writer) (Usage, error)
 
 	// Summarize condenses text to a short paragraph (non-streaming).
-	Summarize(ctx context.Context, text string) (string, Usage, error)
+	// systemPrompt is caller-supplied so the service layer can inject genre context.
+	Summarize(ctx context.Context, text, systemPrompt string) (string, Usage, error)
 
 	// IsThinkingModel returns true when the configured model uses chain-of-thought
 	// reasoning and does not support standard system prompts or streaming.

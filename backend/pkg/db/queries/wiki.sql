@@ -16,6 +16,12 @@ WHERE project_id = $1
   AND (sqlc.narg('type')::text IS NULL OR type = sqlc.narg('type')::text)
 ORDER BY name ASC;
 
+-- name: GetEntitiesByNames :many
+SELECT * FROM wiki_entities
+WHERE project_id = sqlc.arg('project_id')
+  AND LOWER(name) = ANY(sqlc.arg('names')::text[])
+ORDER BY name ASC;
+
 -- name: ListEntitiesByParent :many
 SELECT * FROM wiki_entities
 WHERE parent_entity_id = $1

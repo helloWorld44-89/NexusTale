@@ -381,7 +381,7 @@ export default function Editor() {
         {!focusMode && leftPanel === 'context' && projectId && accessToken && (
           <div className="w-72 shrink-0 flex flex-col border-r border-brand-border bg-brand-bg overflow-hidden">
             <ErrorBoundary label="context panel">
-              <ContextPanel token={accessToken} projectId={projectId} />
+              <ContextPanel token={accessToken} projectId={projectId} sceneId={selectedSceneId ?? undefined} branch={currentBranch} />
             </ErrorBoundary>
           </div>
         )}

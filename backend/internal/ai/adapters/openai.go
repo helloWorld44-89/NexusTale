@@ -278,9 +278,9 @@ func (a *OpenAIAdapter) StreamChat(ctx context.Context, req ChatRequest, w io.Wr
 
 // ── Summarize ─────────────────────────────────────────────────────────────────
 
-func (a *OpenAIAdapter) Summarize(ctx context.Context, text string) (string, Usage, error) {
+func (a *OpenAIAdapter) Summarize(ctx context.Context, text, systemPrompt string) (string, Usage, error) {
 	req := CompleteRequest{
-		SystemPrompt: "You are a writing assistant. Summarize the following scene or chapter content in 2–3 sentences, focusing on key plot events, character decisions, and narrative momentum. Be concise and factual.",
+		SystemPrompt: systemPrompt,
 		Content:      text,
 		Mode:         CompleteModeContinue,
 		MaxTokens:    200,

@@ -252,6 +252,49 @@ func (q *Queries) DeleteTimelineEvent(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getEntitiesByNames = `-- name: GetEntitiesByNames :many
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key FROM wiki_entities
+WHERE project_id = $1
+  AND LOWER(name) = ANY($2::text[])
+ORDER BY name ASC
+`
+
+type GetEntitiesByNamesParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Names     []string  `json:"names"`
+}
+
+func (q *Queries) GetEntitiesByNames(ctx context.Context, arg GetEntitiesByNamesParams) ([]WikiEntity, error) {
+	rows, err := q.db.Query(ctx, getEntitiesByNames, arg.ProjectID, arg.Names)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WikiEntity{}
+	for rows.Next() {
+		var i WikiEntity
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.ParentEntityID,
+			&i.Type,
+			&i.Name,
+			&i.Summary,
+			&i.Attributes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ImageKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getEntity = `-- name: GetEntity :one
 SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key FROM wiki_entities WHERE id = $1
 `
