@@ -66,23 +66,38 @@ type RelationshipResponse struct {
 // Magic Rule DTOs
 // ========================
 
+// MagicRuleAttributes holds structured optional fields for a magic system.
+// All fields are optional — writers who prefer freeform prose leave them empty.
+type MagicRuleAttributes struct {
+	Powers        string `json:"powers,omitempty"`
+	Limitations   string `json:"limitations,omitempty"`
+	Cost          string `json:"cost,omitempty"`
+	Source        string `json:"source,omitempty"`
+	Accessibility string `json:"accessibility,omitempty"`
+	// RulesClarity is "defined" | "mysterious" | "mixed".
+	RulesClarity string `json:"rules_clarity,omitempty"`
+}
+
 type CreateMagicRuleRequest struct {
-	Name        string `json:"name" binding:"required,min=1,max=200"`
-	Description string `json:"description"`
+	Name        string              `json:"name" binding:"required,min=1,max=200"`
+	Description string              `json:"description"`
+	Attrs       MagicRuleAttributes `json:"attributes"`
 }
 
 type UpdateMagicRuleRequest struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
+	Name        *string              `json:"name"`
+	Description *string              `json:"description"`
+	Attrs       *MagicRuleAttributes `json:"attributes"`
 }
 
 type MagicRuleResponse struct {
-	ID          uuid.UUID `json:"id"`
-	ProjectID   uuid.UUID `json:"project_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          uuid.UUID           `json:"id"`
+	ProjectID   uuid.UUID           `json:"project_id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	Attributes  MagicRuleAttributes `json:"attributes"`
+	CreatedAt   time.Time           `json:"created_at"`
+	UpdatedAt   time.Time           `json:"updated_at"`
 }
 
 // ========================

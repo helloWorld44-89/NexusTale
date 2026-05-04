@@ -863,21 +863,24 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - **Keyboard shortcuts** — writer-defined hotkeys for common editing actions (bold, italic, scene save, beat trigger, focus mode, etc.); shortcut map to be specified before implementation
 - **Customizable workspaces** — per-user, per-project saved panel layouts (open panels, widths, active scene/chapter); named presets ("drafting", "research", "editing") switchable from the TopBar; `user_workspaces` table (JSONB layout blob); synced across sessions so the editor reopens exactly where the writer left off
 
-### Monetization (deferred — to be designed before launch)
+### Monetization (Phase D — full plan in `docs/MONETIZATION_PLAN.md`)
 
-Likely a free tier + paid tiers model. Proposed shape:
+**Model: pure BYOK platform subscription.** NexusTale hosts software; writers supply their own API keys. No hosted AI, no token markup, no credit systems.
 
-| Tier | Target | Key limits |
+| Tier | Price | Key limits |
 |---|---|---|
-| **Free** | Hobbyists, evaluators | 1 project, Ollama/local AI only, no collaboration |
-| **Writer** (~$10/mo) | Serious solo authors | Unlimited projects, cloud AI (bring-your-own key), all AI features |
-| **Studio** (~$20/mo) | Co-authors, editors | Everything + C3 collaboration features, team management |
+| **Inkwell** | Free | 2 projects / 3 chapters, Markdown export only, no timeline branching, 25 wiki entities, Beat + Nexus chat only |
+| **Scribe** | $10/mo · $89/yr | Unlimited projects, all exports, full git ops (Diverge/TravelTo), full wiki, Workshop (standard), 10 context pins, 1 collaborator |
+| **Chronicler** | $20/mo · $169/yr | Everything in Scribe + Agentic Workshop (tool writes), unlimited pins, 5 collaborators |
+| **Studio** | $55/mo flat | Chronicler × 5 seats, shared wiki, admin panel |
 
-**Principles to lock before implementation:**
+**Principles (locked):**
 - Exports are free at every tier — a writer's manuscript is never held hostage.
-- AI features use bring-your-own-key; NexusTale does not pay for AI compute on behalf of users.
-- `users.plan TEXT DEFAULT 'free'` column added in migration 022 (already created). Plan-check middleware + Stripe/Paddle webhook handler still needed when billing is implemented.
-- Usage already tracked (`ai_usage` table) — cost-visibility features are already 80% built.
+- AI features use BYOK at every tier; NexusTale never pays for AI on behalf of users.
+- `users.plan TEXT DEFAULT 'free'` already exists (migration 022). Plan-enforcement middleware + Stripe webhook handler are the remaining billing work (see `MONETIZATION_PLAN.md`).
+- `ai_usage` table already tracks spend — cost-visibility dashboard is 80% built.
+
+**Beta launch: one-time lifetime deal** — Scribe Lifetime $129, Chronicler Lifetime $219; hard cap 200 buyers or 2 weeks post-launch.
 
 ---
 
@@ -1028,6 +1031,362 @@ All four additions were implemented with full feature parity (streaming, ChatToo
 - [x] Settings → AI Configuration panel needs a provider dropdown that includes the new providers, with per-provider model field and a brief description of each
 - [x] `providerPreference` order in `service.go` should be reviewed when Gemini is added (free tier may warrant moving it earlier in the fallback chain for users without cloud keys)
 - [x] Factory `NewAdapter` switch needs a case per new provider; `isThinkingModel` substring list already covers `deepseek-reasoner` and `r1`
+
+---
+
+### C6 — Craft Depth (Sanderson-inspired)
+
+Features derived from analyzing Brandon Sanderson’s publicly taught writing frameworks (BYU lectures, Writing Excuses, brandonsanderson.com). Each item carries a terminology review gate — no UI copy ships until checked against the list in `docs/MONETIZATION_PLAN.md#terminology-review`.
+
+**Guiding principle:** these are tools informed by established craft thinking, not branded around any one teacher. All UI copy must use NexusTale-native language, not Sanderson’s published framework names. See terminology review notes per item below.
+
+---
+
+#### C6.0 — Wiki entity type templates `[Light]`
+
+When a writer creates a new wiki entity, show a suggested structure template pre-filled in the description field based on the entity type. Templates are **suggestions only** — the writer can keep, modify, or delete any part. No enforcement, no required fields.
+
+**Suggested templates per type:**
+
+- **Character** — Core Motivation · Arc (start → end) · Voice & Presence · Key Relationships
+- **Magic System / Rule** — What it can do · Limitations & Costs · Source & Mechanics · Who can access it · Hard vs. Mysterious spectrum note
+- **Location** — Description · History & Significance · Who lives here · Connections to plot
+- **Faction** — Purpose & Values · Leadership · Relationship to other factions · Resources
+- **Timeline Event** — What happened · Causes · Consequences · Who was present
+
+Implementation: entity type templates stored as `internal/wiki/templates.go` (a Go map, no migration needed); `CreateEntity` handler pre-populates `description` from the template for the given type if description is empty on creation; frontend shows a dismissable "Using template" chip with a "Clear template" button.
+
+- [x] Terminology review: field labels (Core Motivation, Arc, Voice & Presence, etc.) are NexusTale-native — no Sanderson framework names used
+- [x] `internal/wiki/templates.go` — Go map; `CreateEntity` applies template when summary is empty; `ENTITY_TEMPLATES` constant in `WikiPanel.tsx` + `WikiHub.tsx`; type-change swaps template while `usingTemplate` is true; "Using template · ×" chip dismisses and clears
+- [ ] Prompt engineering review: `BuildContext`’s entity formatter should detect and extract template sections rather than truncating as a raw blob — see C6.6
+
+---
+
+#### C6.1 — Magic system structured fields `[Light]`
+
+The magic rules wiki entity type currently stores everything in a freeform `description`. Add structured optional fields so that limitations and costs are first-class — not buried in prose.
+
+New fields on `wiki_entities` where `entity_type = ‘magic_rule’` (stored in existing `attributes JSONB`, no schema migration needed):
+- `powers` TEXT — what the magic can do
+- `limitations` TEXT — **what it cannot do** (this is the most important field; should be visually prominent in the UI)
+- `cost` TEXT — what using the magic costs the user
+- `source` TEXT — where the power comes from / how it works
+- `accessibility` TEXT — who can use it and under what conditions
+- `rules_clarity` TEXT ENUM — `defined` / `mysterious` / `mixed` (spectrum classification)
+
+UI: `MagicRuleDetail.tsx` gains a structured fields section above the freeform description. Fields are optional — a writer who just wants freeform prose can leave them empty.
+
+- [x] Terminology review: `rules_clarity` values (`defined` / `mysterious` / `mixed`) are NexusTale-native — no "Hard/Soft" or "Sanderson’s Laws" in any label or hint text
+- [x] migration 031 `wiki_magic_rules.attributes JSONB`; `MagicRuleAttributes` struct in models.go; encode/decode in service; `MagicRulePanel.tsx` built from stub — list sidebar, structured fields (Limitations prominent in cyan), Clarity Spectrum selector, freeform Notes, delete confirm; "Magic" tab added to WikiHub
+- [ ] Prompt engineering review: `BuildContext` should always inject `## Magic systems` block for projects with magic rules — see C6.6
+
+---
+
+#### C6.2 — Character motivation + arc fields `[Light]`
+
+The character entity currently has a freeform description. Add three optional structured fields (stored in `attributes JSONB`):
+- `motivation` TEXT — what this character wants above all else; surfaced prominently in the entity detail UI
+- `arc_start` TEXT — where they begin (internal state / external position)
+- `arc_end` TEXT — where they end up
+
+Optional secondary fields drawn from the "three dimensions" concept:
+- `appeal_notes` TEXT — what makes the reader care about them
+- `capability_notes` TEXT — what they’re skilled at / knowledgeable about
+- `drive_notes` TEXT — how actively they shape events vs. react to them
+
+UI: a collapsible "Arc Planning" section in `EntityDetail.tsx` for character type entities. Collapsed by default so it doesn’t clutter the page for writers who don’t want it.
+
+`BuildContext`’s `@[Entity]` resolution should prefer `motivation` + `arc_start/end` in the context block for character entities when those fields are populated — they’re more useful to the AI than a freeform bio excerpt.
+
+- [x] Terminology review: labels use NexusTale-native language (Core Motivation, Arc — Beginning/End, Reader Connection, Skills & Knowledge, Agency) — no Sanderson scale names
+- [x] `CharAttrs` type + `extractCharAttrs`/`charAttrsToRecord` helpers; `CHAR_PRIMARY_FIELDS` (motivation, arc_start, arc_end) + `CHAR_SECONDARY_FIELDS` (appeal_notes, capability_notes, drive_notes); collapsible "Character Arc" section in `EntityDetail` (character type only); `handleSave` merges attributes; `ChevronIcon` added
+- [ ] Prompt engineering review: restructure character context line to `[Name] (character) — Motivation: … | Arc: … → … | [capability_notes if set] | [description excerpt]` — see C6.6
+
+---
+
+#### C6.3 — Scene role, goal, and outline health view `[Light]`
+
+Add optional fields to scenes (stored in `attributes JSONB`):
+
+**Structural role** — `scene_role`: `setup` / `development` / `resolution` / `transition`
+
+In the project outline (ProjectExplorer), show a small colored pip per scene based on its role. A writer can scan their act structure and see if they have three consecutive resolution scenes without any setup, or a development section that never resolves. A passive note in the outline header if an act has no `setup` scene or no `resolution` scene.
+
+**Scene goal / conflict / outcome** — three short-form fields that define what the scene is doing at the character level:
+- `scene_goal` TEXT — what the POV character is trying to achieve in this scene
+- `scene_conflict` TEXT — what’s in the way (internal, external, or both)
+- `scene_outcome` TEXT — what actually happens (can be filled after drafting)
+
+These appear in `SceneMetadataPanel.tsx` as an optional expandable section below the existing metadata. They are distinct from `scene_role` (structural) — goal/conflict/outcome is about the character’s experience inside the scene. A `resolution` scene might have a goal of "escape the city" and a conflict of "the gates are locked and the protagonist’s only ally has been captured."
+
+- [x] Terminology review: role labels (Setup / Development / Resolution / Transition) are generic craft vocabulary — no "Promise/Progress/Payoff" or Sanderson framework names used anywhere
+- [x] migration 032 `scenes.attributes JSONB`; `SceneAttributes` struct (scene_role, scene_goal, scene_conflict, scene_outcome); encode/decode in `UpdateScene` + `toSceneResponse`; `SceneMetadataPanel` gains collapsible "Scene Structure" section (role 4-button selector + goal/conflict/outcome textareas, auto-save on blur); role badge shown in collapsed header bar; `ProjectExplorer` `SceneItem` extended with `scene_role`; colored pip (sky/amber/emerald/muted) next to scene title in outline; Editor.tsx threads `scene_role` through `explorerActs`
+- [ ] Prompt engineering review: inject `scene_role` + `scene_goal` + `scene_conflict` into Beat/Continue prompts — see C6.6
+
+---
+
+#### C6.4 — Story thread tracker `[Medium]`
+
+Writers working on long-form fiction routinely open narrative threads (a question posed to the reader, a character arc, a plot event set in motion, an exploration of a new world) and forget to close them. This feature makes open threads visible.
+
+**Thread types** (NexusTale naming — not MICE acronym):
+- **World** — the reader is in an unfamiliar place or situation; closed when they have enough grounding
+- **Mystery** — a question is posed; closed when answered
+- **Arc** — a character’s internal journey; closed when they transform (or fail to)
+- **Conflict** — an external event disrupts the status quo; closed when order is restored
+
+**Implementation:**
+- Migration: `story_threads` table (`id, project_id, title, type, opened_at_scene_id, closed_at_scene_id NULL, notes TEXT, created_at`)
+- Routes: `GET/POST /projects/:id/story-threads`, `PUT/DELETE /projects/:id/story-threads/:tid`
+- Frontend: `StoryThreadsPanel.tsx` — list of threads with type badge, open/closed status, linked scenes; accessible from WikiHub as a new "Threads" tab
+- Outline integration: thread status pips on chapters showing how many open threads pass through that chapter
+- AI integration: `BuildContext` can optionally inject open threads as a `## Open threads` block — useful for Workshop when the writer asks "what am I forgetting?"
+
+- [x] Terminology review: "World / Mystery / Arc / Conflict" are NexusTale-native names. Do not use "MICE Quotient" or the M/I/C/E labels in any UI copy — enforced in `StoryThreadsPanel.tsx` copy; type descriptions explain each concept in plain language with no attribution.
+- [x] migration 033 `story_threads` table; `internal/threads` package (service + handler); `GET/POST /projects/:id/story-threads` + `PUT/DELETE /projects/:id/story-threads/:tid`; `StoryThreadsPanel.tsx` — sidebar list (open/resolved sections, type filter), detail view with inline-save, resolve/re-open toggle, delete confirm; WikiHub "Threads" tab; `api.threads.*` + `StoryThread`/`ThreadType` types in `api.ts`
+- [ ] Outline integration: thread status pips on chapters (how many open threads span that chapter) — deferred to C6.6 or later
+- [ ] Prompt engineering review: open threads are the most forward-looking context the AI can have — they tell it what the story still owes the reader. `BuildContext` should inject a `## Open story threads` section (section 7, after pinned context) listing each open thread as: `- [Type]: "[Title]" — opened in [chapter title]. [notes if set]`. Cap at 10 open threads; if more exist, include the 10 most recently opened. In Workshop, the AI can then proactively flag threads that haven’t been touched in many chapters. In Beat/Continue mode, thread awareness nudges the AI to naturally advance open threads rather than drift. See C6.6.
+
+---
+
+#### C6.5 — Revision pass system `[Medium]`
+
+Writers revise in passes, each with a different focus. NexusTale currently has no concept of a project being in a revision phase — every session looks the same whether you’re drafting or doing a language pass. This feature adds a **Project Phase** that shifts how the AI and Workshop behave.
+
+**Phases:**
+- `drafting` — default; no change from current behavior
+- `story_pass` — AI focuses on plot holes, pacing, dangling threads, promise/payoff coverage
+- `character_pass` — AI focuses on motivation consistency, voice consistency, arc progression
+- `language_pass` — AI focuses on passive voice, weak verbs, sentence variety, word count, prose rhythm
+- `editorial_pass` — AI focuses on structural issues flagged for review; Workshop shows revision notes mode
+
+**Implementation:**
+- `projects.phase TEXT DEFAULT ‘drafting’` — new column (migration)
+- `GET/PUT /projects/:id/phase` — two routes
+- Phase badge in TopBar next to project title (clickable → phase picker modal)
+- Workshop system prompt adjusted per phase: `workshopSystemForPhase(phase string)` returns a phase-appropriate craft focus directive prepended to the session system prompt
+- Beat and Continue modes: a subtle "language pass" overlay hint in the toolbar when project is in `language_pass` phase ("Focus: prose quality")
+- Revision checklist per phase: pre-built Workshop session template that opens with a structured checklist for the active phase ("In a character pass, ask: Does each POV character have a distinct voice? Is motivation clear in every scene they appear in?")
+
+- [ ] Terminology review: phase names are generic. Ensure Workshop checklist templates for each phase do not reproduce Sanderson’s specific revision advice verbatim from his FAQ or BYU lectures. Paraphrase all craft concepts in NexusTale’s own voice.
+- [ ] Prompt engineering review: each `workshopSystemForPhase()` prompt needs real craft depth — a label change alone won’t shift AI behavior. Draft prompts for each phase must be written and tested against real prose before shipping. See C6.6 for the per-phase prompt specifications.
+
+---
+
+#### C6.6 — BuildContext + Prompt Engineering Audit `[Medium]`
+
+This is the implementation ticket that wires all C6 structured data into the AI layer. It should be done as a single focused session after C6.0–C6.5 are built — not piecemeal — so the context assembly is coherent and the total token budget is managed consciously.
+
+**Current `BuildContext` section map** (for reference):
+1. Story bible (`ai_instructions`)
+2. Story structure (novel_structures)
+3. Chapter summaries (branch → canon fallback)
+4. @[Entity] referenced entities
+5. Current scene full text
+6. Pinned context (context pins)
+7. *(new — C6.4)* Open story threads
+
+---
+
+**Section 4 — Entity context block reformatting**
+
+`buildEntityContextBlock(entity)` currently produces: `[Name] is a [type]: [description, first 600 chars]`
+
+After C6, format by entity type when structured fields are populated:
+
+- **Character**: `[Name] (character) — Motivation: [motivation] | Arc: [arc_start] → [arc_end] | [capability_notes if set] | [description excerpt, 300 chars max]`
+  - If motivation is empty, fall back to current format
+  - Arc position hint: if the current chapter’s index is in the first third of total chapters, append `(early arc)`; middle third: `(mid arc)`; final third: `(late arc)` — tells the AI where the character should be in their journey without exposing the ending
+- **Magic rule**: `[Name] (magic system) — Limitations: [limitations] | Powers: [powers] | Cost: [cost] | [rules_clarity label] | [description excerpt, 200 chars max]`
+  - Limitations deliberately listed before Powers — this ordering matters for how the AI weighs the constraint
+  - If `rules_clarity = ‘defined’`: append system note `"Do not introduce abilities not listed above."`
+- **Location**: `[Name] (location) — [description excerpt] | History: [history excerpt if set]`
+- **Faction**: `[Name] (faction) — [description excerpt]`
+- All other types: current format unchanged
+
+---
+
+**New section — `## Magic systems` (always injected)**
+
+When a project has any `magic_rule` entities, inject a dedicated section regardless of @-references in the current scene. Magic rules are world-level constraints the AI must know even when the writer hasn’t mentioned them.
+
+Format:
+```
+## Magic systems
+[Name]: Limitations — [limitations]. Powers — [powers]. Cost — [cost].
+```
+
+Cap at 5 systems (most recently updated); if more exist, use context pins to surface specific ones. Total budget: ~300 tokens max. Position: between section 2 (story structure) and section 3 (chapter summaries) — world rules before story context.
+
+---
+
+**Beat and Continue prompt enrichment**
+
+The system prompt template already uses `{title}`, `{genre}`, `{tense}`, `{pov}`, `{pov_character}`. Add:
+
+- `{scene_role}` → `"This is a [role] scene."` — omitted when not set
+- `{scene_goal}` → `"The POV character’s goal: [scene_goal]."` — omitted when not set
+- `{scene_conflict}` → `"What’s in the way: [scene_conflict]."` — omitted when not set
+- `{open_threads_brief}` → `"Open threads: [title1], [title2]..."` — thread titles only, max 5, omitted when no open threads
+
+Resolved in `applyPromptPreset()` in `ai/service.go`. Fields sourced from current scene’s `attributes JSONB` and project’s open `story_threads` at call time.
+
+---
+
+**Section 7 — `## Open story threads` (new)**
+
+Injected after pinned context when open threads exist:
+
+```
+## Open story threads
+- World: "The mystery of the Shattered Keep" — opened in Chapter 3
+- Arc: "Kira’s revenge against the Conclave" — opened in Chapter 1
+- Mystery: "Who sent the letter?" — opened in Chapter 7
+```
+
+Open threads only (`closed_at_scene_id IS NULL`). Cap at 10, most recently opened. Omit section if none. ~150 tokens for 10 threads.
+
+---
+
+**Workshop `workshopSystemForPhase()` — per-phase prompt specifications**
+
+Draft prompts — must be tested against real prose before C6.5 ships:
+
+- **`story_pass`**: *"You are a developmental editor focused on structural integrity. For any scene or chapter discussed: (1) flag scenes that don’t advance character, plot, or world; (2) identify promises made to the reader that haven’t been paid off; (3) call out pacing issues — scenes that rush through moments that need weight, or linger after they’ve landed. Be specific. Reference open story threads and the project’s story structure when relevant."*
+- **`character_pass`**: *"You are a character editor. For any scene discussed: does each character’s action flow from their stated motivation? Is their voice distinct from others? Are they behaving consistently with their arc position — early, mid, or late in their journey? Flag moments where a character acts for the plot’s convenience rather than their own authentic logic."*
+- **`language_pass`**: *"You are a line editor. For any prose shown, identify: passive constructions that could be active; filter words (‘she saw’, ‘he felt’, ‘she noticed’) that create distance; weak verbs that could be specific; adverbs masking a stronger verb; repeated sentence structure in close proximity; and places where a concrete sensory detail would land harder than an abstraction. Suggest specific rewrites."*
+- **`editorial_pass`**: *"You are a structural editor giving big-picture notes. Does each chapter open with something that earns attention? Does it end in a way that makes the next chapter feel necessary? Are there POV inconsistencies? Does each act do its work — setup, escalation, payoff? Be direct and organized."*
+
+---
+
+**Token budget after all C6 additions**
+
+| Section | Estimated tokens | Notes |
+|---|---|---|
+| Story bible | ~300 | unchanged |
+| Story structure | ~100 | unchanged |
+| Magic systems (new) | ~300 | capped at 5 systems |
+| Chapter summaries | ~600 | unchanged |
+| Entity references | ~400 | reformatted, similar budget |
+| Current scene | ~800 | unchanged |
+| Pinned context | ~500 | unchanged (2,000 rune cap) |
+| Open threads (new) | ~150 | capped at 10 |
+| Beat/Continue extra fields | ~50 | scene_role + goal + conflict |
+| **Total** | **~3,200 tokens** | up ~500 from pre-C6 |
+
+Within range for all providers. Add a `contextBudgetWarn` log line when assembled context exceeds 5,000 tokens so outlier cases are visible.
+
+- [ ] Terminology review: all prompt text written in NexusTale’s voice; no Sanderson framework names in any system prompt
+- [ ] Implementation: build as a single atomic change to `internal/ai/context.go` and `internal/ai/service.go` after C6.0–C6.5 are merged
+
+---
+
+### C7 — Wiki Entity Tagging in Manuscript
+
+Automatically detects wiki entity names in scene prose, surfaces them as interactive tags, and feeds the pre-computed mention list into `BuildContext` so AI context assembly is faster and respects author suppressions.
+
+**Build order:** C7.0 → C7.1 → C7.2 (each independently deployable; C7.0 ships real value alone).
+
+**Migration note:** C7.0 is migration 034 (migrations 031–033 used by C6.1–C6.4).
+
+---
+
+#### C7.0 — Auto-detection backend + mentions panel `[Medium]`
+
+No editor migration required. Delivers auto-tagging, AI context improvement, and per-tag / global removal.
+
+**migration 034 — `scene_entity_mentions` + `projects.auto_tag_enabled`:**
+
+```sql
+CREATE TABLE scene_entity_mentions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scene_id   UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+  entity_id  UUID NOT NULL REFERENCES wiki_entities(id) ON DELETE CASCADE,
+  match_text TEXT NOT NULL,       -- preserves the author's exact capitalisation
+  suppressed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(scene_id, entity_id)
+);
+```
+
+`projects.auto_tag_enabled BOOLEAN NOT NULL DEFAULT TRUE` added in the same migration.
+
+**Detection service (`internal/wiki/tagger.go`):**
+- Loads all entity names for the project in one query
+- Whole-word, case-insensitive regex match against scene content
+- Skips entities whose `scene_id/entity_id` pair is already `suppressed = TRUE`
+- Triggered post-save via a debounced goroutine (same pattern as `ScheduleSummarize`, 5s delay)
+- Respects `projects.auto_tag_enabled`
+
+**Routes:**
+- `GET /projects/:id/scenes/:sid/mentions` — list active (non-suppressed) mentions
+- `DELETE /projects/:id/scenes/:sid/mentions/:mid` — suppress a single tag
+- `DELETE /projects/:id/scenes/:sid/mentions` — suppress all tags on this scene
+- `PATCH /projects/:id` — extend existing route to accept `auto_tag_enabled`
+
+**`BuildContext` improvement:** reads from `scene_entity_mentions` (pre-computed, no regex scan at call time) instead of the current `@[Name]` regex approach. Faster and respects suppressed flags — if an author removed a tag, the AI won't see that entity's snippet either.
+
+**Frontend — `MentionsBar.tsx`:**
+- Thin chip row rendered below the ScribeEditor showing detected entity names (type-colored)
+- Clicking a chip navigates to the wiki entry
+- Right-click a chip → "Remove tag" (calls `DELETE /mentions/:mid`; chip disappears immediately)
+- "Clear all tags" button at the end of the chip row
+- Global toggle in Settings → Manuscript → "Auto-tag wiki entities" (calls `PATCH /projects/:id` with `auto_tag_enabled: false`)
+
+- [ ] Backend: `scene_entity_mentions` migration + `tagger.go` detection service + 3 routes
+- [ ] `BuildContext`: switch entity resolution to use `scene_entity_mentions` table
+- [ ] Frontend: `MentionsBar.tsx` chip row + right-click remove + global settings toggle
+
+---
+
+#### C7.1 — Inline highlighting + hover popup `[Heavy]`
+
+**Requires migrating ScribeEditor from `<textarea>` to TipTap (ProseMirror-based).**
+
+**Editor migration (`@tiptap/react` + `@tiptap/starter-kit`):**
+- Plain text content round-trips cleanly — no format change to stored git markdown files
+- Must preserve all existing ScribeEditor contracts:
+  - Autosave debounce + `beforeunload` flush
+  - `jumpToAnnotation` imperative handle (`forwardRef`)
+  - Beat/Continue "insert text at cursor" from BeatInput
+  - "Insert into scene" from ChatBar/WorkshopPanel
+  - Word count (reads from editor content, not DOM)
+
+**Custom TipTap `EntityMention` Mark:**
+- Applied to spans matching entity names; positions re-detected client-side from the C7.0 mention list on scene load
+- Renders as a subtle underline — intentionally low-visual-weight so it doesn't distract during drafting
+- Right-click on a marked span → "Remove tag" context menu item (calls `DELETE /mentions/:mid`)
+
+**`EntityHoverCard.tsx` popup:**
+- Appears on hover after ~400ms delay (prevents flicker on casual mouseover)
+- Contents: entity name, type badge, first ~150 chars of description, optional portrait thumbnail, "Open in Wiki →" link
+- Positions above or below the span based on available viewport space
+
+- [ ] Migrate ScribeEditor textarea → TipTap; verify all existing features still work
+- [ ] `EntityMention` TipTap Mark + client-side position detection from C7.0 mention list
+- [ ] `EntityHoverCard.tsx` popup component
+- [ ] Right-click → "Remove tag" on highlighted span
+
+---
+
+#### C7.2 — Right-click to tag / create wiki entry `[Medium — deferred to Phase D]`
+
+- Select any word or phrase → right-click → "Link to wiki entry" (search existing entities) or "Create wiki entry" (opens a mini entity sheet inline)
+- "Link" path: `POST /projects/:id/scenes/:sid/mentions` with `override: true` (manual pin, never auto-removed)
+- "Create" path: creates the entity, then adds the mention
+- Natural place to add entity aliasing (e.g. "Kira" and "Kira Voss" both tag the same entry)
+
+---
+
+### Phase D — Premium / advanced
+
+- Map builder v2; image generation pipelines
+- Scrivener/Fountain; advanced Git branching UX
+- Multi-region, scale-out collab tuning
+- **Keyboard shortcuts** — writer-defined hotkeys for common editing actions (bold, italic, scene save, beat trigger, focus mode, etc.); shortcut map to be specified before implementation
+- **Customizable workspaces** — per-user, per-project saved panel layouts (open panels, widths, active scene/chapter); named presets ("drafting", "research", "editing") switchable from the TopBar; `user_workspaces` table (JSONB layout blob); synced across sessions so the editor reopens exactly where the writer left off
+- **Series / shared universe support** — a Series container holding multiple Projects with a shared wiki layer; entities created at the Series level are accessible across all Projects in the series; cross-project references (a character introduced in Book 1 appears in Book 3’s wiki); the primary use case is multi-book SFF series (the "Cosmere model" — a single author building a connected universe across many volumes). Requires significant data model changes: `series` table, `series_id FK` on Projects, wiki entity scope (`project` vs `series`), and UI to navigate between books within a series.
+  - [ ] Terminology review before naming: do not use "Cosmere" or any Sanderson universe name in feature copy. NexusTale-native name TBD (e.g. "Universe," "Series," "Chronicle").
 
 ---
 

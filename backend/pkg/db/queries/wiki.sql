@@ -84,8 +84,8 @@ DELETE FROM wiki_relationships WHERE id = $1;
 -- ========================
 
 -- name: CreateMagicRule :one
-INSERT INTO wiki_magic_rules (project_id, name, description)
-VALUES ($1, $2, $3)
+INSERT INTO wiki_magic_rules (project_id, name, description, attributes)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: GetMagicRule :one
@@ -100,6 +100,7 @@ ORDER BY name ASC;
 UPDATE wiki_magic_rules
 SET name        = COALESCE(sqlc.narg('name'), name),
     description = COALESCE(sqlc.narg('description'), description),
+    attributes  = COALESCE(sqlc.narg('attributes'), attributes),
     updated_at  = now()
 WHERE id = $1
 RETURNING *;

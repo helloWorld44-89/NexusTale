@@ -7,9 +7,11 @@ import type { WikiEntity, EntityType, ProjectStructure } from '@/services/api'
 import TimelineView from '@/components/wiki/TimelineView'
 import RelationshipGraph from '@/components/wiki/RelationshipGraph'
 import ResearchNotesTab from '@/components/wiki/ResearchNotesTab'
+import MagicRulePanel from '@/components/wiki/MagicRulePanel'
+import StoryThreadsPanel from '@/components/wiki/StoryThreadsPanel'
 import { useAuthStore } from '@/app/store/authStore'
 
-type Tab = 'entities' | 'timeline' | 'graph' | 'research'
+type Tab = 'entities' | 'magic' | 'timeline' | 'graph' | 'research' | 'threads'
 
 export default function WikiHub() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -54,6 +56,10 @@ export default function WikiHub() {
           <BookIcon />
           Entities
         </TabButton>
+        <TabButton active={tab === 'magic'} onClick={() => setTab('magic')}>
+          <MagicIcon />
+          Magic
+        </TabButton>
         <TabButton active={tab === 'timeline'} onClick={() => setTab('timeline')}>
           <ClockIcon />
           Timeline
@@ -65,6 +71,10 @@ export default function WikiHub() {
         <TabButton active={tab === 'research'} onClick={() => setTab('research')}>
           <NoteIcon />
           Research
+        </TabButton>
+        <TabButton active={tab === 'threads'} onClick={() => setTab('threads')}>
+          <ThreadIcon />
+          Threads
         </TabButton>
       </div>
 
@@ -78,6 +88,9 @@ export default function WikiHub() {
             initialSelectedId={graphEntityId}
             onClearInitialSelected={() => setGraphEntityId(null)}
           />
+        )}
+        {tab === 'magic' && (
+          <MagicRulePanel token={token} projectId={projectId} />
         )}
         {tab === 'timeline' && (
           <TimelineView
@@ -100,6 +113,9 @@ export default function WikiHub() {
         {tab === 'research' && (
           <ResearchNotesTab token={token} projectId={projectId} />
         )}
+        {tab === 'threads' && (
+          <StoryThreadsPanel token={token} projectId={projectId} />
+        )}
       </main>
     </div>
   )
@@ -108,6 +124,56 @@ export default function WikiHub() {
 // ── Entities tab ──────────────────────────────────────────────────────────────
 
 const ENTITY_TYPES: EntityType[] = ['character', 'location', 'faction', 'item', 'concept', 'lore']
+
+const ENTITY_TEMPLATES: Record<EntityType, string> = {
+  character: 'Core Motivation: \n\nArc: [start state] → [end state]\n\nVoice & Presence: \n\nKey Relationships: ',
+  location:  'Description: \n\nHistory & Significance: \n\nWho lives here: \n\nConnections to plot: ',
+  faction:   'Purpose & Values: \n\nLeadership: \n\nRelationship to other factions: \n\nResources: ',
+  item:      'What it does: \n\nOrigin: \n\nWho possesses it: \n\nSignificance to the story: ',
+  concept:   'What it is: \n\nHow it works: \n\nWho knows about it: \n\nRole in the story: ',
+  lore:      'What happened: \n\nCauses: \n\nConsequences: \n\nWho was present: ',
+}
+
+// ── Character arc structured fields ───────────────────────────────────────────
+
+type CharAttrs = {
+  motivation: string; arc_start: string; arc_end: string
+  appeal_notes: string; capability_notes: string; drive_notes: string
+}
+
+const CHAR_PRIMARY_FIELDS: { key: keyof CharAttrs; label: string; hint: string }[] = [
+  { key: 'motivation',  label: 'Core Motivation',  hint: 'What this character wants above all else' },
+  { key: 'arc_start',   label: 'Arc — Beginning',  hint: 'Where they start (internal state / external position)' },
+  { key: 'arc_end',     label: 'Arc — End',         hint: 'Where they end up by the story\'s close' },
+]
+
+const CHAR_SECONDARY_FIELDS: { key: keyof CharAttrs; label: string; hint: string }[] = [
+  { key: 'appeal_notes',      label: 'Reader Connection', hint: 'What makes the reader care about them' },
+  { key: 'capability_notes',  label: 'Skills & Knowledge', hint: 'What they\'re skilled at or knowledgeable about' },
+  { key: 'drive_notes',       label: 'Agency',             hint: 'How actively they shape events vs. react to them' },
+]
+
+function extractCharAttrs(attrs: Record<string, string> | undefined): CharAttrs {
+  return {
+    motivation:       attrs?.motivation       ?? '',
+    arc_start:        attrs?.arc_start        ?? '',
+    arc_end:          attrs?.arc_end          ?? '',
+    appeal_notes:     attrs?.appeal_notes     ?? '',
+    capability_notes: attrs?.capability_notes ?? '',
+    drive_notes:      attrs?.drive_notes      ?? '',
+  }
+}
+
+function charAttrsToRecord(a: CharAttrs): Record<string, string> {
+  const r: Record<string, string> = {}
+  if (a.motivation)       r.motivation       = a.motivation
+  if (a.arc_start)        r.arc_start        = a.arc_start
+  if (a.arc_end)          r.arc_end          = a.arc_end
+  if (a.appeal_notes)     r.appeal_notes     = a.appeal_notes
+  if (a.capability_notes) r.capability_notes = a.capability_notes
+  if (a.drive_notes)      r.drive_notes      = a.drive_notes
+  return r
+}
 
 const TYPE_COLORS: Record<EntityType, string> = {
   character: 'text-brand-cyan bg-brand-cyan/10 border-brand-cyan/20',
@@ -288,6 +354,8 @@ function EntityDetail({
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(entity.name)
   const [summary, setSummary] = useState(entity.summary)
+  const [charAttrs, setCharAttrs] = useState<CharAttrs>(() => extractCharAttrs(entity.attributes))
+  const [arcOpen, setArcOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -300,8 +368,9 @@ function EntityDetail({
     if (!editing) {
       setName(entity.name)
       setSummary(entity.summary)
+      setCharAttrs(extractCharAttrs(entity.attributes))
     }
-  }, [entity.id, entity.name, entity.summary, editing])
+  }, [entity.id, entity.name, entity.summary, entity.attributes, editing])
 
   const handleSave = async () => {
     setSaving(true)
@@ -310,6 +379,7 @@ function EntityDetail({
       const updated = await api.wiki.updateEntity(token, projectId, entity.id, {
         name: name.trim(),
         summary: summary.trim(),
+        ...(entity.type === 'character' ? { attributes: charAttrsToRecord(charAttrs) } : {}),
       })
       onUpdated(updated)
       setEditing(false)
@@ -460,18 +530,64 @@ function EntityDetail({
           )}
         </div>
 
-        {/* Attributes */}
-        {attrEntries.length > 0 && (
-          <div>
-            <label className="block text-xs font-semibold text-brand-muted uppercase tracking-wider mb-2">Attributes</label>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-              {attrEntries.map(([k, v]) => (
-                <div key={k} className="flex gap-2 text-sm">
-                  <span className="text-brand-muted font-medium capitalize shrink-0">{k}:</span>
-                  <span className="text-brand-text">{v}</span>
+        {/* Character Arc — only shown for character entities */}
+        {entity.type === 'character' && (
+          <div className="border border-brand-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setArcOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-brand-border/20 transition-colors"
+            >
+              <span className="text-xs font-semibold text-brand-muted uppercase tracking-wider">Character Arc</span>
+              <ChevronIcon open={arcOpen} />
+            </button>
+            {arcOpen && (
+              <div className="px-4 pb-4 space-y-4 border-t border-brand-border">
+                {/* Primary fields */}
+                <div className="pt-4 space-y-3">
+                  {CHAR_PRIMARY_FIELDS.map(({ key, label, hint }) => (
+                    <div key={key}>
+                      <label className="block text-xs font-semibold text-brand-cyan uppercase tracking-wider mb-1">{label}</label>
+                      {editing ? (
+                        <textarea
+                          value={charAttrs[key]}
+                          onChange={(e) => setCharAttrs((p) => ({ ...p, [key]: e.target.value }))}
+                          placeholder={hint}
+                          rows={2}
+                          className="input-field resize-none w-full text-sm"
+                        />
+                      ) : (
+                        <p className={`text-sm whitespace-pre-wrap ${charAttrs[key] ? 'text-brand-text' : 'text-brand-muted italic'}`}>
+                          {charAttrs[key] || `Not set.`}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                {/* Secondary fields */}
+                <div className="pt-2 border-t border-brand-border/50 space-y-3">
+                  <p className="text-[10px] text-brand-muted uppercase tracking-wider font-semibold">Character Dimensions</p>
+                  {CHAR_SECONDARY_FIELDS.map(({ key, label, hint }) => (
+                    <div key={key}>
+                      <label className="block text-xs font-medium text-brand-muted uppercase tracking-wider mb-1">{label}</label>
+                      {editing ? (
+                        <textarea
+                          value={charAttrs[key]}
+                          onChange={(e) => setCharAttrs((p) => ({ ...p, [key]: e.target.value }))}
+                          placeholder={hint}
+                          rows={2}
+                          className="input-field resize-none w-full text-sm"
+                        />
+                      ) : (
+                        <p className={`text-sm whitespace-pre-wrap ${charAttrs[key] ? 'text-brand-text' : 'text-brand-muted italic'}`}>
+                          {charAttrs[key] || `Not set.`}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -531,9 +647,15 @@ function CreateEntityModal({
 }) {
   const [type, setType] = useState<EntityType>('character')
   const [name, setName] = useState('')
-  const [summary, setSummary] = useState('')
+  const [summary, setSummary] = useState(ENTITY_TEMPLATES['character'])
+  const [usingTemplate, setUsingTemplate] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function handleTypeChange(t: EntityType) {
+    setType(t)
+    if (usingTemplate) setSummary(ENTITY_TEMPLATES[t])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -570,7 +692,7 @@ function CreateEntityModal({
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setType(t)}
+                  onClick={() => handleTypeChange(t)}
                   className={`py-1.5 rounded text-xs font-medium border transition-colors ${
                     type === t ? TYPE_COLORS[t] : 'border-brand-border text-brand-muted hover:text-brand-text'
                   }`}
@@ -591,13 +713,28 @@ function CreateEntityModal({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-brand-muted uppercase tracking-wider mb-1.5">Summary</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-brand-muted uppercase tracking-wider">Summary</label>
+              {usingTemplate && (
+                <span className="flex items-center gap-1 text-[10px] text-brand-muted">
+                  <span className="px-1.5 py-0.5 rounded bg-brand-border/60">Using template</span>
+                  <button
+                    type="button"
+                    onClick={() => { setSummary(''); setUsingTemplate(false) }}
+                    className="hover:text-brand-text transition-colors"
+                    title="Clear template"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+            </div>
             <textarea
               value={summary}
-              onChange={(e) => setSummary(e.target.value)}
+              onChange={(e) => { setSummary(e.target.value); setUsingTemplate(false) }}
               placeholder="Brief description…"
-              rows={3}
-              className="input-field resize-none w-full"
+              rows={usingTemplate ? 6 : 3}
+              className="input-field resize-none w-full text-xs"
             />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -665,6 +802,14 @@ function capitalize(s: string) {
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg className={`w-3.5 h-3.5 text-brand-muted transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 4l4 4 4-4" />
+    </svg>
+  )
+}
+
 function PlusIcon() {
   return (
     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -715,6 +860,14 @@ function ClockIcon() {
   )
 }
 
+function MagicIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 2l1.5 4.5H16l-3.5 2.5 1.5 4.5L10 11l-4 2.5 1.5-4.5L4 6.5h4.5L10 2z" />
+    </svg>
+  )
+}
+
 function GraphIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -731,6 +884,15 @@ function NoteIcon() {
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="4" y="3" width="12" height="14" rx="2" />
       <path d="M7 7h6M7 10h6M7 13h4" />
+    </svg>
+  )
+}
+
+function ThreadIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 5h12M4 10h8M4 15h10" />
+      <circle cx="16" cy="10" r="2" fill="currentColor" stroke="none" />
     </svg>
   )
 }

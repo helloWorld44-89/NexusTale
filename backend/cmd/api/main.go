@@ -23,6 +23,7 @@ import (
 	"github.com/jconder44/nexustale/internal/project"
 	"github.com/jconder44/nexustale/internal/prompts"
 	"github.com/jconder44/nexustale/internal/research"
+	"github.com/jconder44/nexustale/internal/threads"
 	"github.com/jconder44/nexustale/internal/waitlist"
 	"github.com/jconder44/nexustale/internal/wiki"
 	"github.com/jconder44/nexustale/pkg/db"
@@ -168,6 +169,9 @@ func main() {
 	annotationService := annotations.NewService(queries)
 	annotationHandler := annotations.NewHandler(annotationService)
 
+	threadsService := threads.NewService(queries)
+	threadsHandler := threads.NewHandler(threadsService)
+
 	waitlistService := waitlist.NewService(queries)
 	waitlistHandler := waitlist.NewHandler(waitlistService)
 
@@ -241,6 +245,10 @@ func main() {
 		// Annotations — project + scene scoped.
 		annotationGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		annotationHandler.RegisterRoutes(annotationGroup)
+
+		// Story threads — project-scoped.
+		threadsGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
+		threadsHandler.RegisterRoutes(threadsGroup)
 
 		// Waitlist — public, no auth.
 		waitlistHandler.RegisterRoutes(v1)

@@ -108,15 +108,26 @@ type CreateSceneRequest struct {
 	UserID    uuid.UUID `json:"-"`
 }
 
+// SceneAttributes holds optional structural metadata for a scene.
+// All fields are optional — writers who prefer freeform prose can ignore them.
+type SceneAttributes struct {
+	// SceneRole is "setup" | "development" | "resolution" | "transition".
+	SceneRole     string `json:"scene_role,omitempty"`
+	SceneGoal     string `json:"scene_goal,omitempty"`
+	SceneConflict string `json:"scene_conflict,omitempty"`
+	SceneOutcome  string `json:"scene_outcome,omitempty"`
+}
+
 type UpdateSceneRequest struct {
-	Title        *string   `json:"title"`
-	Content      *string   `json:"content"`
-	POV          *string   `json:"pov"`
-	Tense        *string   `json:"tense"`
-	Tags         *[]string `json:"tags"`
-	Summary      *string   `json:"summary"`
-	SummaryStale *bool     `json:"summary_stale"`
-	SortOrder    *int32    `json:"sort_order"`
+	Title        *string          `json:"title"`
+	Content      *string          `json:"content"`
+	POV          *string          `json:"pov"`
+	Tense        *string          `json:"tense"`
+	Tags         *[]string        `json:"tags"`
+	Summary      *string          `json:"summary"`
+	SummaryStale *bool            `json:"summary_stale"`
+	SortOrder    *int32           `json:"sort_order"`
+	Attributes   *SceneAttributes `json:"attributes"`
 
 	// Handler-only fields (not from JSON): git dual-write + summary notifier.
 	ProjectID    uuid.UUID `json:"-"`
@@ -166,17 +177,18 @@ type ChapterResponse struct {
 }
 
 type SceneResponse struct {
-	ID           uuid.UUID `json:"id"`
-	ChapterID    uuid.UUID `json:"chapter_id"`
-	Title        string    `json:"title"`
-	Content      string    `json:"content"`
-	POV          string    `json:"pov"`
-	Tense        string    `json:"tense"`
-	Tags         []string  `json:"tags"`
-	Summary      string    `json:"summary"`
-	SummaryStale bool      `json:"summary_stale"`
-	SortOrder    int32     `json:"sort_order"`
-	WordCount    int32     `json:"word_count"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           uuid.UUID       `json:"id"`
+	ChapterID    uuid.UUID       `json:"chapter_id"`
+	Title        string          `json:"title"`
+	Content      string          `json:"content"`
+	POV          string          `json:"pov"`
+	Tense        string          `json:"tense"`
+	Tags         []string        `json:"tags"`
+	Summary      string          `json:"summary"`
+	SummaryStale bool            `json:"summary_stale"`
+	SortOrder    int32           `json:"sort_order"`
+	WordCount    int32           `json:"word_count"`
+	Attributes   SceneAttributes `json:"attributes"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }

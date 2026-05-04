@@ -314,7 +314,7 @@ export default function Editor() {
     chapters: a.chapters.map((c) => ({
       id:     c.id,
       title:  c.title,
-      scenes: c.scenes.map((s) => ({ id: s.id, title: s.title })),
+      scenes: c.scenes.map((s) => ({ id: s.id, title: s.title, scene_role: (s as { attributes?: { scene_role?: string } }).attributes?.scene_role })),
     })),
   }))
 

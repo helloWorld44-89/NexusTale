@@ -1,0 +1,1 @@
+ALTER TABLE scenes ADD COLUMN attributes JSONB NOT NULL DEFAULT '{}';

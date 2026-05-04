@@ -25,6 +25,8 @@ export type WikiEntity             = components['schemas']['EntityResponse']
 export type WikiRelationship       = components['schemas']['RelationshipResponse']
 export type WikiGraph              = components['schemas']['WikiGraphResponse']
 export type MagicRule              = components['schemas']['MagicRuleResponse']
+export type MagicRuleAttributes    = { powers?: string; limitations?: string; cost?: string; source?: string; accessibility?: string; rules_clarity?: 'defined' | 'mysterious' | 'mixed' }
+export type SceneAttributes        = { scene_role?: 'setup' | 'development' | 'resolution' | 'transition'; scene_goal?: string; scene_conflict?: string; scene_outcome?: string }
 export type WikiTimelineEvent      = components['schemas']['TimelineEventResponse']
 export type AutolinkMatch          = components['schemas']['AutolinkMatch']
 export type APIKeyResponse         = components['schemas']['APIKeyResponse']
@@ -159,6 +161,20 @@ export interface ResearchNote {
   tags:       string[]
   created_at: string
   updated_at: string
+}
+
+export type ThreadType = 'world' | 'mystery' | 'arc' | 'conflict'
+
+export interface StoryThread {
+  id:                  string
+  project_id:          string
+  title:               string
+  type:                ThreadType
+  notes:               string
+  opened_at_scene_id?: string
+  closed_at_scene_id?: string
+  created_at:          string
+  updated_at:          string
 }
 
 export interface WorkshopMessage {
@@ -383,6 +399,7 @@ export const api = {
       summary?: string
       summary_stale?: boolean
       sort_order?: number
+      attributes?: SceneAttributes
     }, branch?: string) =>
       request<Scene>('PATCH', `/chapters/${chapterId}/scenes/${sceneId}`, data, token,
         branch ? { 'X-NexusTale-Branch': branch } : undefined),
@@ -474,10 +491,10 @@ export const api = {
     listMagicRules: (token: string, projectId: string) =>
       request<MagicRule[]>('GET', `/projects/${projectId}/wiki/magic-rules`, undefined, token),
 
-    createMagicRule: (token: string, projectId: string, data: { name: string; description?: string }) =>
+    createMagicRule: (token: string, projectId: string, data: { name: string; description?: string; attributes?: MagicRuleAttributes }) =>
       request<MagicRule>('POST', `/projects/${projectId}/wiki/magic-rules`, data, token),
 
-    updateMagicRule: (token: string, projectId: string, ruleId: string, data: { name?: string; description?: string }) =>
+    updateMagicRule: (token: string, projectId: string, ruleId: string, data: { name?: string; description?: string; attributes?: MagicRuleAttributes }) =>
       request<MagicRule>('PATCH', `/projects/${projectId}/wiki/magic-rules/${ruleId}`, data, token),
 
     deleteMagicRule: (token: string, projectId: string, ruleId: string) =>
@@ -917,6 +934,20 @@ export const api = {
 
     delete: (token: string, projectId: string, noteId: string) =>
       request<void>('DELETE', `/projects/${projectId}/research-notes/${noteId}`, undefined, token),
+  },
+
+  threads: {
+    list: (token: string, projectId: string) =>
+      request<StoryThread[]>('GET', `/projects/${projectId}/story-threads`, undefined, token),
+
+    create: (token: string, projectId: string, data: { title: string; type: ThreadType; notes?: string; opened_at_scene_id?: string }) =>
+      request<StoryThread>('POST', `/projects/${projectId}/story-threads`, data, token),
+
+    update: (token: string, projectId: string, threadId: string, data: { title?: string; type?: ThreadType; notes?: string; opened_at_scene_id?: string; closed_at_scene_id?: string | null }) =>
+      request<StoryThread>('PUT', `/projects/${projectId}/story-threads/${threadId}`, data, token),
+
+    delete: (token: string, projectId: string, threadId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/story-threads/${threadId}`, undefined, token),
   },
 
   users: {

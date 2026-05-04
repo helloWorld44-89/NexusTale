@@ -15,7 +15,7 @@ import (
 const createScene = `-- name: CreateScene :one
 INSERT INTO scenes (chapter_id, title, pov, tense, tags, summary, sort_order, word_count)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+RETURNING id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count, attributes
 `
 
 type CreateSceneParams struct {
@@ -54,6 +54,7 @@ func (q *Queries) CreateScene(ctx context.Context, arg CreateSceneParams) (Scene
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.WordCount,
+		&i.Attributes,
 	)
 	return i, err
 }
@@ -68,7 +69,7 @@ func (q *Queries) DeleteScene(ctx context.Context, id uuid.UUID) error {
 }
 
 const getScene = `-- name: GetScene :one
-SELECT id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+SELECT id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count, attributes
 FROM scenes
 WHERE id = $1
 `
@@ -89,12 +90,13 @@ func (q *Queries) GetScene(ctx context.Context, id uuid.UUID) (Scene, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.WordCount,
+		&i.Attributes,
 	)
 	return i, err
 }
 
 const listScenesByChapter = `-- name: ListScenesByChapter :many
-SELECT id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+SELECT id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count, attributes
 FROM scenes
 WHERE chapter_id = $1
 ORDER BY sort_order ASC
@@ -122,6 +124,7 @@ func (q *Queries) ListScenesByChapter(ctx context.Context, chapterID uuid.UUID) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.WordCount,
+			&i.Attributes,
 		); err != nil {
 			return nil, err
 		}
@@ -143,9 +146,10 @@ SET title = COALESCE($2, title),
     summary_stale = COALESCE($7, summary_stale),
     sort_order = COALESCE($8, sort_order),
     word_count = COALESCE($9, word_count),
+    attributes = COALESCE($10, attributes),
     updated_at = now()
 WHERE id = $1
-RETURNING id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count
+RETURNING id, chapter_id, title, pov, tense, tags, summary, summary_stale, sort_order, created_at, updated_at, word_count, attributes
 `
 
 type UpdateSceneParams struct {
@@ -158,6 +162,7 @@ type UpdateSceneParams struct {
 	SummaryStale pgtype.Bool `json:"summary_stale"`
 	SortOrder    pgtype.Int4 `json:"sort_order"`
 	WordCount    pgtype.Int4 `json:"word_count"`
+	Attributes   []byte      `json:"attributes"`
 }
 
 func (q *Queries) UpdateScene(ctx context.Context, arg UpdateSceneParams) (Scene, error) {
@@ -171,6 +176,7 @@ func (q *Queries) UpdateScene(ctx context.Context, arg UpdateSceneParams) (Scene
 		arg.SummaryStale,
 		arg.SortOrder,
 		arg.WordCount,
+		arg.Attributes,
 	)
 	var i Scene
 	err := row.Scan(
@@ -186,6 +192,7 @@ func (q *Queries) UpdateScene(ctx context.Context, arg UpdateSceneParams) (Scene
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.WordCount,
+		&i.Attributes,
 	)
 	return i, err
 }

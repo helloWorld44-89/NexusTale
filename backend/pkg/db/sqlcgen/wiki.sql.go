@@ -85,22 +85,28 @@ func (q *Queries) CreateEntity(ctx context.Context, arg CreateEntityParams) (Wik
 
 const createMagicRule = `-- name: CreateMagicRule :one
 
-INSERT INTO wiki_magic_rules (project_id, name, description)
-VALUES ($1, $2, $3)
-RETURNING id, project_id, name, description, created_at, updated_at
+INSERT INTO wiki_magic_rules (project_id, name, description, attributes)
+VALUES ($1, $2, $3, $4)
+RETURNING id, project_id, name, description, created_at, updated_at, attributes
 `
 
 type CreateMagicRuleParams struct {
-	ProjectID   uuid.UUID `json:"project_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
+	ProjectID   uuid.UUID       `json:"project_id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Attributes  json.RawMessage `json:"attributes"`
 }
 
 // ========================
 // Magic Rules
 // ========================
 func (q *Queries) CreateMagicRule(ctx context.Context, arg CreateMagicRuleParams) (WikiMagicRule, error) {
-	row := q.db.QueryRow(ctx, createMagicRule, arg.ProjectID, arg.Name, arg.Description)
+	row := q.db.QueryRow(ctx, createMagicRule,
+		arg.ProjectID,
+		arg.Name,
+		arg.Description,
+		arg.Attributes,
+	)
 	var i WikiMagicRule
 	err := row.Scan(
 		&i.ID,
@@ -109,6 +115,7 @@ func (q *Queries) CreateMagicRule(ctx context.Context, arg CreateMagicRuleParams
 		&i.Description,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Attributes,
 	)
 	return i, err
 }
@@ -318,7 +325,7 @@ func (q *Queries) GetEntity(ctx context.Context, id uuid.UUID) (WikiEntity, erro
 }
 
 const getMagicRule = `-- name: GetMagicRule :one
-SELECT id, project_id, name, description, created_at, updated_at FROM wiki_magic_rules WHERE id = $1
+SELECT id, project_id, name, description, created_at, updated_at, attributes FROM wiki_magic_rules WHERE id = $1
 `
 
 func (q *Queries) GetMagicRule(ctx context.Context, id uuid.UUID) (WikiMagicRule, error) {
@@ -331,6 +338,7 @@ func (q *Queries) GetMagicRule(ctx context.Context, id uuid.UUID) (WikiMagicRule
 		&i.Description,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Attributes,
 	)
 	return i, err
 }
@@ -462,7 +470,7 @@ func (q *Queries) ListEntitiesByProject(ctx context.Context, arg ListEntitiesByP
 }
 
 const listMagicRulesByProject = `-- name: ListMagicRulesByProject :many
-SELECT id, project_id, name, description, created_at, updated_at FROM wiki_magic_rules
+SELECT id, project_id, name, description, created_at, updated_at, attributes FROM wiki_magic_rules
 WHERE project_id = $1
 ORDER BY name ASC
 `
@@ -483,6 +491,7 @@ func (q *Queries) ListMagicRulesByProject(ctx context.Context, projectID uuid.UU
 			&i.Description,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Attributes,
 		); err != nil {
 			return nil, err
 		}
@@ -669,19 +678,26 @@ const updateMagicRule = `-- name: UpdateMagicRule :one
 UPDATE wiki_magic_rules
 SET name        = COALESCE($2, name),
     description = COALESCE($3, description),
+    attributes  = COALESCE($4, attributes),
     updated_at  = now()
 WHERE id = $1
-RETURNING id, project_id, name, description, created_at, updated_at
+RETURNING id, project_id, name, description, created_at, updated_at, attributes
 `
 
 type UpdateMagicRuleParams struct {
 	ID          uuid.UUID   `json:"id"`
 	Name        pgtype.Text `json:"name"`
 	Description pgtype.Text `json:"description"`
+	Attributes  []byte      `json:"attributes"`
 }
 
 func (q *Queries) UpdateMagicRule(ctx context.Context, arg UpdateMagicRuleParams) (WikiMagicRule, error) {
-	row := q.db.QueryRow(ctx, updateMagicRule, arg.ID, arg.Name, arg.Description)
+	row := q.db.QueryRow(ctx, updateMagicRule,
+		arg.ID,
+		arg.Name,
+		arg.Description,
+		arg.Attributes,
+	)
 	var i WikiMagicRule
 	err := row.Scan(
 		&i.ID,
@@ -690,6 +706,7 @@ func (q *Queries) UpdateMagicRule(ctx context.Context, arg UpdateMagicRuleParams
 		&i.Description,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Attributes,
 	)
 	return i, err
 }

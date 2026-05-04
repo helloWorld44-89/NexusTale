@@ -47,6 +47,9 @@ infra/docker/.env
 infra/helm/charts/
 infra/helm/*.lock
 
+# ── Private docs (local only) ─────────────────────────────────────────────────
+docs/MONETIZATION_PLAN.md
+
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 .DS_Store?

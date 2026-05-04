@@ -16,6 +16,15 @@ const AUTOLINK_DEBOUNCE_MS = 1200
 
 const ENTITY_TYPES: EntityType[] = ['character', 'location', 'faction', 'item', 'concept', 'lore']
 
+const ENTITY_TEMPLATES: Record<EntityType, string> = {
+  character: 'Core Motivation: \n\nArc: [start state] → [end state]\n\nVoice & Presence: \n\nKey Relationships: ',
+  location:  'Description: \n\nHistory & Significance: \n\nWho lives here: \n\nConnections to plot: ',
+  faction:   'Purpose & Values: \n\nLeadership: \n\nRelationship to other factions: \n\nResources: ',
+  item:      'What it does: \n\nOrigin: \n\nWho possesses it: \n\nSignificance to the story: ',
+  concept:   'What it is: \n\nHow it works: \n\nWho knows about it: \n\nRole in the story: ',
+  lore:      'What happened: \n\nCauses: \n\nConsequences: \n\nWho was present: ',
+}
+
 const TYPE_COLORS: Record<EntityType, string> = {
   character: 'text-brand-cyan bg-brand-cyan/10',
   location: 'text-brand-gold bg-brand-gold/10',
@@ -389,9 +398,15 @@ function CreateEntityModal({
 }) {
   const [type, setType] = useState<EntityType>('character')
   const [name, setName] = useState('')
-  const [summary, setSummary] = useState('')
+  const [summary, setSummary] = useState(ENTITY_TEMPLATES['character'])
+  const [usingTemplate, setUsingTemplate] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function handleTypeChange(t: EntityType) {
+    setType(t)
+    if (usingTemplate) setSummary(ENTITY_TEMPLATES[t])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -428,7 +443,7 @@ function CreateEntityModal({
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setType(t)}
+                  onClick={() => handleTypeChange(t)}
                   className={`py-1.5 rounded text-xs font-medium transition-colors ${
                     type === t
                       ? `${TYPE_COLORS[t]} border border-current`
@@ -453,13 +468,28 @@ function CreateEntityModal({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-brand-muted uppercase tracking-wider mb-1.5">Summary</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-brand-muted uppercase tracking-wider">Summary</label>
+              {usingTemplate && (
+                <span className="flex items-center gap-1 text-[10px] text-brand-muted">
+                  <span className="px-1.5 py-0.5 rounded bg-brand-border/60">Using template</span>
+                  <button
+                    type="button"
+                    onClick={() => { setSummary(''); setUsingTemplate(false) }}
+                    className="hover:text-brand-text transition-colors"
+                    title="Clear template"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+            </div>
             <textarea
               value={summary}
-              onChange={(e) => setSummary(e.target.value)}
+              onChange={(e) => { setSummary(e.target.value); setUsingTemplate(false) }}
               placeholder="Brief description…"
-              rows={3}
-              className="input-field resize-none w-full"
+              rows={usingTemplate ? 6 : 3}
+              className="input-field resize-none w-full text-xs"
             />
           </div>
 
