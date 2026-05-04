@@ -431,8 +431,6 @@ function EntityDetail({
     }
   }
 
-  const attrEntries = Object.entries(entity.attributes ?? {})
-
   return (
     <div className="max-w-2xl space-y-6">
       <button
