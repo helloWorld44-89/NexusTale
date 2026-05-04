@@ -3,10 +3,11 @@ package threads
 // Handler exposes REST routes for story threads.
 //
 // Routes (registered under /projects/:id):
-//   GET    /story-threads        → list threads
-//   POST   /story-threads        → create thread
-//   PUT    /story-threads/:tid   → update thread (title, type, notes, open/close)
-//   DELETE /story-threads/:tid   → delete thread
+//   GET    /story-threads                  → list threads
+//   GET    /story-threads/chapter-counts   → open thread count per chapter
+//   POST   /story-threads                  → create thread
+//   PUT    /story-threads/:tid             → update thread (title, type, notes, open/close)
+//   DELETE /story-threads/:tid             → delete thread
 
 import (
 	"log/slog"
@@ -28,6 +29,7 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/story-threads")
 	g.GET("", h.List)
+	g.GET("/chapter-counts", h.ChapterCounts)
 	g.POST("", h.Create)
 	g.PUT("/:tid", h.Update)
 	g.DELETE("/:tid", h.Delete)
@@ -44,6 +46,19 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, threads)
+}
+
+func (h *Handler) ChapterCounts(c *gin.Context) {
+	projectID, ok := parseProjectID(c)
+	if !ok {
+		return
+	}
+	counts, err := h.svc.ChapterCounts(c.Request.Context(), projectID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, counts)
 }
 
 func (h *Handler) Create(c *gin.Context) {

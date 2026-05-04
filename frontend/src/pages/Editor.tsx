@@ -48,6 +48,7 @@ export default function Editor() {
   }, [logout, navigate])
 
   const [projectTitle,      setProjectTitle]      = useState('')
+  const [projectPhase,      setProjectPhase]      = useState<string>('drafting')
   const [acts,              setActs]              = useState<ActWithChapters[]>([])
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
   const [selectedSceneId,   setSelectedSceneId]   = useState<string | null>(null)
@@ -71,6 +72,12 @@ export default function Editor() {
   const saveTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSaveRef  = useRef<(() => void) | null>(null)
   const scribeEditorRef = useRef<ScribeEditorHandle>(null)
+
+  const handlePhaseChange = useCallback(async (phase: string) => {
+    if (!projectId || !accessToken) return
+    setProjectPhase(phase)
+    await api.phase.set(accessToken, projectId, phase)
+  }, [projectId, accessToken])
 
   // ── Focus mode keyboard shortcuts ──────────────────────────────────────────
   useEffect(() => {
@@ -147,6 +154,7 @@ export default function Editor() {
         })
 
         setProjectTitle(project.title)
+        setProjectPhase(project.phase ?? 'drafting')
         setActs(actsWithChapters)
         setSceneContents(contents)
         setSceneData(data)
@@ -337,6 +345,7 @@ export default function Editor() {
         <TopBar
           projectId={projectId ?? ''}
           projectTitle={projectTitle}
+          projectPhase={projectPhase}
           actTitle={actTitle}
           chapterTitle={activeChapter?.title ?? ''}
           sceneTitle={activeScene?.title ?? ''}
@@ -349,6 +358,7 @@ export default function Editor() {
           onToggleExplorer={() => setExplorerOpen((v) => !v)}
           onToggleFocus={() => setFocusMode((v) => !v)}
           onLogout={handleLogout}
+          onPhaseChange={handlePhaseChange}
         />
       )}
 
@@ -391,6 +401,7 @@ export default function Editor() {
               <WorkshopPanel
                 token={accessToken}
                 projectId={projectId}
+                projectPhase={projectPhase}
                 sceneId={selectedSceneId ?? undefined}
                 branch={currentBranch}
                 onInsertToScene={activeScene ? handleInsertToScene : undefined}
@@ -452,6 +463,7 @@ export default function Editor() {
             sceneId={activeScene?.id}
             promptId={selectedPromptId}
             branch={currentBranch}
+            projectPhase={projectPhase}
             onAnnotationCreated={(ann) => {
               setPendingAnnotation(ann)
               setAnnotationCount(c => c + 1)

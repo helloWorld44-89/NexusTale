@@ -1058,7 +1058,7 @@ Implementation: entity type templates stored as `internal/wiki/templates.go` (a 
 
 - [x] Terminology review: field labels (Core Motivation, Arc, Voice & Presence, etc.) are NexusTale-native — no Sanderson framework names used
 - [x] `internal/wiki/templates.go` — Go map; `CreateEntity` applies template when summary is empty; `ENTITY_TEMPLATES` constant in `WikiPanel.tsx` + `WikiHub.tsx`; type-change swaps template while `usingTemplate` is true; "Using template · ×" chip dismisses and clears
-- [ ] Prompt engineering review: `BuildContext`’s entity formatter should detect and extract template sections rather than truncating as a raw blob — see C6.6
+- [x] Prompt engineering review: `BuildContext`’s entity formatter dispatches by entity type (`buildEntityContextLine`; characters, locations, magic rules each get structured output) — done in C6.6
 
 ---
 
@@ -1078,7 +1078,7 @@ UI: `MagicRuleDetail.tsx` gains a structured fields section above the freeform d
 
 - [x] Terminology review: `rules_clarity` values (`defined` / `mysterious` / `mixed`) are NexusTale-native — no "Hard/Soft" or "Sanderson’s Laws" in any label or hint text
 - [x] migration 031 `wiki_magic_rules.attributes JSONB`; `MagicRuleAttributes` struct in models.go; encode/decode in service; `MagicRulePanel.tsx` built from stub — list sidebar, structured fields (Limitations prominent in cyan), Clarity Spectrum selector, freeform Notes, delete confirm; "Magic" tab added to WikiHub
-- [ ] Prompt engineering review: `BuildContext` should always inject `## Magic systems` block for projects with magic rules — see C6.6
+- [x] Prompt engineering review: `BuildContext` always injects `## Magic systems` block (`buildMagicSystemsContext`; Limitations-first ordering, cap 5, "Do not introduce abilities not listed" for defined systems) — done in C6.6
 
 ---
 
@@ -1100,7 +1100,7 @@ UI: a collapsible "Arc Planning" section in `EntityDetail.tsx` for character typ
 
 - [x] Terminology review: labels use NexusTale-native language (Core Motivation, Arc — Beginning/End, Reader Connection, Skills & Knowledge, Agency) — no Sanderson scale names
 - [x] `CharAttrs` type + `extractCharAttrs`/`charAttrsToRecord` helpers; `CHAR_PRIMARY_FIELDS` (motivation, arc_start, arc_end) + `CHAR_SECONDARY_FIELDS` (appeal_notes, capability_notes, drive_notes); collapsible "Character Arc" section in `EntityDetail` (character type only); `handleSave` merges attributes; `ChevronIcon` added
-- [ ] Prompt engineering review: restructure character context line to `[Name] (character) — Motivation: … | Arc: … → … | [capability_notes if set] | [description excerpt]` — see C6.6
+- [x] Prompt engineering review: character context line restructured to `[Name] (character) — Motivation: … | Arc: … (early/mid/late) | [capability_notes] | [description excerpt]` via `buildCharacterContextLine` + `arcPositionHint` — done in C6.6
 
 ---
 
@@ -1121,7 +1121,7 @@ These appear in `SceneMetadataPanel.tsx` as an optional expandable section below
 
 - [x] Terminology review: role labels (Setup / Development / Resolution / Transition) are generic craft vocabulary — no "Promise/Progress/Payoff" or Sanderson framework names used anywhere
 - [x] migration 032 `scenes.attributes JSONB`; `SceneAttributes` struct (scene_role, scene_goal, scene_conflict, scene_outcome); encode/decode in `UpdateScene` + `toSceneResponse`; `SceneMetadataPanel` gains collapsible "Scene Structure" section (role 4-button selector + goal/conflict/outcome textareas, auto-save on blur); role badge shown in collapsed header bar; `ProjectExplorer` `SceneItem` extended with `scene_role`; colored pip (sky/amber/emerald/muted) next to scene title in outline; Editor.tsx threads `scene_role` through `explorerActs`
-- [ ] Prompt engineering review: inject `scene_role` + `scene_goal` + `scene_conflict` into Beat/Continue prompts — see C6.6
+- [x] Prompt engineering review: `scene_role`, `scene_goal`, `scene_conflict`, and open thread titles injected into Beat/Continue system prompts via `buildSceneDirective` in `service.go` — done in C6.6
 
 ---
 
@@ -1144,12 +1144,12 @@ Writers working on long-form fiction routinely open narrative threads (a questio
 
 - [x] Terminology review: "World / Mystery / Arc / Conflict" are NexusTale-native names. Do not use "MICE Quotient" or the M/I/C/E labels in any UI copy — enforced in `StoryThreadsPanel.tsx` copy; type descriptions explain each concept in plain language with no attribution.
 - [x] migration 033 `story_threads` table; `internal/threads` package (service + handler); `GET/POST /projects/:id/story-threads` + `PUT/DELETE /projects/:id/story-threads/:tid`; `StoryThreadsPanel.tsx` — sidebar list (open/resolved sections, type filter), detail view with inline-save, resolve/re-open toggle, delete confirm; WikiHub "Threads" tab; `api.threads.*` + `StoryThread`/`ThreadType` types in `api.ts`
-- [ ] Outline integration: thread status pips on chapters (how many open threads span that chapter) — deferred to C6.6 or later
-- [ ] Prompt engineering review: open threads are the most forward-looking context the AI can have — they tell it what the story still owes the reader. `BuildContext` should inject a `## Open story threads` section (section 7, after pinned context) listing each open thread as: `- [Type]: "[Title]" — opened in [chapter title]. [notes if set]`. Cap at 10 open threads; if more exist, include the 10 most recently opened. In Workshop, the AI can then proactively flag threads that haven’t been touched in many chapters. In Beat/Continue mode, thread awareness nudges the AI to naturally advance open threads rather than drift. See C6.6.
+- [x] Outline integration: thread status pips on chapters (how many open threads span that chapter) — `GET /story-threads/chapter-counts` route; purple count badge on ChapterRow in ProjectExplorer
+- [x] Prompt engineering review: open threads are the most forward-looking context the AI can have — `buildOpenThreadsContext` in context.go injects `## Open story threads` section (section 8); `buildSceneDirective` in service.go appends open thread titles to Beat/Continue system prompts. Done in C6.6.
 
 ---
 
-#### C6.5 — Revision pass system `[Medium]`
+#### C6.5 — Revision pass system `[Medium]` ✅ complete (2026-05-04)
 
 Writers revise in passes, each with a different focus. NexusTale currently has no concept of a project being in a revision phase — every session looks the same whether you’re drafting or doing a language pass. This feature adds a **Project Phase** that shifts how the AI and Workshop behave.
 
@@ -1168,12 +1168,12 @@ Writers revise in passes, each with a different focus. NexusTale currently has n
 - Beat and Continue modes: a subtle "language pass" overlay hint in the toolbar when project is in `language_pass` phase ("Focus: prose quality")
 - Revision checklist per phase: pre-built Workshop session template that opens with a structured checklist for the active phase ("In a character pass, ask: Does each POV character have a distinct voice? Is motivation clear in every scene they appear in?")
 
-- [ ] Terminology review: phase names are generic. Ensure Workshop checklist templates for each phase do not reproduce Sanderson’s specific revision advice verbatim from his FAQ or BYU lectures. Paraphrase all craft concepts in NexusTale’s own voice.
-- [ ] Prompt engineering review: each `workshopSystemForPhase()` prompt needs real craft depth — a label change alone won’t shift AI behavior. Draft prompts for each phase must be written and tested against real prose before shipping. See C6.6 for the per-phase prompt specifications.
+- [x] Terminology review: phase names are generic. Ensure Workshop checklist templates for each phase do not reproduce Sanderson’s specific revision advice verbatim from his FAQ or BYU lectures. Paraphrase all craft concepts in NexusTale’s own voice.
+- [x] Prompt engineering review: each `workshopSystemForPhase()` prompt needs real craft depth — a label change alone won’t shift AI behavior. Draft prompts for each phase must be written and tested against real prose before shipping. See C6.6 for the per-phase prompt specifications.
 
 ---
 
-#### C6.6 — BuildContext + Prompt Engineering Audit `[Medium]`
+#### C6.6 — BuildContext + Prompt Engineering Audit `[Medium]` ✅ complete (2026-05-04)
 
 This is the implementation ticket that wires all C6 structured data into the AI layer. It should be done as a single focused session after C6.0–C6.5 are built — not piecemeal — so the context assembly is coherent and the total token budget is managed consciously.
 
@@ -1276,8 +1276,8 @@ Draft prompts — must be tested against real prose before C6.5 ships:
 
 Within range for all providers. Add a `contextBudgetWarn` log line when assembled context exceeds 5,000 tokens so outlier cases are visible.
 
-- [ ] Terminology review: all prompt text written in NexusTale’s voice; no Sanderson framework names in any system prompt
-- [ ] Implementation: build as a single atomic change to `internal/ai/context.go` and `internal/ai/service.go` after C6.0–C6.5 are merged
+- [x] Terminology review: all prompt text written in NexusTale’s voice; no Sanderson framework names in any system prompt
+- [x] Implementation: build as a single atomic change to `internal/ai/context.go` and `internal/ai/service.go` after C6.0–C6.5 are merged
 
 ---
 
@@ -1287,7 +1287,7 @@ Automatically detects wiki entity names in scene prose, surfaces them as interac
 
 **Build order:** C7.0 → C7.1 → C7.2 (each independently deployable; C7.0 ships real value alone).
 
-**Migration note:** C7.0 is migration 034 (migrations 031–033 used by C6.1–C6.4).
+**Migration note:** C7.0 is migration 035 (migration 034 used by C6.5).
 
 ---
 

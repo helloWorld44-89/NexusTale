@@ -35,6 +35,11 @@ type ThreadResponse struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
+type ChapterThreadCount struct {
+	ChapterID       string `json:"chapter_id"`
+	OpenThreadCount int32  `json:"open_thread_count"`
+}
+
 type CreateThreadRequest struct {
 	Title           string  `json:"title" binding:"required,min=1,max=300"`
 	Type            string  `json:"type"  binding:"required,oneof=world mystery arc conflict"`
@@ -61,6 +66,21 @@ func (s *Service) List(ctx context.Context, projectID uuid.UUID) ([]ThreadRespon
 	out := make([]ThreadResponse, len(rows))
 	for i, r := range rows {
 		out[i] = toResponse(r)
+	}
+	return out, nil
+}
+
+func (s *Service) ChapterCounts(ctx context.Context, projectID uuid.UUID) ([]ChapterThreadCount, error) {
+	rows, err := s.queries.CountOpenThreadsByChapter(ctx, projectID)
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("count open threads by chapter: %v", err))
+	}
+	out := make([]ChapterThreadCount, len(rows))
+	for i, r := range rows {
+		out[i] = ChapterThreadCount{
+			ChapterID:       r.ChapterID.String(),
+			OpenThreadCount: r.OpenThreadCount,
+		}
 	}
 	return out, nil
 }

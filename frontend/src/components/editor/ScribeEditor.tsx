@@ -18,6 +18,7 @@ interface ScribeEditorProps {
   sceneId?:    string
   promptId?:   string | null
   branch?:     string
+  projectPhase?: string
   // Annotation callback — fired when user saves an annotation from the popover
   onAnnotationCreated?: (ann: Annotation) => void
 }
@@ -40,7 +41,7 @@ const TYPE_OPTIONS = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function ScribeEditor(
-  { sceneTitle, content, sceneSelected, onChange, token, projectId, sceneId, promptId, branch, onAnnotationCreated },
+  { sceneTitle, content, sceneSelected, onChange, token, projectId, sceneId, promptId, branch, projectPhase, onAnnotationCreated },
   ref,
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -144,6 +145,7 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
           sceneId={sceneId}
           promptId={promptId ?? null}
           branch={branch}
+          projectPhase={projectPhase}
           onAccept={handleBeatAccept}
         />
       )}

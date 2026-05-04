@@ -151,6 +151,7 @@ type ProjectResponse struct {
 	Description string    `json:"description"`
 	Genres      []string  `json:"genres"`
 	Archived    bool      `json:"archived"`
+	Phase       string    `json:"phase"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

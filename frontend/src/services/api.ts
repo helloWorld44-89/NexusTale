@@ -865,6 +865,16 @@ export const api = {
       request<ProjectStructure>('PUT', `/projects/${projectId}/structure`, body, token),
   },
 
+  phase: {
+    /** Get the current writing phase for a project. */
+    get: (token: string, projectId: string): Promise<{ phase: string }> =>
+      request<{ phase: string }>('GET', `/projects/${projectId}/phase`, undefined, token),
+
+    /** Set the writing phase for a project. */
+    set: (token: string, projectId: string, phase: string): Promise<{ phase: string }> =>
+      request<{ phase: string }>('PUT', `/projects/${projectId}/phase`, { phase }, token),
+  },
+
   aiInstructions: {
     /** Get the project's AI bible text. */
     get: (token: string, projectId: string): Promise<{ instructions: string }> =>
@@ -948,6 +958,9 @@ export const api = {
 
     delete: (token: string, projectId: string, threadId: string) =>
       request<void>('DELETE', `/projects/${projectId}/story-threads/${threadId}`, undefined, token),
+
+    chapterCounts: (token: string, projectId: string) =>
+      request<{ chapter_id: string; open_thread_count: number }[]>('GET', `/projects/${projectId}/story-threads/chapter-counts`, undefined, token),
   },
 
   users: {

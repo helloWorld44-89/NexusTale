@@ -1672,6 +1672,7 @@ export interface components {
             description: string;
             genres: string[];
             archived: boolean;
+            phase: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */

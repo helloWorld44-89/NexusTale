@@ -108,6 +108,14 @@ RETURNING *;
 -- name: DeleteMagicRule :exec
 DELETE FROM wiki_magic_rules WHERE id = $1;
 
+-- name: ListMagicRulesForContext :many
+-- Returns the 5 most recently updated magic rules for AI context injection.
+SELECT id, project_id, name, description, attributes, updated_at
+FROM wiki_magic_rules
+WHERE project_id = $1
+ORDER BY updated_at DESC
+LIMIT 5;
+
 -- ========================
 -- Timeline Events
 -- ========================

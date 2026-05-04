@@ -1,0 +1,1 @@
+ALTER TABLE projects ADD COLUMN phase TEXT NOT NULL DEFAULT 'drafting';

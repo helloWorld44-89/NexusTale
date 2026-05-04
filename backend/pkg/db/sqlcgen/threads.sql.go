@@ -12,6 +12,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countOpenThreadsByChapter = `-- name: CountOpenThreadsByChapter :many
+SELECT s.chapter_id, COUNT(*)::int AS open_thread_count
+FROM story_threads st
+JOIN scenes s ON s.id = st.opened_at_scene_id
+WHERE st.project_id = $1
+  AND st.closed_at_scene_id IS NULL
+GROUP BY s.chapter_id
+`
+
+type CountOpenThreadsByChapterRow struct {
+	ChapterID       uuid.UUID `json:"chapter_id"`
+	OpenThreadCount int32     `json:"open_thread_count"`
+}
+
+// Returns, for each chapter in the project, how many open (unresolved) threads
+// were opened within a scene belonging to that chapter.
+func (q *Queries) CountOpenThreadsByChapter(ctx context.Context, projectID uuid.UUID) ([]CountOpenThreadsByChapterRow, error) {
+	rows, err := q.db.Query(ctx, countOpenThreadsByChapter, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountOpenThreadsByChapterRow{}
+	for rows.Next() {
+		var i CountOpenThreadsByChapterRow
+		if err := rows.Scan(&i.ChapterID, &i.OpenThreadCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createThread = `-- name: CreateThread :one
 INSERT INTO story_threads (project_id, title, type, notes, opened_at_scene_id)
 VALUES ($1, $2, $3, $4, $5)
@@ -77,6 +113,65 @@ func (q *Queries) GetThread(ctx context.Context, id uuid.UUID) (StoryThread, err
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listOpenThreadsByProject = `-- name: ListOpenThreadsByProject :many
+SELECT st.id, st.project_id, st.title, st.type, st.notes,
+       st.opened_at_scene_id, st.closed_at_scene_id, st.created_at, st.updated_at,
+       COALESCE(c.title, '') AS chapter_title
+FROM story_threads st
+LEFT JOIN scenes s  ON s.id  = st.opened_at_scene_id
+LEFT JOIN chapters c ON c.id = s.chapter_id
+WHERE st.project_id = $1
+  AND st.closed_at_scene_id IS NULL
+ORDER BY st.created_at DESC
+LIMIT 10
+`
+
+type ListOpenThreadsByProjectRow struct {
+	ID              uuid.UUID          `json:"id"`
+	ProjectID       uuid.UUID          `json:"project_id"`
+	Title           string             `json:"title"`
+	Type            string             `json:"type"`
+	Notes           string             `json:"notes"`
+	OpenedAtSceneID pgtype.UUID        `json:"opened_at_scene_id"`
+	ClosedAtSceneID pgtype.UUID        `json:"closed_at_scene_id"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ChapterTitle    string             `json:"chapter_title"`
+}
+
+// Returns open (unresolved) story threads for a project with their opening chapter title,
+// ordered most-recently-opened first, capped at 10 for context injection.
+func (q *Queries) ListOpenThreadsByProject(ctx context.Context, projectID uuid.UUID) ([]ListOpenThreadsByProjectRow, error) {
+	rows, err := q.db.Query(ctx, listOpenThreadsByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenThreadsByProjectRow{}
+	for rows.Next() {
+		var i ListOpenThreadsByProjectRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Title,
+			&i.Type,
+			&i.Notes,
+			&i.OpenedAtSceneID,
+			&i.ClosedAtSceneID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ChapterTitle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listThreadsByProject = `-- name: ListThreadsByProject :many

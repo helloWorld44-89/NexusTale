@@ -202,6 +202,7 @@ type Project struct {
 	StructureID     pgtype.UUID        `json:"structure_id"`
 	StructureCustom []byte             `json:"structure_custom"`
 	AiInstructions  string             `json:"ai_instructions"`
+	Phase           string             `json:"phase"`
 }
 
 type ProjectActiveBranch struct {

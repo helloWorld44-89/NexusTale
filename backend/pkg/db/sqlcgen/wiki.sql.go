@@ -503,6 +503,51 @@ func (q *Queries) ListMagicRulesByProject(ctx context.Context, projectID uuid.UU
 	return items, nil
 }
 
+const listMagicRulesForContext = `-- name: ListMagicRulesForContext :many
+SELECT id, project_id, name, description, attributes, updated_at
+FROM wiki_magic_rules
+WHERE project_id = $1
+ORDER BY updated_at DESC
+LIMIT 5
+`
+
+type ListMagicRulesForContextRow struct {
+	ID          uuid.UUID          `json:"id"`
+	ProjectID   uuid.UUID          `json:"project_id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Attributes  json.RawMessage    `json:"attributes"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Returns the 5 most recently updated magic rules for AI context injection.
+func (q *Queries) ListMagicRulesForContext(ctx context.Context, projectID uuid.UUID) ([]ListMagicRulesForContextRow, error) {
+	rows, err := q.db.Query(ctx, listMagicRulesForContext, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMagicRulesForContextRow{}
+	for rows.Next() {
+		var i ListMagicRulesForContextRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Description,
+			&i.Attributes,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRelationshipsByProject = `-- name: ListRelationshipsByProject :many
 SELECT id, project_id, from_entity_id, to_entity_id, type, description, created_at FROM wiki_relationships
 WHERE project_id = $1

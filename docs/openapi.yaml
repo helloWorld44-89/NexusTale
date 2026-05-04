@@ -127,7 +127,7 @@ components:
 
     ProjectResponse:
       type: object
-      required: [id, owner_id, title, description, genres, archived, created_at, updated_at]
+      required: [id, owner_id, title, description, genres, archived, phase, created_at, updated_at]
       properties:
         id:          { type: string, format: uuid }
         owner_id:    { type: string, format: uuid }
@@ -135,6 +135,7 @@ components:
         description: { type: string }
         genres:      { type: array, items: { type: string } }
         archived:    { type: boolean }
+        phase:       { type: string }
         created_at:  { type: string, format: date-time }
         updated_at:  { type: string, format: date-time }
 
