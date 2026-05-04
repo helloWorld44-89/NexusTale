@@ -53,6 +53,23 @@ export default function ProjectExplorer({
   const [staleSummaries, setStaleSummaries] = useState<Record<string, boolean>>({})
   const [regenerating, setRegenerating] = useState<Record<string, boolean>>({})
 
+  // openThreadCounts: chapterId → number of open threads opened in that chapter.
+  const [openThreadCounts, setOpenThreadCounts] = useState<Record<string, number>>({})
+
+  const loadThreadCounts = useCallback(async () => {
+    if (!token || !projectId) return
+    try {
+      const counts = await api.threads.chapterCounts(token, projectId)
+      const map: Record<string, number> = {}
+      for (const c of counts) map[c.chapter_id] = c.open_thread_count
+      setOpenThreadCounts(map)
+    } catch {
+      // silently ignore — pips simply don't show
+    }
+  }, [token, projectId])
+
+  useEffect(() => { loadThreadCounts() }, [loadThreadCounts])
+
   // Fetch summary stale flags for all chapters in the active branch.
   const loadSummaries = useCallback(async () => {
     if (!token || !projectId) return
@@ -190,6 +207,7 @@ export default function ProjectExplorer({
                 staleSummary={!!staleSummaries[chapter.id]}
                 regenerating={!!regenerating[chapter.id]}
                 onRegenerate={() => handleRegenerate(chapter.id)}
+                openThreadCount={openThreadCounts[chapter.id] ?? 0}
               />
             ))}
           </>
@@ -271,6 +289,7 @@ export default function ProjectExplorer({
                         staleSummary={!!staleSummaries[chapter.id]}
                         regenerating={!!regenerating[chapter.id]}
                         onRegenerate={() => handleRegenerate(chapter.id)}
+                        openThreadCount={openThreadCounts[chapter.id] ?? 0}
                       />
                     ))}
                   </div>
@@ -300,6 +319,7 @@ function ChapterRow({
   staleSummary,
   regenerating,
   onRegenerate,
+  openThreadCount = 0,
 }: {
   chapter:           ChapterItem
   expanded:          boolean
@@ -314,6 +334,7 @@ function ChapterRow({
   staleSummary?:     boolean
   regenerating?:     boolean
   onRegenerate?:     () => void
+  openThreadCount?:  number
 }) {
   return (
     <div>
@@ -332,6 +353,14 @@ function ChapterRow({
               title="AI summary is outdated — click Regenerate to refresh"
               className="ml-1 w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 inline-block"
             />
+          )}
+          {openThreadCount > 0 && (
+            <span
+              title={`${openThreadCount} open thread${openThreadCount === 1 ? '' : 's'} opened in this chapter`}
+              className="ml-1 flex items-center justify-center min-w-[1rem] h-4 px-1 rounded-full bg-brand-purple/20 text-brand-purple text-[9px] font-bold shrink-0"
+            >
+              {openThreadCount}
+            </span>
           )}
         </button>
         {staleSummary && onRegenerate && (

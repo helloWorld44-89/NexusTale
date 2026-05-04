@@ -10,11 +10,31 @@ import NexusThinking from './NexusThinking'
 interface WorkshopPanelProps {
   token:              string
   projectId:          string
+  projectPhase?:      string
   sceneId?:           string
   branch?:            string
   onInsertToScene?:   (text: string) => void
   onToolWrite?:       (sceneId: string, chapterId: string) => void
   onStructureChange?: () => void
+}
+
+const PHASE_CHECKLIST: Record<string, { title: string; prompt: string }> = {
+  story_pass: {
+    title: 'Story Pass',
+    prompt: "I'm doing a story pass on this project. Let's work through structural integrity: flag scenes that don't advance anything, identify unmet promises to the reader, and call out pacing issues. Which chapter should we start with?",
+  },
+  character_pass: {
+    title: 'Character Pass',
+    prompt: "I'm doing a character pass. For each POV character, let's check motivation consistency, voice distinctness, and arc progression. Flag any moment where a character acts for plot convenience rather than authentic logic. Where would you like to begin?",
+  },
+  language_pass: {
+    title: 'Language Pass',
+    prompt: "I'm doing a language pass. Share prose passages and I'll identify passive constructions, filter words ('she saw', 'he felt'), weak verbs, adverbs masking stronger options, and repeated sentence structure. Ready when you are.",
+  },
+  editorial_pass: {
+    title: 'Editorial Pass',
+    prompt: "I'm doing an editorial pass — big-picture notes. Let's check chapter openings, endings that make the next chapter feel necessary, POV consistency, and whether each act does its structural work. Which act do you want to start with?",
+  },
 }
 
 const WORKSHOP_INTRO: WorkshopMessage = {
@@ -42,6 +62,7 @@ interface ChatMessage extends WorkshopMessage {
 export default function WorkshopPanel({
   token,
   projectId,
+  projectPhase,
   sceneId,
   branch,
   onInsertToScene,
@@ -121,6 +142,22 @@ export default function WorkshopPanel({
       setCreatingSession(false)
     }
   }, [token, projectId, creatingSession, activateSession])
+
+  const handleStartChecklist = useCallback(async () => {
+    const checklist = projectPhase ? PHASE_CHECKLIST[projectPhase] : undefined
+    if (!checklist || creatingSession) return
+    setCreatingSession(true)
+    try {
+      const session = await api.ai.workshop.create(token, projectId, checklist.title)
+      setSessions((prev) => [session, ...prev])
+      activateSession(session)
+      setInput(checklist.prompt)
+    } catch {
+      // ignore
+    } finally {
+      setCreatingSession(false)
+    }
+  }, [token, projectId, projectPhase, creatingSession, activateSession])
 
   // ── send message ──────────────────────────────────────────────────────────
 
@@ -560,6 +597,15 @@ export default function WorkshopPanel({
             >
               New Session
             </button>
+            {projectPhase && PHASE_CHECKLIST[projectPhase] && (
+              <button
+                onClick={handleStartChecklist}
+                disabled={creatingSession}
+                className="px-4 py-1.5 rounded text-sm text-brand-purple border border-brand-purple/30 hover:bg-brand-purple/10 transition-colors disabled:opacity-40"
+              >
+                Start {PHASE_CHECKLIST[projectPhase].title} Checklist
+              </button>
+            )}
           </div>
         )}
 

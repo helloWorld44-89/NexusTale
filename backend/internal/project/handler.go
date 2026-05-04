@@ -46,6 +46,10 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup, chapterGroup *gin.RouterGr
 	// Stats
 	rg.GET("/:id/stats", h.GetProjectStats)
 
+	// Writing phase
+	rg.GET("/:id/phase", h.GetProjectPhase)
+	rg.PUT("/:id/phase", h.UpdateProjectPhase)
+
 	// Acts — nested under projects
 	rg.POST("/:id/acts", h.CreateAct)
 	rg.GET("/:id/acts", h.ListActs)
@@ -171,6 +175,52 @@ func (h *Handler) GetProjectStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, stats)
+}
+
+// Writing phase
+
+var validPhases = map[string]bool{
+	"drafting":       true,
+	"story_pass":     true,
+	"character_pass": true,
+	"language_pass":  true,
+	"editorial_pass": true,
+}
+
+func (h *Handler) GetProjectPhase(c *gin.Context) {
+	id, err := parseUUID(c, "id")
+	if err != nil {
+		return
+	}
+	phase, err := h.svc.GetProjectPhase(c.Request.Context(), id)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"phase": phase})
+}
+
+func (h *Handler) UpdateProjectPhase(c *gin.Context) {
+	id, err := parseUUID(c, "id")
+	if err != nil {
+		return
+	}
+	var req struct {
+		Phase string `json:"phase" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "phase is required"})
+		return
+	}
+	if !validPhases[req.Phase] {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid phase; must be one of: drafting, story_pass, character_pass, language_pass, editorial_pass"})
+		return
+	}
+	if err := h.svc.UpdateProjectPhase(c.Request.Context(), id, req.Phase); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"phase": req.Phase})
 }
 
 // Acts

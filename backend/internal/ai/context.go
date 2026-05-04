@@ -1,11 +1,11 @@
 package ai
 
-// context.go — B2 AI memory layer.
+// context.go — B2 AI memory layer + C6.6 prompt engineering audit.
 //
 // ResolveBranch determines which git Timeline (branch) the requesting user is
-// currently on.  BuildContext assembles the chapter-summary context block that
-// is prepended to every AI system prompt.  ScheduleSummarize debounces
-// chapter-summary regeneration so rapid scene saves don't spam the LLM.
+// currently on.  BuildContext assembles the context block that is prepended to
+// every AI system prompt.  ScheduleSummarize debounces chapter-summary
+// regeneration so rapid scene saves don't spam the LLM.
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
@@ -27,6 +28,10 @@ const canonBranch = "canon"
 // summarizeDebounce is the quiet-period after the last scene save before the
 // background goroutine actually calls the LLM to regenerate a summary.
 const summarizeDebounce = 30 * time.Second
+
+// contextBudgetWarnChars is the character threshold above which BuildContext
+// logs a warning (~5,000 tokens at 4 chars/token).
+const contextBudgetWarnChars = 20_000
 
 // debounceKey uniquely identifies a pending debounce timer.
 type debounceKey struct {
@@ -229,16 +234,15 @@ const contentFallbackLimit = 600
 
 // BuildContext assembles a context block to prepend to AI system prompts.
 //
-//  1. Project identity — title and genres, always included.
-//  2. Story so far — AI chapter summaries when available; raw scene content
-//     (truncated to contentFallbackLimit) for chapters not yet summarised.
-//     Falls back to "canon" summaries when the active branch has none.
-//  3. Current scene — full text of the scene the user is currently editing,
-//     labelled clearly so the model understands which part of the story is in scope.
-//  4. Wiki entity snippets — for any @[Entity Name] refs in the current scene.
-//  5. Story structure — name + phases when the project has one selected.
-//  6. Pinned context — writer-curated entities, chapters, and scenes pinned via
-//     the Context Pins panel; injected verbatim so writers control what Nexus knows.
+// Section order (C6.6 revised):
+//  1. Project identity + AI bible
+//  2. Story structure (named template or freeform rules)
+//  3. Magic systems (always injected when rules exist — world constraints first)
+//  4. Story so far (chapter summaries, branch-aware)
+//  5. @[Entity] inline references (reformatted by entity type)
+//  6. Current scene (full text; suppressed in Beat/Continue — caller passes uuid.Nil)
+//  7. Pinned context (writer-curated via Context Pins panel)
+//  8. Open story threads (unresolved threads the story owes the reader)
 //
 // The returned string is never empty: the project identity block is always
 // present so the model always knows the project it is working on.
@@ -264,7 +268,28 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 		}
 	}
 
-	// ── 2. Story so far ───────────────────────────────────────────────────
+	// ── 2. Story structure ────────────────────────────────────────────────
+	// World rules before story history — the AI should understand the structural
+	// framework it's working within before reading chapter summaries.
+	if structureCtx := s.buildStructureContext(ctx, projectID); structureCtx != "" {
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(structureCtx)
+	}
+
+	// ── 3. Magic systems ─────────────────────────────────────────────────
+	// Always injected when the project has magic rules, regardless of @-references
+	// in the current scene. Magic systems are world-level constraints the AI must
+	// know even when the writer hasn't mentioned them in this scene.
+	if magicCtx := s.buildMagicSystemsContext(ctx, projectID); magicCtx != "" {
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(magicCtx)
+	}
+
+	// ── 4. Story so far ───────────────────────────────────────────────────
 	// Load AI chapter summaries for the active branch.
 	summaryRows, _ := s.queries.ListChapterSummariesByProject(ctx, sqlcgen.ListChapterSummariesByProjectParams{
 		ProjectID:  projectID,
@@ -286,6 +311,21 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 	// Fetch the chapter list so we can produce a "story so far" block even
 	// when summaries don't exist yet (fallback to raw scene content).
 	chapters, err := s.queries.ListChaptersByProject(ctx, projectID)
+
+	// Determine the current chapter's index for arc position hints on character entities.
+	currentChapterIdx := -1
+	if currentSceneID != uuid.Nil && err == nil {
+		sc, scErr := s.queries.GetScene(ctx, currentSceneID)
+		if scErr == nil {
+			for i, ch := range chapters {
+				if ch.ID == sc.ChapterID {
+					currentChapterIdx = i
+					break
+				}
+			}
+		}
+	}
+
 	if err == nil && len(chapters) > 0 {
 		var storySoFar strings.Builder
 		for _, ch := range chapters {
@@ -299,9 +339,8 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 				continue
 			}
 			// Skip the current scene's chapter in the fallback path — its full
-			// content is already included in section 3, so the excerpt would
-			// duplicate it at lower quality. (When a real AI summary exists the
-			// overlap is intentional: summary ≠ full prose.)
+			// content is already included in section 6, so the excerpt would
+			// duplicate it at lower quality.
 			if currentSceneID != uuid.Nil {
 				isCurrentChapter := false
 				for _, sc := range scenes {
@@ -338,26 +377,11 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 		}
 	}
 
-	// ── 3. Current scene ─────────────────────────────────────────────────
-	// Include the full text of the scene currently open in the editor so the
-	// model can answer specific questions about it.
-	if currentSceneID != uuid.Nil && sceneContent != "" {
-		if sb.Len() > 0 {
-			sb.WriteString("\n")
-		}
-		sc, err := s.queries.GetScene(ctx, currentSceneID)
-		label := "Current scene"
-		if err == nil && sc.Title != "" {
-			label = fmt.Sprintf("Current scene — %s", sc.Title)
-		}
-		sb.WriteString(fmt.Sprintf("## %s\n%s\n", label, sceneContent))
-	}
-
-	// ── 4. @[Entity] inline references ───────────────────────────────────
+	// ── 5. @[Entity] inline references ───────────────────────────────────
+	// Entities are formatted by type when structured fields are populated.
 	matches := entityRefRE.FindAllStringSubmatch(sceneContent, -1)
 	if len(matches) > 0 {
-		// Deduplicate referenced names (case-insensitive) and query only those rows
-		// rather than fetching all project entities and filtering in Go.
+		// Deduplicate referenced names (case-insensitive) and query only those rows.
 		seen := make(map[string]bool)
 		var names []string
 		for _, m := range matches {
@@ -375,9 +399,9 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 
 		var entitySnippets []string
 		for _, e := range entities {
-			if e.Summary != "" {
-				entitySnippets = append(entitySnippets,
-					fmt.Sprintf("**%s** (%s): %s", e.Name, e.Type, e.Summary))
+			line := buildEntityContextLine(e, currentChapterIdx, len(chapters))
+			if line != "" {
+				entitySnippets = append(entitySnippets, line)
 			}
 		}
 
@@ -392,15 +416,22 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 		}
 	}
 
-	// ── 5. Story structure (optional) ─────────────────────────────────────
-	if structureCtx := s.buildStructureContext(ctx, projectID); structureCtx != "" {
+	// ── 6. Current scene ─────────────────────────────────────────────────
+	// Include the full text of the scene currently open in the editor so the
+	// model can answer specific questions about it.
+	if currentSceneID != uuid.Nil && sceneContent != "" {
 		if sb.Len() > 0 {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(structureCtx)
+		sc, scErr := s.queries.GetScene(ctx, currentSceneID)
+		label := "Current scene"
+		if scErr == nil && sc.Title != "" {
+			label = fmt.Sprintf("Current scene — %s", sc.Title)
+		}
+		sb.WriteString(fmt.Sprintf("## %s\n%s\n", label, sceneContent))
 	}
 
-	// ── 6. Pinned context (writer-curated) ────────────────────────────────
+	// ── 7. Pinned context (writer-curated) ────────────────────────────────
 	// Only injected when both projectID and userID are known, so that
 	// background summarize goroutines (which have no userID) are unaffected.
 	if userID != uuid.Nil {
@@ -412,7 +443,228 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 		}
 	}
 
+	// ── 8. Open story threads ─────────────────────────────────────────────
+	// Threads are the forward-looking context the AI can have — what the story
+	// still owes the reader. Listing them here nudges Beat/Continue to naturally
+	// advance open threads rather than drift.
+	if threadCtx := s.buildOpenThreadsContext(ctx, projectID); threadCtx != "" {
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(threadCtx)
+	}
+
+	if sb.Len() > contextBudgetWarnChars {
+		slog.Warn("ai: context budget exceeded",
+			"project_id", projectID,
+			"chars", sb.Len(),
+			"approx_tokens", sb.Len()/4,
+		)
+	}
+
 	return sb.String()
+}
+
+// ── Entity context line formatter ─────────────────────────────────────────────
+
+// charContextAttrs mirrors the character attribute fields stored in wiki_entities.attributes.
+type charContextAttrs struct {
+	Motivation      string `json:"motivation"`
+	ArcStart        string `json:"arc_start"`
+	ArcEnd          string `json:"arc_end"`
+	CapabilityNotes string `json:"capability_notes"`
+}
+
+// buildEntityContextLine formats a single wiki entity as a context line,
+// adapting the format to the entity type and available structured fields.
+//
+// chapterIdx is 0-based index of the current chapter; totalChapters is the full count.
+// Both are used to inject an arc position hint for character entities.
+func buildEntityContextLine(e sqlcgen.WikiEntity, chapterIdx, totalChapters int) string {
+	if e.Name == "" {
+		return ""
+	}
+
+	switch e.Type {
+	case "character":
+		return buildCharacterContextLine(e, chapterIdx, totalChapters)
+	case "location":
+		return buildLocationContextLine(e)
+	case "faction":
+		desc := truncateRunes(e.Summary, 400)
+		if desc == "" {
+			return fmt.Sprintf("**%s** (faction)", e.Name)
+		}
+		return fmt.Sprintf("**%s** (faction) — %s", e.Name, desc)
+	default:
+		if e.Summary == "" {
+			return ""
+		}
+		return fmt.Sprintf("**%s** (%s): %s", e.Name, e.Type, truncateRunes(e.Summary, 500))
+	}
+}
+
+func buildCharacterContextLine(e sqlcgen.WikiEntity, chapterIdx, totalChapters int) string {
+	var attrs charContextAttrs
+	if len(e.Attributes) > 0 {
+		_ = json.Unmarshal(e.Attributes, &attrs)
+	}
+
+	// If no structured fields are populated, fall back to the generic format.
+	if attrs.Motivation == "" && attrs.ArcStart == "" && attrs.ArcEnd == "" {
+		if e.Summary == "" {
+			return fmt.Sprintf("**%s** (character)", e.Name)
+		}
+		return fmt.Sprintf("**%s** (character): %s", e.Name, truncateRunes(e.Summary, 500))
+	}
+
+	var parts []string
+	if attrs.Motivation != "" {
+		parts = append(parts, "Motivation: "+attrs.Motivation)
+	}
+	if attrs.ArcStart != "" && attrs.ArcEnd != "" {
+		arcLine := fmt.Sprintf("Arc: %s → %s", attrs.ArcStart, attrs.ArcEnd)
+		if hint := arcPositionHint(chapterIdx, totalChapters); hint != "" {
+			arcLine += " " + hint
+		}
+		parts = append(parts, arcLine)
+	}
+	if attrs.CapabilityNotes != "" {
+		parts = append(parts, attrs.CapabilityNotes)
+	}
+	if desc := truncateRunes(e.Summary, 300); desc != "" {
+		parts = append(parts, desc)
+	}
+
+	return fmt.Sprintf("**%s** (character) — %s", e.Name, strings.Join(parts, " | "))
+}
+
+func buildLocationContextLine(e sqlcgen.WikiEntity) string {
+	desc := truncateRunes(e.Summary, 500)
+	if desc == "" {
+		return fmt.Sprintf("**%s** (location)", e.Name)
+	}
+	return fmt.Sprintf("**%s** (location) — %s", e.Name, desc)
+}
+
+// arcPositionHint returns "(early arc)", "(mid arc)", or "(late arc)" based on
+// where the current chapter falls in the story, giving the AI calibration on
+// where a character should be in their journey.
+func arcPositionHint(chapterIdx, total int) string {
+	if total <= 0 || chapterIdx < 0 {
+		return ""
+	}
+	pos := float64(chapterIdx) / float64(total)
+	switch {
+	case pos < 0.33:
+		return "(early arc)"
+	case pos < 0.67:
+		return "(mid arc)"
+	default:
+		return "(late arc)"
+	}
+}
+
+// ── Magic systems context helper ──────────────────────────────────────────────
+
+// magicContextAttrs mirrors MagicRuleAttributes from the wiki package for JSON parsing.
+type magicContextAttrs struct {
+	Powers       string `json:"powers"`
+	Limitations  string `json:"limitations"`
+	Cost         string `json:"cost"`
+	RulesClarity string `json:"rules_clarity"`
+}
+
+// buildMagicSystemsContext returns a `## Magic systems` block listing the 5
+// most recently updated magic rules for the project. Returns "" when no rules exist.
+// Limitations are listed before Powers so the AI weighs constraints first.
+func (s *Service) buildMagicSystemsContext(ctx context.Context, projectID uuid.UUID) string {
+	rules, err := s.queries.ListMagicRulesForContext(ctx, projectID)
+	if err != nil || len(rules) == 0 {
+		return ""
+	}
+
+	var out strings.Builder
+	out.WriteString("## Magic systems\n")
+
+	for _, r := range rules {
+		var attrs magicContextAttrs
+		if len(r.Attributes) > 0 {
+			_ = json.Unmarshal(r.Attributes, &attrs)
+		}
+
+		var parts []string
+		if attrs.Limitations != "" {
+			parts = append(parts, "Limitations — "+attrs.Limitations)
+		}
+		if attrs.Powers != "" {
+			parts = append(parts, "Powers — "+attrs.Powers)
+		}
+		if attrs.Cost != "" {
+			parts = append(parts, "Cost — "+attrs.Cost)
+		}
+		if attrs.RulesClarity == "defined" {
+			parts = append(parts, "Do not introduce abilities not listed above.")
+		}
+
+		if len(parts) > 0 {
+			out.WriteString(fmt.Sprintf("%s: %s\n", r.Name, strings.Join(parts, ". ")))
+		} else if r.Description != "" {
+			// No structured fields — fall back to freeform description.
+			out.WriteString(fmt.Sprintf("%s: %s\n", r.Name, truncateRunes(r.Description, 300)))
+		} else {
+			out.WriteString(r.Name + "\n")
+		}
+	}
+
+	return out.String()
+}
+
+// ── Open story threads context helper ────────────────────────────────────────
+
+// buildOpenThreadsContext returns a `## Open story threads` block listing the
+// open (unresolved) story threads for the project, most-recently-opened first,
+// capped at 10. Returns "" when no open threads exist.
+func (s *Service) buildOpenThreadsContext(ctx context.Context, projectID uuid.UUID) string {
+	threads, err := s.queries.ListOpenThreadsByProject(ctx, projectID)
+	if err != nil || len(threads) == 0 {
+		return ""
+	}
+
+	var out strings.Builder
+	out.WriteString("## Open story threads\n")
+
+	for _, t := range threads {
+		// Capitalise the type label for readability.
+		typeLabel := strings.Title(t.Type) //nolint:staticcheck // simple capitalisation
+		line := fmt.Sprintf("- %s: %q", typeLabel, t.Title)
+		if t.ChapterTitle != "" {
+			line += " — opened in " + t.ChapterTitle
+		}
+		out.WriteString(line + "\n")
+	}
+
+	return out.String()
+}
+
+// ── Scene attributes for Beat/Continue prompts ────────────────────────────────
+
+// SceneContextAttrs holds the structured scene metadata used to enrich
+// Beat and Continue system prompts with scene-specific context.
+type SceneContextAttrs struct {
+	SceneRole     string `json:"scene_role"`
+	SceneGoal     string `json:"scene_goal"`
+	SceneConflict string `json:"scene_conflict"`
+}
+
+// ParseSceneContextAttrs decodes the attributes JSONB column of a scene.
+// Returns an empty struct (all fields "") if the column is empty or invalid JSON.
+func ParseSceneContextAttrs(raw []byte) SceneContextAttrs {
+	var a SceneContextAttrs
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &a)
+	}
+	return a
 }
 
 // ── structure context helper ──────────────────────────────────────────────────
@@ -615,4 +867,15 @@ func (s *Service) appendPinnedScene(out *strings.Builder, ctx context.Context, i
 	if len(content) > 0 {
 		out.WriteString(string(content) + "\n")
 	}
+}
+
+// ── String utilities ─────────────────────────────────────────────────────────
+
+// truncateRunes truncates s to at most n runes, appending "…" if truncated.
+func truncateRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	runes := []rune(s)
+	return string(runes[:n]) + "…"
 }

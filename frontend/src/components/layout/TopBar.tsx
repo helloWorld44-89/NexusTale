@@ -1,11 +1,35 @@
 // TopBar — project breadcrumb + navigation + panel toggles + user menu.
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { LeftPanel } from '@/pages/Editor'
 import NotificationBell from './NotificationBell'
 
+// ── Phase metadata ────────────────────────────────────────────────────────────
+
+type ProjectPhase = 'drafting' | 'story_pass' | 'character_pass' | 'language_pass' | 'editorial_pass'
+
+const PHASES: { value: ProjectPhase; label: string; description: string; color: string }[] = [
+  { value: 'drafting',       label: 'Drafting',       description: 'Writing new content — no revision focus.',                      color: 'text-brand-muted' },
+  { value: 'story_pass',     label: 'Story Pass',     description: 'Structural review — pacing, threads, promise/payoff.',          color: 'text-brand-purple' },
+  { value: 'character_pass', label: 'Character Pass', description: 'Character consistency — motivation, voice, arc progression.',   color: 'text-brand-cyan' },
+  { value: 'language_pass',  label: 'Language Pass',  description: 'Line editing — prose rhythm, word choice, sentence variety.',   color: 'text-amber-400' },
+  { value: 'editorial_pass', label: 'Editorial Pass', description: 'Big-picture notes — chapter openings, act structure, POV.',     color: 'text-emerald-400' },
+]
+
+function phaseLabel(phase: string) {
+  return PHASES.find((p) => p.value === phase)?.label ?? 'Drafting'
+}
+
+function phaseColor(phase: string) {
+  return PHASES.find((p) => p.value === phase)?.color ?? 'text-brand-muted'
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────────
+
 interface TopBarProps {
   projectId:    string
   projectTitle: string
+  projectPhase: string
   actTitle:     string   // empty when act layer is hidden (single default act)
   chapterTitle: string
   sceneTitle:   string
@@ -18,11 +42,13 @@ interface TopBarProps {
   onToggleExplorer: () => void
   onToggleFocus:    () => void
   onLogout:         () => void
+  onPhaseChange:    (phase: string) => void
 }
 
 export default function TopBar({
   projectId,
   projectTitle,
+  projectPhase,
   actTitle,
   chapterTitle,
   sceneTitle,
@@ -35,7 +61,10 @@ export default function TopBar({
   onToggleExplorer,
   onToggleFocus,
   onLogout,
+  onPhaseChange,
 }: TopBarProps) {
+  const [phaseOpen, setPhaseOpen] = useState(false)
+
   return (
     <header className="h-11 flex items-center justify-between px-3 bg-brand-bg-card border-b border-brand-border shrink-0 select-none gap-2">
 
@@ -80,26 +109,71 @@ export default function TopBar({
         </Link>
       </div>
 
-      {/* Center: breadcrumb — project [> act] [> chapter] [> scene] */}
-      <div className="flex items-center gap-1 text-xs text-brand-muted overflow-hidden flex-1 justify-center">
-        <span className="truncate max-w-[120px]">{projectTitle}</span>
-        {actTitle && (
-          <>
-            <ChevronIcon />
-            <span className="truncate max-w-[100px] text-brand-purple/70">{actTitle}</span>
-          </>
-        )}
-        {chapterTitle && (
-          <>
-            <ChevronIcon />
-            <span className="truncate max-w-[120px]">{chapterTitle}</span>
-          </>
-        )}
-        {sceneTitle && (
-          <>
-            <ChevronIcon />
-            <span className="text-brand-text truncate max-w-[120px]">{sceneTitle}</span>
-          </>
+      {/* Center: breadcrumb + phase badge */}
+      <div className="flex items-center gap-2 text-xs text-brand-muted overflow-hidden flex-1 justify-center">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1 overflow-hidden">
+          <span className="truncate max-w-[120px]">{projectTitle}</span>
+          {actTitle && (
+            <>
+              <ChevronIcon />
+              <span className="truncate max-w-[100px] text-brand-purple/70">{actTitle}</span>
+            </>
+          )}
+          {chapterTitle && (
+            <>
+              <ChevronIcon />
+              <span className="truncate max-w-[120px]">{chapterTitle}</span>
+            </>
+          )}
+          {sceneTitle && (
+            <>
+              <ChevronIcon />
+              <span className="text-brand-text truncate max-w-[120px]">{sceneTitle}</span>
+            </>
+          )}
+        </div>
+
+        {/* Phase badge — only shown when a project is loaded */}
+        {projectTitle && (
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setPhaseOpen((v) => !v)}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded border border-brand-border/50 hover:border-brand-border transition-colors text-[10px] font-medium ${phaseColor(projectPhase)}`}
+              title="Change writing phase"
+            >
+              <PhaseIcon />
+              {phaseLabel(projectPhase)}
+            </button>
+
+            {phaseOpen && (
+              <>
+                {/* Backdrop */}
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setPhaseOpen(false)}
+                />
+                {/* Modal */}
+                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-40 w-72 bg-brand-bg-card border border-brand-border rounded-xl shadow-2xl p-3 space-y-1">
+                  <p className="text-[10px] text-brand-muted uppercase tracking-wider px-1 pb-1">Writing Phase</p>
+                  {PHASES.map((p) => (
+                    <button
+                      key={p.value}
+                      onClick={() => { onPhaseChange(p.value); setPhaseOpen(false) }}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                        projectPhase === p.value
+                          ? 'bg-brand-border/40'
+                          : 'hover:bg-brand-border/20'
+                      }`}
+                    >
+                      <span className={`text-xs font-medium ${p.color}`}>{p.label}</span>
+                      <p className="text-[11px] text-brand-muted mt-0.5">{p.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -190,6 +264,15 @@ function ChevronIcon() {
   return (
     <svg className="w-2.5 h-2.5 shrink-0 opacity-40" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 3l5 5-5 5" />
+    </svg>
+  )
+}
+
+function PhaseIcon() {
+  return (
+    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5v3l2 1.5" />
     </svg>
   )
 }

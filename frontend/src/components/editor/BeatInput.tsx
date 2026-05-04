@@ -10,15 +10,16 @@ import NexusThinking from '@/components/ai/NexusThinking'
 type Mode = 'beat' | 'continue'
 
 interface BeatInputProps {
-  token:      string
-  projectId:  string
-  sceneId:    string
-  promptId:   string | null
-  branch?:    string
-  onAccept:   (text: string) => void  // append generated text to scene content
+  token:        string
+  projectId:    string
+  sceneId:      string
+  promptId:     string | null
+  branch?:      string
+  projectPhase?: string
+  onAccept:     (text: string) => void  // append generated text to scene content
 }
 
-export default function BeatInput({ token, projectId, sceneId, promptId, branch, onAccept }: BeatInputProps) {
+export default function BeatInput({ token, projectId, sceneId, promptId, branch, projectPhase, onAccept }: BeatInputProps) {
   const [open, setOpen]           = useState(false)
   const [mode, setMode]           = useState<Mode>('beat')
   const [beat, setBeat]           = useState('')
@@ -131,7 +132,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
 
   if (!open) {
     return (
-      <div className="flex justify-center gap-3 py-2 border-t border-brand-border/40">
+      <div className="flex justify-center items-center gap-3 py-2 border-t border-brand-border/40">
         <button
           onClick={openBeat}
           className="flex items-center gap-1.5 px-3 py-1 rounded text-xs text-brand-purple hover:text-brand-text hover:bg-brand-purple/10 border border-brand-purple/30 hover:border-brand-purple/60 transition-all"
@@ -148,6 +149,11 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
           <ContinueIcon />
           Continue →
         </button>
+        {projectPhase === 'language_pass' && (
+          <span className="text-xs text-amber-400/80 border border-amber-400/30 rounded px-2 py-0.5">
+            Focus: prose quality
+          </span>
+        )}
       </div>
     )
   }

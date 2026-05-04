@@ -24,7 +24,7 @@ func (q *Queries) ArchiveProject(ctx context.Context, id uuid.UUID) error {
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (owner_id, title, description, genres, git_repo_path)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions
+RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
 `
 
 type CreateProjectParams struct {
@@ -57,6 +57,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.StructureID,
 		&i.StructureCustom,
 		&i.AiInstructions,
+		&i.Phase,
 	)
 	return i, err
 }
@@ -82,7 +83,7 @@ func (q *Queries) GetAIInstructions(ctx context.Context, id uuid.UUID) (string, 
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions
+SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
 FROM projects
 WHERE id = $1
 `
@@ -103,8 +104,20 @@ func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error)
 		&i.StructureID,
 		&i.StructureCustom,
 		&i.AiInstructions,
+		&i.Phase,
 	)
 	return i, err
+}
+
+const getProjectPhase = `-- name: GetProjectPhase :one
+SELECT phase FROM projects WHERE id = $1
+`
+
+func (q *Queries) GetProjectPhase(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getProjectPhase, id)
+	var phase string
+	err := row.Scan(&phase)
+	return phase, err
 }
 
 const getProjectStats = `-- name: GetProjectStats :one
@@ -145,7 +158,7 @@ func (q *Queries) GetProjectStats(ctx context.Context, id uuid.UUID) (GetProject
 }
 
 const listProjectsByOwner = `-- name: ListProjectsByOwner :many
-SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions
+SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
 FROM projects
 WHERE owner_id = $1 AND archived = false
 ORDER BY updated_at DESC
@@ -173,6 +186,7 @@ func (q *Queries) ListProjectsByOwner(ctx context.Context, ownerID uuid.UUID) ([
 			&i.StructureID,
 			&i.StructureCustom,
 			&i.AiInstructions,
+			&i.Phase,
 		); err != nil {
 			return nil, err
 		}
@@ -186,7 +200,7 @@ func (q *Queries) ListProjectsByOwner(ctx context.Context, ownerID uuid.UUID) ([
 
 const listProjectsForUser = `-- name: ListProjectsForUser :many
 SELECT DISTINCT p.id, p.owner_id, p.title, p.description, p.genres, p.git_repo_path,
-       p.archived, p.created_at, p.updated_at, p.structure_id, p.structure_custom, p.ai_instructions
+       p.archived, p.created_at, p.updated_at, p.structure_id, p.structure_custom, p.ai_instructions, p.phase
 FROM projects p
 LEFT JOIN project_collaborators pc ON pc.project_id = p.id AND pc.user_id = $1
 WHERE p.archived = false
@@ -216,6 +230,7 @@ func (q *Queries) ListProjectsForUser(ctx context.Context, userID uuid.UUID) ([]
 			&i.StructureID,
 			&i.StructureCustom,
 			&i.AiInstructions,
+			&i.Phase,
 		); err != nil {
 			return nil, err
 		}
@@ -247,7 +262,7 @@ SET title = COALESCE($2, title),
     description = COALESCE($3, description),
     updated_at = now()
 WHERE id = $1
-RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions
+RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
 `
 
 type UpdateProjectParams struct {
@@ -272,6 +287,21 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.StructureID,
 		&i.StructureCustom,
 		&i.AiInstructions,
+		&i.Phase,
 	)
 	return i, err
+}
+
+const updateProjectPhase = `-- name: UpdateProjectPhase :exec
+UPDATE projects SET phase = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateProjectPhaseParams struct {
+	ID    uuid.UUID `json:"id"`
+	Phase string    `json:"phase"`
+}
+
+func (q *Queries) UpdateProjectPhase(ctx context.Context, arg UpdateProjectPhaseParams) error {
+	_, err := q.db.Exec(ctx, updateProjectPhase, arg.ID, arg.Phase)
+	return err
 }

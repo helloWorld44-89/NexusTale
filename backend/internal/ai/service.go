@@ -320,6 +320,11 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 	ctxSceneID := uuid.Nil
 	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, scene.Content, ctxSceneID)
 
+	// Build scene-specific directive lines (role, goal, conflict, open threads).
+	// These are appended to the system prompt for both beat and continue modes
+	// so the model has the scene's structural purpose and unresolved threads in scope.
+	sceneDirective := s.buildSceneDirective(ctx, req.ProjectID, scene)
+
 	switch req.Mode {
 	case adapters.CompleteModeBeat:
 		if maxTok == 0 || maxTok > s.cfg.BeatMaxTokens {
@@ -329,6 +334,9 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 		sysPrompt := beatSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov, "")
 		if ctxBlock != "" {
 			sysPrompt = sysPrompt + "\n\n" + ctxBlock
+		}
+		if sceneDirective != "" {
+			sysPrompt += "\n\n" + sceneDirective
 		}
 		// Append just the last ~400 tokens of the scene so the model can match prose
 		// style at the current boundary without reading the full text of long scenes.
@@ -343,6 +351,9 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 		sysPrompt := continueSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov)
 		if ctxBlock != "" {
 			sysPrompt = sysPrompt + "\n\n" + ctxBlock
+		}
+		if sceneDirective != "" {
+			sysPrompt += "\n\n" + sceneDirective
 		}
 		// For long scenes, cap the user turn at the last ~800 tokens.
 		// The earlier content is preserved as a brief hint so the model knows
@@ -687,9 +698,12 @@ type resolvedContext struct {
 }
 
 type resolvedScene struct {
-	Content string
-	Tense   string
-	Pov     string
+	Content       string
+	Tense         string
+	Pov           string
+	SceneRole     string
+	SceneGoal     string
+	SceneConflict string
 }
 
 // UsageSummary is the public response for GET /projects/:id/ai/usage.
@@ -897,6 +911,41 @@ func (s *Service) applyPromptPreset(ctx context.Context, promptID uuid.UUID, req
 	}
 }
 
+// buildSceneDirective assembles the short directive block that tells the model
+// the scene's structural purpose (role, goal, conflict) and any open threads.
+// All fields are optional; the block is omitted entirely when nothing is set.
+func (s *Service) buildSceneDirective(ctx context.Context, projectID uuid.UUID, scene resolvedScene) string {
+	var lines []string
+	if scene.SceneRole != "" {
+		lines = append(lines, "This is a "+scene.SceneRole+" scene.")
+	}
+	if scene.SceneGoal != "" {
+		lines = append(lines, "The POV character's goal: "+scene.SceneGoal+".")
+	}
+	if scene.SceneConflict != "" {
+		lines = append(lines, "What's in the way: "+scene.SceneConflict+".")
+	}
+
+	if projectID != uuid.Nil {
+		threads, err := s.queries.ListOpenThreadsByProject(ctx, projectID)
+		if err == nil && len(threads) > 0 {
+			titles := make([]string, 0, 5)
+			for i, t := range threads {
+				if i >= 5 {
+					break
+				}
+				titles = append(titles, t.Title)
+			}
+			lines = append(lines, "Open threads: "+strings.Join(titles, ", ")+".")
+		}
+	}
+
+	if len(lines) == 0 {
+		return ""
+	}
+	return "## This scene\n" + strings.Join(lines, "\n")
+}
+
 func (s *Service) resolveContext(ctx context.Context, projectID, sceneID uuid.UUID) (resolvedContext, resolvedScene, error) {
 	var proj resolvedContext
 	var scene resolvedScene
@@ -915,6 +964,10 @@ func (s *Service) resolveContext(ctx context.Context, projectID, sceneID uuid.UU
 			scene.Content = s.readSceneContent(ctx, sc.ChapterID, sc.ID)
 			scene.Tense = sc.Tense
 			scene.Pov = sc.Pov
+			attrs := ParseSceneContextAttrs(sc.Attributes)
+			scene.SceneRole = attrs.SceneRole
+			scene.SceneGoal = attrs.SceneGoal
+			scene.SceneConflict = attrs.SceneConflict
 		}
 	}
 

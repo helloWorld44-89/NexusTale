@@ -714,6 +714,7 @@ func toProjectResponse(p sqlcgen.Project) *ProjectResponse {
 		Description: p.Description,
 		Genres:      p.Genres,
 		Archived:    p.Archived,
+		Phase:       p.Phase,
 		CreatedAt:   p.CreatedAt.Time,
 		UpdatedAt:   p.UpdatedAt.Time,
 	}
@@ -753,6 +754,26 @@ func toSceneResponse(sc sqlcgen.Scene) *SceneResponse {
 		CreatedAt:    sc.CreatedAt.Time,
 		UpdatedAt:    sc.UpdatedAt.Time,
 	}
+}
+
+// GetProjectPhase returns the current writing phase for a project.
+func (s *Service) GetProjectPhase(ctx context.Context, projectID uuid.UUID) (string, error) {
+	phase, err := s.queries.GetProjectPhase(ctx, projectID)
+	if err != nil {
+		return "", apperror.Internal(fmt.Sprintf("get project phase: %v", err))
+	}
+	return phase, nil
+}
+
+// UpdateProjectPhase sets the writing phase for a project.
+func (s *Service) UpdateProjectPhase(ctx context.Context, projectID uuid.UUID, phase string) error {
+	if err := s.queries.UpdateProjectPhase(ctx, sqlcgen.UpdateProjectPhaseParams{
+		ID:    projectID,
+		Phase: phase,
+	}); err != nil {
+		return apperror.Internal(fmt.Sprintf("update project phase: %v", err))
+	}
+	return nil
 }
 
 // countWords returns the number of whitespace-delimited tokens in s.
