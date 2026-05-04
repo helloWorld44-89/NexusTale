@@ -41,6 +41,11 @@ func (s *Service) CreateEntity(ctx context.Context, projectID uuid.UUID, req Cre
 		req.Attributes = json.RawMessage("{}")
 	}
 
+	// Pre-populate summary with the type template when none was provided.
+	if req.Summary == "" {
+		req.Summary = entityTemplates[req.Type]
+	}
+
 	// Convert the optional *uuid.UUID to pgtype.UUID which pgx understands as nullable.
 	parentID := pgtype.UUID{}
 	if req.ParentEntityID != nil {
@@ -282,10 +287,15 @@ func (s *Service) GetGraph(ctx context.Context, projectID uuid.UUID) (*GraphResp
 // ========================
 
 func (s *Service) CreateMagicRule(ctx context.Context, projectID uuid.UUID, req CreateMagicRuleRequest) (*MagicRuleResponse, error) {
+	attrsJSON, err := json.Marshal(req.Attrs)
+	if err != nil {
+		attrsJSON = json.RawMessage("{}")
+	}
 	r, err := s.queries.CreateMagicRule(ctx, sqlcgen.CreateMagicRuleParams{
 		ProjectID:   projectID,
 		Name:        req.Name,
 		Description: req.Description,
+		Attributes:  attrsJSON,
 	})
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("create magic rule: %v", err))
@@ -312,6 +322,12 @@ func (s *Service) UpdateMagicRule(ctx context.Context, id uuid.UUID, req UpdateM
 	}
 	if req.Description != nil {
 		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+	}
+	if req.Attrs != nil {
+		b, err := json.Marshal(req.Attrs)
+		if err == nil {
+			params.Attributes = b
+		}
 	}
 
 	r, err := s.queries.UpdateMagicRule(ctx, params)
@@ -525,11 +541,16 @@ func toRelationshipResponse(r sqlcgen.WikiRelationship) *RelationshipResponse {
 }
 
 func toMagicRuleResponse(r sqlcgen.WikiMagicRule) *MagicRuleResponse {
+	var attrs MagicRuleAttributes
+	if len(r.Attributes) > 0 {
+		_ = json.Unmarshal(r.Attributes, &attrs)
+	}
 	return &MagicRuleResponse{
 		ID:          r.ID,
 		ProjectID:   r.ProjectID,
 		Name:        r.Name,
 		Description: r.Description,
+		Attributes:  attrs,
 		CreatedAt:   r.CreatedAt.Time,
 		UpdatedAt:   r.UpdatedAt.Time,
 	}

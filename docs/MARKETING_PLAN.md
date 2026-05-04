@@ -25,6 +25,13 @@ Recruit **20–50 engaged writers** for the invite-only alpha. Quality over quan
 - Co-writing duos or author + editor pairs who want async review tooling
 - Writers who've struggled to keep their world wiki and manuscript in sync across separate apps
 
+**Tertiary — AI-skeptic writers (valid segment, different message):**
+- Writers who are opposed to or uncomfortable with AI on ethical, craft, or data-ownership grounds
+- Scrivener / World Anvil expats who are frustrated that tools they trusted are forcing AI on them
+- Privacy-conscious writers who won't put an unpublished manuscript on a cloud server they don't control
+- Self-hosters and open-source advocates who overlap with the writing community
+- These writers do not need AI to get full value from NexusTale — Chronicle, wiki, collaboration, and export stand entirely on their own. See the AI-Skeptic Messaging section for how to reach them.
+
 **Not the target for alpha:**
 - Romance / thriller / literary fiction — the tools are genre-neutral but the marketing will resonate more with worldbuilding-heavy writers first
 - Writers who expect a polished consumer product with zero friction
@@ -46,6 +53,90 @@ Recruit **20–50 engaged writers** for the invite-only alpha. Quality over quan
 | Always exportable | "Your manuscript is always yours — download as Markdown, Word, or EPUB any time." |
 
 **Avoid:** "AI writing tool" — too generic and triggers skepticism. Lead with the manuscript and world management; AI is a supporting feature.
+
+---
+
+## Segment: AI-Skeptic Writers
+
+This segment requires a different message, different communities, and different content — not a different product. NexusTale's architecture genuinely supports what they care about. No spin required.
+
+### Who they are
+
+There are four distinct sub-groups with different concerns. Don't treat them as one monolith.
+
+| Sub-group | What they actually fear | What resolves it |
+|---|---|---|
+| **Craft purists** | AI will hollow out their voice; the work won't feel earned | AI is never automatic — it only activates on an explicit request |
+| **Ethics objectors** | Their writing feeds training data they didn't consent to | BYOK = their key, their agreement with the provider; Ollama = never leaves their machine |
+| **Data / ownership anxious** | Their unpublished novel lives on a server they don't control | Git-first architecture, export-always, AGPL license, self-host option |
+| **Quality skeptics** | AI produces flat generic prose | They don't have to use it; the tool is full-featured without it |
+
+The mistake is trying to convert any of them. Don't argue about AI. Argue about the manuscript management problem — which is real for all of them regardless of their AI position.
+
+### Core message for this segment
+
+> "A home for your novel that isn't trying to write it for you."
+
+This works because it's true. Chronicle, the wiki, collaboration, and export have nothing to do with AI. AI features are available for writers who want them; they are off by default and require an explicit action to use.
+
+**Message hierarchy — in this order for this audience:**
+
+1. **Chronicle first** — "Save points for your novel. Branch into a what-if without losing your draft. Travel back to any version you've ever saved." This resonates with any writer who has lost work or been afraid to revise. Zero AI involved.
+
+2. **World wiki** — "Your lore lives next to your prose, not in a separate tab you'll forget to update." World Anvil users who are anti-AI but frustrated with the disconnect from their manuscript are a direct target.
+
+3. **Data ownership** — "Your manuscript is always exportable. Self-host it entirely. The source code is on GitHub under AGPL." Addresses the surveillance and lock-in concern directly.
+
+4. **AI is opt-in and explicit** — Only mention this near the bottom, and only to defuse the concern, not to sell: *"If you want AI features, they're there. They require your own API key. We don't run AI in the background. We don't train on your work."*
+
+### The Ollama angle
+
+Ollama support is a complete answer to the data sovereignty concern — a writer using a local model sends zero manuscript content to any external server. This deserves its own explicit statement in copy targeting this segment:
+
+> "Run NexusTale with a local AI model. Your manuscript never leaves your machine."
+
+This is a genuine differentiator. Sudowrite, NovelAI, and every AI-first writing tool cannot say this.
+
+### The AGPL / self-host angle
+
+Anti-AI writers and self-hosters overlap heavily — both tend to be technically-oriented, privacy-conscious, and skeptical of VC-backed tools that will eventually remove features or sell data. The AGPL license and self-host option are trust signals that no major writing tool currently offers:
+
+> "We open-sourced NexusTale. If you don't trust our hosted service, run it yourself."
+
+This isn't a feature to build before using this message — it's a statement to make once the AGPL license is in place (see MONETIZATION_PLAN.md self-hosting section).
+
+### Where to find them and what to say
+
+| Community | Lead with | Avoid |
+|---|---|---|
+| r/writing | Chronicle + wiki. Mention AI only if asked. | Any "AI-powered" framing |
+| r/fantasywriters, r/scifiwriting | Chronicle origin story. World wiki for lore-heavy writers. | AI features |
+| Mastodon / fediverse | Self-host + AGPL. Fediverse writers are disproportionately privacy-conscious and open-source-aware. | Hosted cloud service as the default pitch |
+| World Anvil Discord | Wiki + manuscript disconnect. Many WA users are frustrated non-AI users already paying for two apps. | — |
+| r/selfhosted | AGPL + Docker Compose + Ollama. Rare crossover with writers but a passionate one. | Anything that sounds like SaaS lock-in |
+| Authors Guild / SFWA adjacent | Data ownership + export-always + no training on manuscripts. These organizations have taken formal anti-AI positions. | "AI-powered" or anything that implies NexusTale generates content automatically |
+
+### What not to do
+
+- Do not argue that AI is good, actually — it doesn't matter if you're right; you will lose the room
+- Do not sneak them into AI features ("just try it once") — this is exactly the behavior they're fleeing from in other tools
+- Do not use "AI-powered" in any copy targeting this segment — Chronicle, wiki, and git are the headline
+- Do not associate with public figures who are visibly AI-enthusiast — let the product speak for itself
+- Do not imply their concerns are irrational — the ethical concerns around training data are legitimate and widely shared
+
+### Build-in-public content that resonates
+
+These posts work for the general audience too — they're not niche. The anti-AI crowd will find them via community participation; the pro-AI crowd will also appreciate the Chronicle and ownership framing.
+
+- *"We built version control for novels — no AI required"* — the Chronicle origin story reframed
+- *"Why NexusTale works completely offline"* — Ollama + self-host walk-through
+- *"Your novel belongs to you: git-first architecture and what it means for writers"*
+- *"We open-sourced NexusTale"* — the AGPL announcement post (publish when license is added to the repo)
+- *"Why we didn't build AI autocomplete"* — on the deliberate choice to make AI explicit and opt-in rather than ambient
+
+### Waitlist segmentation note
+
+The waitlist "what do you write?" field doesn't capture AI attitude. Consider adding a second optional question at some point: *"Do you currently use AI tools in your writing? (yes / no / curious but haven't tried)"* — this lets you segment the cohort and send different invite messaging to each group. Do not add this to the current waitlist form (keep it short); revisit for the beta public sign-up.
 
 ---
 
@@ -76,15 +167,17 @@ Participate organically — answer questions, share perspective, mention NexusTa
 
 **Primary communities:**
 
-| Community | Angle |
-|---|---|
-| r/worldbuilding | Worldbuilding tools, wiki design, keeping lore consistent |
-| r/fantasywriters | Writing process, outlining tools, revision workflows |
-| r/scifiwriting | Same as above; science worldbuilding angle |
-| r/writing | Broader audience; useful for positioning |
-| r/selfpublish | Workflow efficiency, Scrivener-expat angle |
-| NaNoWriMo forums (nanowrimo.org) | Outline tools, beat structure, word count tracking |
-| World Anvil Discord | Direct overlap: writers who want wiki + manuscript together |
+| Community | Angle | AI mention? |
+|---|---|---|
+| r/worldbuilding | Worldbuilding tools, wiki design, keeping lore consistent | Optional |
+| r/fantasywriters | Writing process, outlining tools, revision workflows | Optional |
+| r/scifiwriting | Same as above; science worldbuilding angle | Optional |
+| r/writing | Broader audience; useful for positioning | Never lead with it |
+| r/selfpublish | Workflow efficiency, Scrivener-expat angle | Optional |
+| NaNoWriMo forums (nanowrimo.org) | Outline tools, beat structure, word count tracking | Optional |
+| World Anvil Discord | Direct overlap: writers who want wiki + manuscript together | Never lead with it |
+| Mastodon / fediverse writing community | Self-host, AGPL, data ownership, Ollama — this crowd is waiting for a tool like this | Never |
+| r/selfhosted | AGPL + Docker Compose + writer crossover | Never |
 
 **What not to do:** create posts that are purely promotional; mention NexusTale in unrelated threads; post the same content to multiple subreddits simultaneously.
 
@@ -163,11 +256,12 @@ Triggered by alpha graduation criteria (see PROJECT_PLAN.md). Not a date — a m
 
 ### 3.1 Pre-beta checklist
 
-- [ ] Landing page with feature highlights and pricing preview
+- [ ] Landing page with feature highlights and pricing preview (use tier names from `MONETIZATION_PLAN.md`: Inkwell / Scribe / Chronicler / Studio)
 - [ ] Product Hunt launch prepared (tagline, gallery, first comment)
 - [ ] Press list: writing tool blogs (The Write Practice, Jane Friedman, Writer's Digest), indie author newsletters
 - [ ] OpenAPI spec complete (required before external beta clients)
-- [ ] Billing wired (Stripe/Paddle + plan-check middleware per monetization section in PROJECT_PLAN.md)
+- [ ] Billing wired (Stripe + plan-check middleware — see `docs/MONETIZATION_PLAN.md` for full implementation checklist)
+- [ ] Lifetime deal page/section live and clearly time-capped (200 buyers hard cap; communicate this publicly)
 - [ ] Public sign-up enabled (remove invite gate)
 
 ### 3.2 Beta positioning shift
@@ -177,21 +271,40 @@ For beta, the story changes from "built in public" to "trusted by writers":
 - Shift content toward "how to use NexusTale for X" guides
 - Product Hunt + Hacker News "Show HN" on launch day
 
+### 3.3 Pricing messaging
+
+**Model to communicate:** platform subscription — writers bring their own API keys. NexusTale never marks up AI costs.
+
+**Lead with the free tier honestly:** Inkwell is genuinely useful for short-form work; the upgrade reason is natural (2-project / 3-chapter limit surfaces when a writer actually needs more, not before).
+
+**Lifetime deal framing:** "We're opening beta and 200 early supporters can lock in a lifetime price. We won't do this again." No artificial urgency language — the hard cap is the urgency.
+
+**Comparison angles to use in copy:**
+- vs. Scrivener: "Chronicle + wiki + AI — Scrivener can't do any of these."
+- vs. Sudowrite: "NexusTale knows your whole story. And you can export your manuscript any time."
+- vs. World Anvil + Scrivener together: "One app. One subscription."
+
+**What not to say:** do not compare token prices or claim NexusTale is "cheaper than ChatGPT" — the value prop is the platform, not the AI cost.
+
 ---
 
 ## Content calendar skeleton
 
 Use this as a repeating template once in the pre-launch phase:
 
-| Week | Content |
-|---|---|
-| Week 1 | "Why version control for novels" — the Chronicle origin story |
-| Week 2 | Feature clip: wiki entity graph (d3 visualization) |
-| Week 3 | "How async collaboration works for co-authors" |
-| Week 4 | Feature clip: Workshop agent mode writing a scene |
-| Week 5 | "Building the AI that reads your manuscript" |
-| Week 6 | Feature clip: Chronicle timeline + TravelTo |
-| Repeat | Rotate: origin story → feature clip → how-it-works article |
+| Week | Content | Primary audience |
+|---|---|---|
+| Week 1 | "Why version control for novels" — the Chronicle origin story | All writers, anti-AI friendly |
+| Week 2 | Feature clip: wiki entity graph (d3 visualization) | Worldbuilders, World Anvil expats |
+| Week 3 | "How async collaboration works for co-authors" | Co-authors, editors |
+| Week 4 | Feature clip: Workshop agent mode writing a scene | AI-curious writers |
+| Week 5 | "Why NexusTale works completely offline" — Ollama + self-host walk-through | Anti-AI / privacy-conscious crowd |
+| Week 6 | Feature clip: Chronicle timeline + TravelTo | All writers, anti-AI friendly |
+| Week 7 | "We open-sourced NexusTale" — AGPL announcement (publish when license lands) | Self-hosters, fediverse, anti-AI crowd |
+| Week 8 | "Why we didn't build AI autocomplete" — on making AI explicit and opt-in | Anti-AI crowd + earns trust from skeptics |
+| Repeat | Rotate: origin story → feature clip → how-it-works article | — |
+
+**Note on audience balance:** roughly half the content calendar should work for the AI-skeptic segment without any mention of AI — Chronicle, wiki, collaboration, ownership, and self-hosting posts all qualify. This isn't a concession; it's accurate positioning. AI is one feature, not the product.
 
 ---
 

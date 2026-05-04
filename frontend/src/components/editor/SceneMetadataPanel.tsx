@@ -2,7 +2,7 @@
 // and writing style selector for the active scene.
 import { useState, useEffect, useRef } from 'react'
 import { api } from '@/services/api'
-import type { Scene, PromptResponse, PortableStyle } from '@/services/api'
+import type { Scene, PromptResponse, PortableStyle, SceneAttributes } from '@/services/api'
 
 interface SceneMetadataPanelProps {
   token:           string
@@ -30,6 +30,8 @@ export default function SceneMetadataPanel({
   const [tense, setTense]       = useState(scene.tense ?? '')
   const [tags, setTags]         = useState((scene.tags ?? []).join(', '))
   const [summary, setSummary]   = useState(scene.summary ?? '')
+  const [structureOpen, setStructureOpen] = useState(false)
+  const [sceneAttrs, setSceneAttrs] = useState<SceneAttributes>(() => extractSceneAttrs(scene))
   const [prompts, setPrompts]         = useState<PromptResponse[]>([])
   const [importStatus, setImportStatus] = useState<string | null>(null)
   const saveTimer                       = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -41,6 +43,7 @@ export default function SceneMetadataPanel({
     setTense(scene.tense ?? '')
     setTags((scene.tags ?? []).join(', '))
     setSummary(scene.summary ?? '')
+    setSceneAttrs(extractSceneAttrs(scene))
   }, [scene.id])
 
   // Load writing style presets when the panel opens.
@@ -50,6 +53,28 @@ export default function SceneMetadataPanel({
       .then(setPrompts)
       .catch(() => {})
   }, [open, token, projectId])
+
+  const saveAttrs = (attrs: SceneAttributes) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const updated = await api.scenes.update(token, chapterId, scene.id, { attributes: attrs })
+        onUpdate(updated)
+      } catch {}
+    }, SAVE_DELAY_MS)
+  }
+
+  const handleRoleChange = (role: SceneAttributes['scene_role']) => {
+    const next = { ...sceneAttrs, scene_role: sceneAttrs.scene_role === role ? undefined : role }
+    setSceneAttrs(next)
+    saveAttrs(next)
+  }
+
+  const handleAttrBlur = (key: keyof Omit<SceneAttributes, 'scene_role'>, value: string) => {
+    const next = { ...sceneAttrs, [key]: value || undefined }
+    setSceneAttrs(next)
+    saveAttrs(next)
+  }
 
   const scheduleSave = (patch: Parameters<typeof api.scenes.update>[3]) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -134,6 +159,11 @@ export default function SceneMetadataPanel({
           )}
           {pov && <span className="text-brand-gold">POV: {pov}</span>}
           {tense && <span className="text-brand-purple">{tense}</span>}
+          {sceneAttrs.scene_role && (
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${ROLE_STYLES[sceneAttrs.scene_role]}`}>
+              {sceneAttrs.scene_role}
+            </span>
+          )}
           {selectedPromptId && prompts.length > 0 && (
             <span className="text-brand-green text-[10px] px-1.5 py-0.5 rounded border border-brand-green/40">
               {prompts.find((p) => p.id === selectedPromptId)?.name ?? 'Style'}
@@ -246,10 +276,101 @@ export default function SceneMetadataPanel({
               className="bg-brand-bg border border-brand-border rounded px-2 py-1 text-brand-text placeholder:text-brand-text-muted/50 focus:outline-none focus:border-brand-cyan resize-none"
             />
           </div>
+
+          {/* Scene Structure — collapsible */}
+          <div className="col-span-2 border border-brand-border rounded overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setStructureOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-brand-border/20 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-brand-text-muted uppercase tracking-wider">Scene Structure</span>
+                {sceneAttrs.scene_role && (
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${ROLE_STYLES[sceneAttrs.scene_role]}`}>
+                    {sceneAttrs.scene_role}
+                  </span>
+                )}
+              </div>
+              <ChevronIcon open={structureOpen} />
+            </button>
+            {structureOpen && (
+              <div className="px-3 pb-3 border-t border-brand-border space-y-3 pt-3">
+                {/* Role selector */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-brand-text-muted uppercase tracking-wider">Structural Role</label>
+                  <div className="grid grid-cols-4 gap-1">
+                    {SCENE_ROLES.map((r) => (
+                      <button
+                        key={r.value}
+                        type="button"
+                        onClick={() => handleRoleChange(r.value)}
+                        title={r.hint}
+                        className={`py-1 rounded text-[10px] font-medium border transition-colors ${
+                          sceneAttrs.scene_role === r.value
+                            ? ROLE_STYLES[r.value]
+                            : 'border-brand-border text-brand-muted hover:text-brand-text'
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Goal / Conflict / Outcome */}
+                {SCENE_ATTR_FIELDS.map(({ key, label, placeholder }) => (
+                  <div key={key} className="flex flex-col gap-1">
+                    <label className="text-brand-text-muted uppercase tracking-wider">{label}</label>
+                    <textarea
+                      rows={2}
+                      defaultValue={sceneAttrs[key] ?? ''}
+                      onBlur={(e) => handleAttrBlur(key, e.target.value)}
+                      placeholder={placeholder}
+                      className="bg-brand-bg border border-brand-border rounded px-2 py-1 text-brand-text placeholder:text-brand-text-muted/50 focus:outline-none focus:border-brand-cyan resize-none"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
   )
+}
+
+// ── Scene structure helpers ───────────────────────────────────────────────────
+
+type SceneRole = NonNullable<SceneAttributes['scene_role']>
+
+const SCENE_ROLES: { value: SceneRole; label: string; hint: string }[] = [
+  { value: 'setup',       label: 'Setup',       hint: 'Establishes situation, character, or stakes' },
+  { value: 'development', label: 'Development', hint: 'Advances the story — conflict deepens or changes' },
+  { value: 'resolution',  label: 'Resolution',  hint: 'A thread closes or a question is answered' },
+  { value: 'transition',  label: 'Transition',  hint: 'Moves time, place, or perspective' },
+]
+
+const ROLE_STYLES: Record<SceneRole, string> = {
+  setup:       'bg-sky-500/20 text-sky-400 border border-sky-500/30',
+  development: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+  resolution:  'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+  transition:  'bg-brand-muted/20 text-brand-muted border border-brand-muted/30',
+}
+
+const SCENE_ATTR_FIELDS: { key: keyof Omit<SceneAttributes, 'scene_role'>; label: string; placeholder: string }[] = [
+  { key: 'scene_goal',     label: 'Scene Goal',     placeholder: 'What is the POV character trying to achieve?' },
+  { key: 'scene_conflict', label: 'Conflict',       placeholder: 'What is in the way? (internal, external, or both)' },
+  { key: 'scene_outcome',  label: 'Outcome',        placeholder: 'What actually happens? (fill after drafting)' },
+]
+
+function extractSceneAttrs(scene: Scene): SceneAttributes {
+  const a = (scene as Scene & { attributes?: SceneAttributes }).attributes
+  return {
+    scene_role:     a?.scene_role,
+    scene_goal:     a?.scene_goal     ?? '',
+    scene_conflict: a?.scene_conflict ?? '',
+    scene_outcome:  a?.scene_outcome  ?? '',
+  }
 }
 
 function ChevronIcon({ open }: { open: boolean }) {

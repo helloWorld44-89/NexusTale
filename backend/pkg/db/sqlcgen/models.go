@@ -278,6 +278,19 @@ type Scene struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	WordCount    int32              `json:"word_count"`
+	Attributes   json.RawMessage    `json:"attributes"`
+}
+
+type StoryThread struct {
+	ID              uuid.UUID          `json:"id"`
+	ProjectID       uuid.UUID          `json:"project_id"`
+	Title           string             `json:"title"`
+	Type            string             `json:"type"`
+	Notes           string             `json:"notes"`
+	OpenedAtSceneID pgtype.UUID        `json:"opened_at_scene_id"`
+	ClosedAtSceneID pgtype.UUID        `json:"closed_at_scene_id"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 type User struct {
@@ -329,6 +342,7 @@ type WikiMagicRule struct {
 	Description string             `json:"description"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Attributes  json.RawMessage    `json:"attributes"`
 }
 
 type WikiRelationship struct {

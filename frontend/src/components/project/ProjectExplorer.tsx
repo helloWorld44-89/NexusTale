@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/services/api'
 
-interface SceneItem   { id: string; title: string }
+interface SceneItem   { id: string; title: string; scene_role?: string }
 interface ChapterItem { id: string; title: string; scenes: SceneItem[] }
 export interface ActItem { id: string; title: string; chapters: ChapterItem[] }
 
@@ -368,7 +368,8 @@ function ChapterRow({
                 }`}
               >
                 <FileIcon />
-                <span className="truncate">{scene.title}</span>
+                <span className="truncate flex-1">{scene.title}</span>
+                {scene.scene_role && <RolePip role={scene.scene_role} />}
               </button>
             )
           })}
@@ -522,6 +523,22 @@ function XIcon() {
   )
 }
 
+const ROLE_PIP_COLORS: Record<string, string> = {
+  setup:       'bg-sky-400',
+  development: 'bg-amber-400',
+  resolution:  'bg-emerald-400',
+  transition:  'bg-brand-muted',
+}
+
+function RolePip({ role }: { role: string }) {
+  return (
+    <span
+      title={role}
+      className={`w-1.5 h-1.5 rounded-full shrink-0 ${ROLE_PIP_COLORS[role] ?? 'bg-brand-muted'}`}
+    />
+  )
+}
+
 function RefreshIcon({ spin }: { spin?: boolean }) {
   return (
     <svg
@@ -538,3 +555,4 @@ function RefreshIcon({ spin }: { spin?: boolean }) {
     </svg>
   )
 }
+

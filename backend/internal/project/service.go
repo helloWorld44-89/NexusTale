@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -434,6 +435,11 @@ func (s *Service) UpdateScene(ctx context.Context, id uuid.UUID, req UpdateScene
 	if req.SortOrder != nil {
 		params.SortOrder = pgtype.Int4{Int32: *req.SortOrder, Valid: true}
 	}
+	if req.Attributes != nil {
+		if b, err := json.Marshal(req.Attributes); err == nil {
+			params.Attributes = b
+		}
+	}
 
 	sc, err := s.queries.UpdateScene(ctx, params)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -727,6 +733,10 @@ func toChapterResponse(ch sqlcgen.Chapter) *ChapterResponse {
 }
 
 func toSceneResponse(sc sqlcgen.Scene) *SceneResponse {
+	var attrs SceneAttributes
+	if len(sc.Attributes) > 0 {
+		_ = json.Unmarshal(sc.Attributes, &attrs)
+	}
 	return &SceneResponse{
 		ID:           sc.ID,
 		ChapterID:    sc.ChapterID,
@@ -739,6 +749,7 @@ func toSceneResponse(sc sqlcgen.Scene) *SceneResponse {
 		SummaryStale: sc.SummaryStale,
 		SortOrder:    sc.SortOrder,
 		WordCount:    sc.WordCount,
+		Attributes:   attrs,
 		CreatedAt:    sc.CreatedAt.Time,
 		UpdatedAt:    sc.UpdatedAt.Time,
 	}
