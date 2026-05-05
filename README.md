@@ -1,6 +1,6 @@
 # NexusTale
 
-A sci-fi/fantasy novel-writing platform: structured manuscripts (projects → acts → chapters → scenes), Git-backed narrative history, a world wiki, and AI-assisted drafting powered by Anthropic, OpenAI, or a local Ollama instance.
+A sci-fi/fantasy novel-writing platform: structured manuscripts (projects → acts → chapters → scenes), Git-backed narrative history, a world wiki, AI-assisted drafting, and collaborative editing — built for writers who think in worlds.
 
 ![CI](https://github.com/helloWorld44-89/NexusTale/actions/workflows/dev.yml/badge.svg?branch=dev)
 
@@ -11,16 +11,23 @@ A sci-fi/fantasy novel-writing platform: structured manuscripts (projects → ac
 | Area | Status |
 |------|--------|
 | **Auth** | Register / login / refresh / logout; JWT access + refresh tokens; AES-256-GCM API key storage |
-| **Manuscript** | Projects → Acts → Chapters → Scenes; word count; tags; per-scene POV / tense / summary |
-| **Git (Chronicle)** | Snapshot, history, diff, branch (Diverge), switch (TravelTo), merge (Canonize), paradox detection |
-| **World wiki** | Entities, relationships, magic rules, timeline events; d3 relationship graph; entity image upload (MinIO) |
-| **AI** | Beat expansion + scene continuation (SSE); Nexus chat (SSE); chapter auto-summarize (debounced); project AI Bible; `@[Entity]` inline refs in context; Anthropic / OpenAI / Ollama adapters; token + cost tracking |
-| **AI context pins** | Writer-curated entities / chapters / scenes pinned into every AI call; summary or full mode |
+| **Manuscript** | Projects → Acts → Chapters → Scenes; word count; per-scene POV / tense / summary / role / goal / conflict |
+| **Chronicle (Git)** | Snapshot, history, diff, branch (Diverge), switch (TravelTo), merge (Canonize), paradox detection; per-repo concurrency locking |
+| **World wiki** | Entities (with portrait upload), relationships, magic rules (with structured attributes), timeline events; d3 relationship graph |
+| **Entity mentions** | Auto-tagged entity names highlighted inline in the editor (dotted underline, type-colored); hover card with portrait + summary; right-click suppress; "Appears In" scene list per entity |
+| **AI — drafting** | Beat expansion + scene continuation (SSE streaming); chapter auto-summarize (debounced 30s); project AI Bible; `@[Entity]` inline refs resolved in context; Anthropic / OpenAI / Ollama adapters; token + cost tracking |
+| **AI — Workshop** | Per-project chat sessions with full manuscript tool use (append/replace scene, create scene/chapter/act); Agent mode with undo per action; phase-aware system prompts |
+| **AI context** | Writer-curated context pins (entities / chapters / scenes / research notes); summary or full mode; pinned block injected into every AI call |
 | **Writing styles** | Named prose presets per project; import / export as JSON |
+| **Revision phases** | Project phase (Drafting → Revision → Language Pass → etc.); phase badge in TopBar; Workshop system prompt adapts per phase |
+| **Research notes** | Free-form notes with tags and source URLs; pinnable into AI context |
+| **Beat history** | Recent beat prompts surfaced in BeatInput for one-click reuse |
 | **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene) that scaffolds wiki + manuscript |
 | **Story structures** | 12 seeded templates + scoring questionnaire; structure phases injected into AI context |
+| **Story threads** | Named open/closed narrative threads tracked per project; injected into AI context |
 | **Export** | Markdown (zip, sync); EPUB + DOCX (async jobs, MinIO, presigned download URL) |
-| **Frontend** | React 18 + Vite + TypeScript + Tailwind; VSCode-style editor, wiki hub, git panel, Nexus AI chat, guide wizard, export panel, settings |
+| **Collaboration** | Project invites; clone-based reviewer access; merge requests with line-level diffs; manuscript annotations (note / suggestion / question); in-app notifications |
+| **Frontend** | React 18 + Vite + TypeScript + Tailwind; VSCode-style editor, wiki hub, git panel, Nexus AI chat, Workshop, guide wizard, export panel, settings, public landing page + waitlist |
 | **CI/CD** | GitHub Actions → GHCR → Ansible → dev VM |
 
 ---
@@ -78,8 +85,8 @@ All variables use the `NEXUSTALE_` prefix. Copy `backend/.env.example` and fill 
 | `NEXUSTALE_AUTH_ACCESSTOKENEXPIRY` | `15m` | |
 | `NEXUSTALE_AUTH_REFRESHTOKENEXPIRY` | `168h` | 7 days |
 | `NEXUSTALE_ENCRYPTION_KEY` | — | **Required.** 32-byte hex key for AES-256-GCM API key storage |
-| `NEXUSTALE_REDIS_URL` | `redis://localhost:6379` | Used for future collaboration pub/sub |
-| `NEXUSTALE_MINIO_ENDPOINT` | `localhost:9000` | Used for EPUB/DOCX exports and wiki image uploads |
+| `NEXUSTALE_REDIS_URL` | `redis://localhost:6379` | Used for collaboration pub/sub |
+| `NEXUSTALE_MINIO_ENDPOINT` | `localhost:9000` | EPUB/DOCX exports and wiki image uploads |
 | `NEXUSTALE_MINIO_ACCESSKEY` | `minioadmin` | |
 | `NEXUSTALE_MINIO_SECRETKEY` | `minioadmin` | |
 | `NEXUSTALE_GIT_REPOSPATH` | `./data/repos` | Where per-project Git repos live on disk |
@@ -123,27 +130,31 @@ NexusTale/
     cmd/api/              # Entry point — wires services, runs migrations, starts Gin
     internal/
       auth/               # JWT register/login/refresh/logout, middleware, API key encryption
-      project/            # Projects, acts, chapters, scenes; git service
-      wiki/               # Entities, relationships, magic rules, timeline; image upload
-      ai/                 # Adapters (Anthropic/OpenAI/Ollama), context window, chat/complete/summarize
+      project/            # Projects, acts, chapters, scenes; git service; mention notifier
+      wiki/               # Entities, relationships, magic rules, timeline; image upload; entity tagger
+      ai/                 # Adapters (Anthropic/OpenAI/Ollama), context window, chat/complete/summarize/workshop
       prompts/            # Writing style presets CRUD; import/export
       export/             # Markdown zip, EPUB (go-epub), DOCX (raw OOXML); async job pool
       guide/              # Novel guide wizard steps + story structure scoring
-      collaboration/      # WebSocket/CRDT hub (C3 — not yet wired)
+      research/           # Research notes CRUD
+      collaboration/      # Invites, clones, merge requests, annotations, notifications
+      admin/              # (planned C8) User management, AI usage view
     pkg/
       db/
-        migrations/       # golang-migrate SQL files (000001 … 000018)
+        migrations/       # golang-migrate SQL files (000001 … 000035)
         queries/          # sqlc source files — edit these, then run make sqlc
         sqlcgen/          # Generated — do not hand-edit
       storage/            # MinIO/S3 client (PutObject, GetObject, PresignedGetURL, DeleteObject)
-      cache/              # Cache interface (Redis — reserved for collaboration)
+      cache/              # Cache interface (Redis)
   frontend/
     src/
       app/                # Router, providers, auth store
-      pages/              # Dashboard, Editor, ProjectHome, WikiHub, Guide, Settings
+      pages/              # Dashboard, Editor, ProjectHome, WikiHub, Guide, Settings, Landing
       components/
-        ai/               # ChatBar (Nexus), BeatInput, ContextPanel, PromptLibrary
-        editor/           # ScribeEditor, SceneMetadataPanel, GitPanel, BeatInput
+        ai/               # ChatBar (Nexus), BeatInput, WorkshopPanel, ContextPanel, PromptLibrary
+        editor/           # ScribeEditor (TipTap), SceneMetadataPanel, GitPanel, AnnotationSidebar
+          extensions/     # EntityMentionExtension (ProseMirror decoration plugin)
+          utils/          # editorUtils (plainToHTML, buildCharToPos, …)
         wiki/             # WikiPanel, EntityDetail, RelationshipGraph, TimelineView
         layout/           # TopBar, ActivityBar, StatusBar
         guide/            # StructureStep
@@ -163,10 +174,11 @@ NexusTale/
 ## Architecture
 
 - **PostgreSQL** — source of truth for all structured data; sqlc for type-safe queries
-- **go-git** — per-project repos on disk; Chronicle = commit, Diverge = branch, Canonize = fast-forward merge
-- **MinIO** — EPUB/DOCX export jobs + wiki entity image uploads; presigned URLs for downloads
-- **Redis** — provisioned; reserved for real-time collaboration (Phase C3)
-- **AI adapters** — Anthropic (`claude-haiku-4-5`), OpenAI (`gpt-4o-mini`), Ollama (any model); API keys stored encrypted per user; automatic Ollama fallback
+- **go-git** — per-project repos on disk; Chronicle = commit, Diverge = branch, Canonize = fast-forward merge; per-repo mutex prevents concurrent tree mutations
+- **MinIO** — EPUB/DOCX export jobs + wiki entity image uploads; presigned URLs for client downloads
+- **Redis** — provisioned; used for collaboration pub/sub
+- **AI adapters** — Anthropic, OpenAI, Ollama; model selectable per user; API keys stored AES-256-GCM encrypted; automatic Ollama fallback when no cloud key is set
+- **TipTap (ProseMirror)** — rich text editor in the frontend; entity mentions rendered as ProseMirror Decorations (no stored markup); plain-text round-trip preserved for backend storage
 
 ---
 
