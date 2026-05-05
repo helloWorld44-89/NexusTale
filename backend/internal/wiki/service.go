@@ -25,10 +25,11 @@ const imageURLExpiry = 4 * time.Hour
 type Service struct {
 	queries *sqlcgen.Queries
 	store   *storage.Client
+	tagger  *tagger
 }
 
 func NewService(queries *sqlcgen.Queries, store *storage.Client) *Service {
-	return &Service{queries: queries, store: store}
+	return &Service{queries: queries, store: store, tagger: newTagger()}
 }
 
 // ========================
@@ -599,4 +600,82 @@ func toTimelineEventResponse(e sqlcgen.WikiTimelineEvent) *TimelineEventResponse
 		}
 	}
 	return resp
+}
+
+// ========================
+// Scene entity mentions
+// ========================
+
+// ListSceneMentions returns all active (non-suppressed) mention rows for a
+// scene on a given branch, including the entity name and type for display.
+func (s *Service) ListSceneMentions(ctx context.Context, sceneID uuid.UUID, branchName string) ([]MentionResponse, error) {
+	rows, err := s.queries.ListMentionsByScene(ctx, sqlcgen.ListMentionsBySceneParams{
+		SceneID:    sceneID,
+		BranchName: branchName,
+	})
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("list mentions: %v", err))
+	}
+
+	out := make([]MentionResponse, len(rows))
+	for i, r := range rows {
+		out[i] = MentionResponse{
+			ID:         r.ID,
+			SceneID:    r.SceneID,
+			EntityID:   r.EntityID,
+			EntityName: r.EntityName,
+			EntityType: r.EntityType,
+			MatchText:  r.MatchText,
+			BranchName: r.BranchName,
+			CreatedAt:  r.CreatedAt.Time,
+		}
+	}
+	return out, nil
+}
+
+// SuppressMention marks a single mention as suppressed so it is excluded
+// from the MentionsBar and AI context. The tagger will not re-add it on the
+// next detection pass.
+func (s *Service) SuppressMention(ctx context.Context, mentionID uuid.UUID) error {
+	if err := s.queries.SuppressMention(ctx, mentionID); err != nil {
+		return apperror.Internal(fmt.Sprintf("suppress mention: %v", err))
+	}
+	return nil
+}
+
+// SuppressAllMentions suppresses every active mention for a scene on a branch.
+func (s *Service) SuppressAllMentions(ctx context.Context, sceneID uuid.UUID, branchName string) error {
+	if err := s.queries.SuppressAllMentions(ctx, sqlcgen.SuppressAllMentionsParams{
+		SceneID:    sceneID,
+		BranchName: branchName,
+	}); err != nil {
+		return apperror.Internal(fmt.Sprintf("suppress all mentions: %v", err))
+	}
+	return nil
+}
+
+// ListEntityAppearances returns all scenes (with chapter context) that mention
+// the given entity on a specific branch (suppressed mentions excluded).
+func (s *Service) ListEntityAppearances(ctx context.Context, entityID uuid.UUID, branchName string) ([]EntityAppearance, error) {
+	rows, err := s.queries.ListScenesByEntity(ctx, sqlcgen.ListScenesByEntityParams{
+		EntityID:   entityID,
+		BranchName: branchName,
+	})
+	if err != nil {
+		return nil, apperror.Internal(fmt.Sprintf("list appearances: %v", err))
+	}
+
+	out := make([]EntityAppearance, len(rows))
+	for i, r := range rows {
+		out[i] = EntityAppearance{
+			SceneID:      r.SceneID,
+			SceneTitle:   r.SceneTitle,
+			SceneOrder:   r.SceneOrder,
+			ChapterID:    r.ChapterID,
+			ChapterTitle: r.ChapterTitle,
+			ChapterOrder: r.ChapterOrder,
+			BranchName:   r.BranchName,
+		}
+	}
+	return out, nil
 }

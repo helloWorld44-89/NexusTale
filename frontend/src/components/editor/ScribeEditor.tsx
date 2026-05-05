@@ -1,35 +1,49 @@
-// ScribeEditor — centered writing area with Beat expansion toolbar and annotation popover.
-import { useRef, useState, forwardRef, useImperativeHandle } from 'react'
+// ScribeEditor — centered writing area with TipTap editor, entity highlights,
+// hover cards, Beat expansion toolbar, and annotation popover.
+import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
 import BeatInput from './BeatInput'
-import { api, type Annotation } from '@/services/api'
+import MentionsBar from './MentionsBar'
+import EntityHoverCard from './EntityHoverCard'
+import { EntityMentionExtension, mentionPluginKey } from './extensions/EntityMentionExtension'
+import { plainToHTML, editorGetText, buildCharToPos, buildPosToChar } from './utils/editorUtils'
+import { api, type Annotation, type MentionResponse } from '@/services/api'
 
 export interface ScribeEditorHandle {
   jumpToAnnotation: (start: number, end: number) => void
 }
 
 interface ScribeEditorProps {
-  sceneTitle:  string
-  content:     string
+  sceneTitle:    string
+  content:       string
   sceneSelected: boolean
-  onChange:    (value: string) => void
-  // Beat/AI props — only provided when a scene is active
-  token?:      string
-  projectId?:  string
-  sceneId?:    string
-  promptId?:   string | null
-  branch?:     string
+  onChange:      (value: string) => void
+  token?:        string
+  projectId?:    string
+  sceneId?:      string
+  promptId?:     string | null
+  branch?:       string
   projectPhase?: string
-  // Annotation callback — fired when user saves an annotation from the popover
   onAnnotationCreated?: (ann: Annotation) => void
+  onNavigateToEntity?:  (entityId: string) => void
 }
 
-// ── Popover state ─────────────────────────────────────────────────────────────
+// ── Popover / hover types ─────────────────────────────────────────────────────
 
 interface PopoverState {
-  start:    number
-  end:      number
-  x:        number
-  y:        number
+  start: number
+  end:   number
+  x:     number
+  y:     number
+}
+
+interface HoverTarget {
+  entityId:   string
+  entityName: string
+  entityType: string
+  x:          number
+  y:          number
 }
 
 const TYPE_OPTIONS = [
@@ -41,39 +55,182 @@ const TYPE_OPTIONS = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function ScribeEditor(
-  { sceneTitle, content, sceneSelected, onChange, token, projectId, sceneId, promptId, branch, projectPhase, onAnnotationCreated },
+  {
+    sceneTitle, content, sceneSelected, onChange,
+    token, projectId, sceneId, promptId, branch, projectPhase,
+    onAnnotationCreated, onNavigateToEntity,
+  },
   ref,
 ) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Keep onChange stable in closures even if the prop identity changes.
+  const onChangeRef = useRef(onChange)
+  useEffect(() => { onChangeRef.current = onChange }, [onChange])
 
-  // Expose jump-to-annotation imperatively so AnnotationSidebar can drive selection.
+  // ── TipTap editor ─────────────────────────────────────────────────────────
+
+  const editor = useEditor({
+    extensions: [StarterKit, EntityMentionExtension],
+    content: plainToHTML(content),
+    onUpdate: ({ editor: ed }) => {
+      onChangeRef.current(editorGetText(ed))
+    },
+    editable: sceneSelected,
+  })
+
+  // Sync external content changes (from AI tools, beat accept, etc.).
+  useEffect(() => {
+    if (!editor) return
+    const current = editorGetText(editor)
+    if (current === content) return
+    editor.commands.setContent(plainToHTML(content), { emitUpdate: false })
+  }, [content, editor])
+
+  // Sync editability when sceneSelected changes.
+  useEffect(() => {
+    if (!editor) return
+    editor.setEditable(sceneSelected)
+  }, [editor, sceneSelected])
+
+  // ── Mentions (shared with extension + MentionsBar) ────────────────────────
+
+  const [mentions, setMentions] = useState<MentionResponse[]>([])
+
+  const loadMentions = useCallback(async () => {
+    if (!token || !projectId || !sceneId) return
+    try {
+      const res = await api.wiki.mentions.list(token, projectId, sceneId, branch ?? 'canon')
+      setMentions(res.mentions ?? [])
+    } catch {
+      setMentions([])
+    }
+  }, [token, projectId, sceneId, branch])
+
+  useEffect(() => { loadMentions() }, [loadMentions])
+
+  // Push updated mentions into the decoration plugin.
+  useEffect(() => {
+    if (!editor) return
+    editor.view.dispatch(
+      editor.state.tr.setMeta(mentionPluginKey, mentions),
+    )
+  }, [editor, mentions])
+
+  // ── jumpToAnnotation (plain-text offsets → PM selection) ──────────────────
+
   useImperativeHandle(ref, () => ({
     jumpToAnnotation(start: number, end: number) {
-      const ta = textareaRef.current
-      if (!ta) return
-      ta.focus()
-      ta.setSelectionRange(start, end)
-      // Scroll the textarea so the selection is visible.
-      const lineHeight = 32 // matches leading-8 (2rem)
-      const charsPerLine = Math.max(1, Math.floor(ta.clientWidth / 9.6)) // rough monospace estimate
-      const line = Math.floor(start / charsPerLine)
-      ta.scrollTop = Math.max(0, line * lineHeight - ta.clientHeight / 2)
+      if (!editor) return
+      const charToPos = buildCharToPos(editor.state.doc)
+      const from = charToPos(start)
+      const to   = charToPos(end)
+      editor.chain().focus().setTextSelection({ from, to }).run()
+      editor.view.dispatch(editor.state.tr.scrollIntoView())
     },
   }))
 
-  const [popover, setPopover]         = useState<PopoverState | null>(null)
-  const [annType, setAnnType]         = useState<'note' | 'suggestion' | 'question'>('note')
-  const [annBody, setAnnBody]         = useState('')
-  const [saving, setSaving]           = useState(false)
+  // ── Entity hover card ─────────────────────────────────────────────────────
 
-  function handleMouseUp(e: React.MouseEvent<HTMLTextAreaElement>) {
-    if (!token || !projectId || !sceneId) return
-    const ta = e.currentTarget
-    const start = ta.selectionStart
-    const end   = ta.selectionEnd
-    if (start === end) { setPopover(null); return }
+  const [hoverTarget, setHoverTarget]   = useState<HoverTarget | null>(null)
+  const hoverShowTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    // Position popover above cursor, clamped to viewport.
+  function clearHoverTimers() {
+    if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+  }
+
+  function scheduleHide() {
+    clearHoverTimers()
+    hoverHideTimer.current = setTimeout(() => setHoverTarget(null), 150)
+  }
+
+  function handleEditorMouseOver(e: React.MouseEvent<HTMLDivElement>) {
+    const span = (e.target as HTMLElement).closest('[data-entity-id]') as HTMLElement | null
+    if (!span) return
+    clearHoverTimers()
+    const rect = span.getBoundingClientRect()
+    hoverShowTimer.current = setTimeout(() => {
+      setHoverTarget({
+        entityId:   span.getAttribute('data-entity-id')!,
+        entityName: span.getAttribute('data-entity-name')!,
+        entityType: span.getAttribute('data-entity-type')!,
+        x: rect.left,
+        y: rect.top,
+      })
+    }, 400)
+  }
+
+  function handleEditorMouseOut(e: React.MouseEvent<HTMLDivElement>) {
+    const related = e.relatedTarget as HTMLElement | null
+    if (related?.closest('.entity-hover-card')) return
+    clearHoverTimers()
+    scheduleHide()
+  }
+
+  // ── Right-click suppress from editor decorations ──────────────────────────
+
+  const [editorSuppressMenu, setEditorSuppressMenu] = useState<{
+    x: number; y: number; mentionId: string
+  } | null>(null)
+
+  function handleEditorContextMenu(e: React.MouseEvent<HTMLDivElement>) {
+    const span = (e.target as HTMLElement).closest('[data-mention-id]') as HTMLElement | null
+    if (!span) return
+    e.preventDefault()
+    clearHoverTimers()
+    setHoverTarget(null)
+    setEditorSuppressMenu({
+      x: e.clientX,
+      y: e.clientY,
+      mentionId: span.getAttribute('data-mention-id')!,
+    })
+  }
+
+  async function handleSuppressFromEditor(mentionId: string) {
+    setEditorSuppressMenu(null)
+    setMentions(prev => prev.filter(m => m.id !== mentionId))
+    try {
+      await api.wiki.mentions.suppress(token!, projectId!, sceneId!, mentionId)
+    } catch {
+      loadMentions()
+    }
+  }
+
+  // Suppress handlers for MentionsBar controlled mode.
+  async function handleSuppressOne(mentionId: string) {
+    setMentions(prev => prev.filter(m => m.id !== mentionId))
+    try {
+      await api.wiki.mentions.suppress(token!, projectId!, sceneId!, mentionId)
+    } catch {
+      loadMentions()
+    }
+  }
+
+  async function handleSuppressAll() {
+    setMentions([])
+    try {
+      await api.wiki.mentions.suppressAll(token!, projectId!, sceneId!, branch ?? 'canon')
+    } catch {
+      loadMentions()
+    }
+  }
+
+  // ── Annotation popover ────────────────────────────────────────────────────
+
+  const [popover, setPopover] = useState<PopoverState | null>(null)
+  const [annType, setAnnType] = useState<'note' | 'suggestion' | 'question'>('note')
+  const [annBody, setAnnBody] = useState('')
+  const [saving,  setSaving]  = useState(false)
+
+  function handleEditorMouseUp(e: React.MouseEvent<HTMLDivElement>) {
+    if (!token || !projectId || !sceneId || !editor) return
+    const { from, to } = editor.state.selection
+    if (from === to) { setPopover(null); return }
+
+    const posToChar = buildPosToChar(editor.state.doc)
+    const start = posToChar(from)
+    const end   = posToChar(to)
+
     const x = Math.min(e.clientX, window.innerWidth - 280)
     const y = Math.max(e.clientY - 140, 8)
     setPopover({ start, end, x, y })
@@ -106,6 +263,8 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
     onChange(content + text)
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-brand-bg">
 
@@ -120,15 +279,28 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
       <div className="flex-1 overflow-y-auto px-8 pb-4">
         <div className="max-w-3xl mx-auto h-full">
           {sceneSelected ? (
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(e) => onChange(e.target.value)}
-              onMouseUp={handleMouseUp}
-              placeholder="Begin your scene…"
-              spellCheck
-              className="w-full h-full min-h-[60vh] resize-none bg-transparent text-brand-text text-base leading-8 placeholder:text-brand-muted/40 focus:outline-none font-serif"
-            />
+            <div
+              className="w-full h-full"
+              onMouseOver={handleEditorMouseOver}
+              onMouseOut={handleEditorMouseOut}
+              onMouseUp={handleEditorMouseUp}
+              onContextMenu={handleEditorContextMenu}
+            >
+              <EditorContent
+                editor={editor}
+                className={[
+                  'w-full h-full',
+                  '[&_.ProseMirror]:outline-none',
+                  '[&_.ProseMirror]:min-h-[60vh]',
+                  '[&_.ProseMirror]:bg-transparent',
+                  '[&_.ProseMirror]:text-brand-text',
+                  '[&_.ProseMirror]:text-base',
+                  '[&_.ProseMirror]:leading-8',
+                  '[&_.ProseMirror]:font-serif',
+                  '[&_.ProseMirror_p]:min-h-[2rem]',
+                ].join(' ')}
+              />
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full">
               <p className="text-brand-muted text-sm">Select a scene to start writing</p>
@@ -137,7 +309,7 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
         </div>
       </div>
 
-      {/* Beat expansion toolbar — only when scene is active and AI props provided */}
+      {/* Beat expansion toolbar */}
       {sceneSelected && token && projectId && sceneId && (
         <BeatInput
           token={token}
@@ -150,13 +322,62 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
         />
       )}
 
+      {/* Mentions bar — entity chips (controlled: synced with editor decorations) */}
+      {sceneSelected && token && projectId && sceneId && (
+        <MentionsBar
+          token={token}
+          projectId={projectId}
+          sceneId={sceneId}
+          branch={branch}
+          controlled={{
+            mentions,
+            onSuppressOne: handleSuppressOne,
+            onSuppressAll: handleSuppressAll,
+          }}
+          onNavigateToEntity={onNavigateToEntity}
+        />
+      )}
+
+      {/* Entity hover card */}
+      {hoverTarget && token && projectId && (
+        <EntityHoverCard
+          entityId={hoverTarget.entityId}
+          entityName={hoverTarget.entityName}
+          entityType={hoverTarget.entityType}
+          x={hoverTarget.x}
+          y={hoverTarget.y}
+          token={token}
+          projectId={projectId}
+          onNavigate={(id) => { setHoverTarget(null); onNavigateToEntity?.(id) }}
+          onMouseEnter={() => { clearHoverTimers() }}
+          onMouseLeave={scheduleHide}
+        />
+      )}
+
+      {/* Right-click suppress menu (from editor decoration) */}
+      {editorSuppressMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setEditorSuppressMenu(null)} />
+          <div
+            className="fixed z-50 bg-brand-bg-card border border-brand-border rounded-lg shadow-xl py-1 min-w-[160px]"
+            style={{ left: editorSuppressMenu.x, top: editorSuppressMenu.y }}
+          >
+            <button
+              onClick={() => handleSuppressFromEditor(editorSuppressMenu.mentionId)}
+              className="w-full text-left px-3 py-1.5 text-xs text-brand-text hover:bg-brand-border/30 transition-colors"
+            >
+              Remove tag
+            </button>
+          </div>
+        </>
+      )}
+
       {/* Annotation creation popover */}
       {popover && (
         <div
           className="fixed z-40 w-64 bg-brand-bg-card border border-brand-border rounded-xl shadow-2xl p-3 space-y-2"
           style={{ left: popover.x, top: popover.y }}
         >
-          {/* Type selector */}
           <div className="flex gap-1.5">
             {TYPE_OPTIONS.map(opt => (
               <button
@@ -171,7 +392,6 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
             ))}
           </div>
 
-          {/* Body input */}
           <textarea
             autoFocus
             value={annBody}
@@ -185,7 +405,6 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
             className="w-full bg-brand-bg border border-brand-border rounded px-2 py-1.5 text-xs text-brand-text resize-none focus:outline-none focus:border-brand-cyan/60 placeholder:text-brand-muted/50"
           />
 
-          {/* Actions */}
           <div className="flex gap-1.5 justify-end">
             <button
               onClick={dismissPopover}
@@ -204,7 +423,7 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
         </div>
       )}
 
-      {/* Click-away backdrop for popover */}
+      {/* Click-away backdrop for annotation popover */}
       {popover && (
         <div className="fixed inset-0 z-30" onClick={dismissPopover} />
       )}

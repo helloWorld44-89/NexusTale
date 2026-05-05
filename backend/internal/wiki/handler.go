@@ -15,7 +15,14 @@ package wiki
 //	PATCH|DELETE     /magic-rules/:mid       update or delete magic rule
 //	GET|POST         /timeline               list or create timeline events
 //	PATCH|DELETE     /timeline/:tid          update or delete timeline event
-//	GET              /autolink?text=         return entities whose names appear in the given text
+//	GET              /autolink?text=                         return entities whose names appear in the given text
+//	GET              /entities/:eid/appearances?branch=      scenes in which this entity is mentioned
+//
+// Mention routes — mounted under /projects/:id/scenes/:sid (separate group):
+//
+//	GET              /mentions?branch=      list active (non-suppressed) mentions for the scene
+//	DELETE           /mentions/:mid         suppress a single mention
+//	DELETE           /mentions             suppress all mentions on this scene
 
 import (
 	"bytes"
@@ -50,6 +57,15 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/entities/:eid/children", h.CreateChildEntity)
 	rg.POST("/entities/:eid/image", h.UploadEntityImage)
 	rg.DELETE("/entities/:eid/image", h.DeleteEntityImage)
+	rg.GET("/entities/:eid/appearances", h.ListEntityAppearances)
+}
+
+// RegisterMentionRoutes mounts mention routes under /projects/:id/scenes/:sid.
+// Called from cmd/api/main.go with a separate router group.
+func (h *Handler) RegisterMentionRoutes(rg *gin.RouterGroup) {
+	rg.GET("/mentions", h.ListSceneMentions)
+	rg.DELETE("/mentions/:mid", h.SuppressMention)
+	rg.DELETE("/mentions", h.SuppressAllMentions)
 
 	rg.GET("/relationships", h.ListRelationships)
 	rg.POST("/relationships", h.CreateRelationship)
@@ -490,6 +506,75 @@ func (h *Handler) Autolink(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"entities": resp})
+}
+
+// ========================
+// ListSceneMentions returns all active (non-suppressed) entity mentions for a
+// scene. Branch defaults to "canon" when not provided.
+func (h *Handler) ListSceneMentions(c *gin.Context) {
+	sceneID, err := parseUUID(c, "sid")
+	if err != nil {
+		return
+	}
+	branch := c.Query("branch")
+	if branch == "" {
+		branch = "canon"
+	}
+	mentions, err := h.svc.ListSceneMentions(c.Request.Context(), sceneID, branch)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"mentions": mentions})
+}
+
+// SuppressMention marks a single mention as suppressed by its ID.
+func (h *Handler) SuppressMention(c *gin.Context) {
+	mentionID, err := parseUUID(c, "mid")
+	if err != nil {
+		return
+	}
+	if err := h.svc.SuppressMention(c.Request.Context(), mentionID); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "mention suppressed"})
+}
+
+// SuppressAllMentions suppresses every active mention for a scene on a branch.
+func (h *Handler) SuppressAllMentions(c *gin.Context) {
+	sceneID, err := parseUUID(c, "sid")
+	if err != nil {
+		return
+	}
+	branch := c.Query("branch")
+	if branch == "" {
+		branch = "canon"
+	}
+	if err := h.svc.SuppressAllMentions(c.Request.Context(), sceneID, branch); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "all mentions suppressed"})
+}
+
+// ListEntityAppearances returns all scenes that mention a specific wiki entity.
+// Query param ?branch= defaults to "canon".
+func (h *Handler) ListEntityAppearances(c *gin.Context) {
+	entityID, err := parseUUID(c, "eid")
+	if err != nil {
+		return
+	}
+	branch := c.Query("branch")
+	if branch == "" {
+		branch = "canon"
+	}
+	appearances, err := h.svc.ListEntityAppearances(c.Request.Context(), entityID, branch)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"appearances": appearances})
 }
 
 // ========================

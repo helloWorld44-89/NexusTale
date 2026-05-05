@@ -11,6 +11,9 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@tiptap/pm": "^3.22.5",
+    "@tiptap/react": "^3.22.5",
+    "@tiptap/starter-kit": "^3.22.5",
     "@types/d3": "^7.4.3",
     "d3": "^7.9.0",
     "diff-match-patch": "^1.0.5",

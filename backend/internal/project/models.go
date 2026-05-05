@@ -77,8 +77,9 @@ type CreateProjectRequest struct {
 }
 
 type UpdateProjectRequest struct {
-	Title       *string `json:"title"`
-	Description *string `json:"description"`
+	Title          *string `json:"title"`
+	Description    *string `json:"description"`
+	AutoTagEnabled *bool   `json:"auto_tag_enabled"`
 }
 
 type CreateChapterRequest struct {
@@ -145,15 +146,16 @@ type ProjectStatsResponse struct {
 }
 
 type ProjectResponse struct {
-	ID          uuid.UUID `json:"id"`
-	OwnerID     uuid.UUID `json:"owner_id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Genres      []string  `json:"genres"`
-	Archived    bool      `json:"archived"`
-	Phase       string    `json:"phase"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID             uuid.UUID `json:"id"`
+	OwnerID        uuid.UUID `json:"owner_id"`
+	Title          string    `json:"title"`
+	Description    string    `json:"description"`
+	Genres         []string  `json:"genres"`
+	Archived       bool      `json:"archived"`
+	Phase          string    `json:"phase"`
+	AutoTagEnabled bool      `json:"auto_tag_enabled"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type ActResponse struct {

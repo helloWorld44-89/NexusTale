@@ -367,6 +367,49 @@ A milestone, not a date. Graduate when all of the following are true:
 
 ---
 
+## Phase C7 — Craft depth (continued)
+
+### C7.0 — Auto-detection backend + mentions panel ✅ (2026-05-05)
+
+- [x] **`[Medium]`** Migration 035 — `scene_entity_mentions(id, scene_id, entity_id, project_id, branch_name, match_text, suppressed)` + `projects.auto_tag_enabled BOOLEAN DEFAULT TRUE`
+- [x] **`[Medium]`** `internal/wiki/tagger.go` — debounced (5s) whole-word case-insensitive detection; respects `suppressed` (never re-adds author removals) and `auto_tag_enabled`; `IndexSceneMentions` satisfies `project.MentionNotifier`; wired via `projectService.WithMentionNotifier(wikiService)`
+- [x] **`[Light]`** Routes — `GET /projects/:id/scenes/:sid/mentions?branch=`, `DELETE .../mentions/:mid` (suppress), `DELETE .../mentions` (suppress all); `GET /wiki/entities/:eid/appearances?branch=`
+- [x] **`[Light]`** `BuildContext` section 5 reads from `scene_entity_mentions` (pre-computed, respects suppressed); falls back to `@[entity]` regex when no mentions indexed yet
+- [x] **`[Medium]`** Frontend — `MentionsBar.tsx` chip row below ScribeEditor; type-colored chips; click navigates to wiki entry; right-click → "Remove tag"; "Clear all" button; `auto_tag_enabled` in `ProjectResponse` + OpenAPI spec
+
+---
+
+## Phase C8 — App administration
+
+A protected admin area for monitoring and managing NexusTale during alpha. Gated on `RequireRole(RoleAdmin)` — the role enum and `RequireRole` middleware already exist. No public UI.
+
+Infrastructure already in place:
+- `users.role` column with `UserRoleAdmin` value (in DB since migration 001)
+- `users.plan` column (`free` / `writer` / `studio`) since migration 022
+- `RequireRole` middleware in `internal/auth/middleware.go`
+- `ai_usage` table (queryable for system-wide stats)
+- `waitlist` table + `internal/waitlist` package
+
+### C8.0 — Admin backend
+
+- [ ] **`[Light]`** `internal/admin` package — `Service` with queries; `Handler` with `RequireRole(RoleAdmin)` guard; `GET /admin/users` (paginated list: id, email, display_name, role, plan, created_at, project_count); `PATCH /admin/users/:uid` (set role and/or plan)
+- [ ] **`[Light]`** `GET /admin/stats` — aggregate: total users, total projects, total scenes, total AI calls, total tokens used, total cost (USD); all from existing tables with simple COUNT/SUM queries
+- [ ] **`[Light]`** `GET /admin/ai-usage` — per-user AI usage summary (user_id, email, total_tokens, total_cost, call_count) for the last 30 days; ordered by total_tokens DESC
+- [ ] **`[Light]`** `GET /admin/waitlist` + `PATCH /admin/waitlist/:wid` — list waitlist entries with status; mark approved/rejected (thin wrapper over existing `internal/waitlist` service)
+- [ ] **`[Light]`** sqlc queries for the above (new `pkg/db/queries/admin.sql`)
+- [ ] **`[Light]`** Promote-to-admin script / one-off: `POST /admin/users/:uid` with `{role: "admin"}` (or a simple `psql` command documented in the ops runbook)
+
+### C8.1 — Admin frontend
+
+- [ ] **`[Medium]`** `/admin` route — guarded in React by `role === 'admin'` from the JWT claims; redirect to `/dashboard` if not admin
+- [ ] **`[Medium]`** Admin Dashboard page — stat cards (users, projects, AI calls, tokens, cost); sections for User Management and Waitlist
+- [ ] **`[Light]`** User table — paginated; role badge; plan badge; "Set Plan" dropdown (free/writer/studio); "Set Role" dropdown (author/admin); changes call `PATCH /admin/users/:uid`
+- [ ] **`[Light]`** AI Usage table — top-N users by token spend (last 30 days); useful for spotting abuse before billing is wired
+- [ ] **`[Light]`** Waitlist table — email, joined_at, status; Approve / Reject buttons
+- [ ] **`[Light]`** Role surfaced in JWT — `role` is already in `Claims`; expose it from `GET /users/me` response so the frontend can gate the admin link in TopBar settings
+
+---
+
 ## Phase D — Premium / advanced
 
 - **Monetization** — `users.plan` column already added (migration 022: free/writer/studio tiers); plan-gated invite limits in `InviteCollaborator` (`TODO(monetization)` marker in service.go); billing integration (Stripe), upgrade flow, and feature gates are Phase D work
@@ -412,4 +455,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-04-29: Git-first architecture migration (Steps 1–4) complete — scenes.content dropped (migration 029), Postgres metadata-only for scenes, alpha gate cleared. Step 5 (wiki JSON files) explicitly deferred. Phase C+ security + code review items and environment checklist remain before first alpha invite.*
+*Last updated 2026-05-05: C7.0 scene entity mentions complete (migration 035, `IndexSceneMentions`, appearances endpoint, WikiHub "Appears In" panel). Phase C8 admin section planned. Phase C+ environment checklist and UX/onboarding items remain before first alpha invite.*

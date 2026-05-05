@@ -127,17 +127,18 @@ components:
 
     ProjectResponse:
       type: object
-      required: [id, owner_id, title, description, genres, archived, phase, created_at, updated_at]
+      required: [id, owner_id, title, description, genres, archived, phase, auto_tag_enabled, created_at, updated_at]
       properties:
-        id:          { type: string, format: uuid }
-        owner_id:    { type: string, format: uuid }
-        title:       { type: string }
-        description: { type: string }
-        genres:      { type: array, items: { type: string } }
-        archived:    { type: boolean }
-        phase:       { type: string }
-        created_at:  { type: string, format: date-time }
-        updated_at:  { type: string, format: date-time }
+        id:               { type: string, format: uuid }
+        owner_id:         { type: string, format: uuid }
+        title:            { type: string }
+        description:      { type: string }
+        genres:           { type: array, items: { type: string } }
+        archived:         { type: boolean }
+        phase:            { type: string }
+        auto_tag_enabled: { type: boolean }
+        created_at:       { type: string, format: date-time }
+        updated_at:       { type: string, format: date-time }
 
     ProjectStats:
       type: object

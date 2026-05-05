@@ -136,6 +136,11 @@ func main() {
 	authService.WithStorage(storageClient)
 
 	wikiService := wiki.NewService(queries, storageClient)
+
+	// Wire the wiki service as the mention notifier so scene saves trigger
+	// async entity-mention indexing (C7.0).
+	projectService.WithMentionNotifier(wikiService)
+
 	exportService := export.NewService(queries, storageClient)
 	exportService.StartWorkers(2)
 
@@ -205,6 +210,11 @@ func main() {
 
 		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService), requireAccess)
 		wikiHandler.RegisterRoutes(wikiGroup)
+
+		// Mention routes sit under /projects/:id/scenes/:sid so the frontend can
+		// fetch them alongside scene data without navigating to the wiki URL space.
+		mentionGroup := v1.Group("/projects/:id/scenes/:sid", auth.RequireAuth(authService), requireAccess)
+		wikiHandler.RegisterMentionRoutes(mentionGroup)
 
 		aiGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		aiHandler.RegisterRoutes(aiGroup)
