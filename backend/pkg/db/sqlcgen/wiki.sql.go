@@ -250,6 +250,25 @@ func (q *Queries) DeleteRelationship(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deleteSceneEntityMentions = `-- name: DeleteSceneEntityMentions :exec
+
+DELETE FROM scene_entity_mentions
+WHERE scene_id = $1 AND branch_name = $2
+`
+
+type DeleteSceneEntityMentionsParams struct {
+	SceneID    uuid.UUID `json:"scene_id"`
+	BranchName string    `json:"branch_name"`
+}
+
+// ========================
+// Scene entity mentions
+// ========================
+func (q *Queries) DeleteSceneEntityMentions(ctx context.Context, arg DeleteSceneEntityMentionsParams) error {
+	_, err := q.db.Exec(ctx, deleteSceneEntityMentions, arg.SceneID, arg.BranchName)
+	return err
+}
+
 const deleteTimelineEvent = `-- name: DeleteTimelineEvent :exec
 DELETE FROM wiki_timeline_events WHERE id = $1
 `
@@ -548,6 +567,111 @@ func (q *Queries) ListMagicRulesForContext(ctx context.Context, projectID uuid.U
 	return items, nil
 }
 
+const listMentionedEntitiesByScene = `-- name: ListMentionedEntitiesByScene :many
+SELECT we.id, we.project_id, we.parent_entity_id, we.type, we.name, we.summary, we.attributes, we.created_at, we.updated_at, we.image_key
+FROM wiki_entities we
+JOIN scene_entity_mentions sem ON sem.entity_id = we.id
+WHERE sem.scene_id = $1::uuid
+  AND sem.branch_name = $2
+  AND sem.suppressed = FALSE
+ORDER BY we.name ASC
+`
+
+type ListMentionedEntitiesBySceneParams struct {
+	SceneID    uuid.UUID `json:"scene_id"`
+	BranchName string    `json:"branch_name"`
+}
+
+func (q *Queries) ListMentionedEntitiesByScene(ctx context.Context, arg ListMentionedEntitiesBySceneParams) ([]WikiEntity, error) {
+	rows, err := q.db.Query(ctx, listMentionedEntitiesByScene, arg.SceneID, arg.BranchName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WikiEntity{}
+	for rows.Next() {
+		var i WikiEntity
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.ParentEntityID,
+			&i.Type,
+			&i.Name,
+			&i.Summary,
+			&i.Attributes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ImageKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMentionsByScene = `-- name: ListMentionsByScene :many
+SELECT sem.id, sem.scene_id, sem.entity_id, sem.project_id, sem.branch_name,
+       sem.match_text, sem.suppressed, sem.created_at,
+       we.name AS entity_name, we.type AS entity_type
+FROM scene_entity_mentions sem
+JOIN wiki_entities we ON we.id = sem.entity_id
+WHERE sem.scene_id = $1 AND sem.branch_name = $2 AND sem.suppressed = FALSE
+ORDER BY we.name ASC
+`
+
+type ListMentionsBySceneParams struct {
+	SceneID    uuid.UUID `json:"scene_id"`
+	BranchName string    `json:"branch_name"`
+}
+
+type ListMentionsBySceneRow struct {
+	ID         uuid.UUID          `json:"id"`
+	SceneID    uuid.UUID          `json:"scene_id"`
+	EntityID   uuid.UUID          `json:"entity_id"`
+	ProjectID  uuid.UUID          `json:"project_id"`
+	BranchName string             `json:"branch_name"`
+	MatchText  string             `json:"match_text"`
+	Suppressed bool               `json:"suppressed"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	EntityName string             `json:"entity_name"`
+	EntityType string             `json:"entity_type"`
+}
+
+func (q *Queries) ListMentionsByScene(ctx context.Context, arg ListMentionsBySceneParams) ([]ListMentionsBySceneRow, error) {
+	rows, err := q.db.Query(ctx, listMentionsByScene, arg.SceneID, arg.BranchName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMentionsBySceneRow{}
+	for rows.Next() {
+		var i ListMentionsBySceneRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SceneID,
+			&i.EntityID,
+			&i.ProjectID,
+			&i.BranchName,
+			&i.MatchText,
+			&i.Suppressed,
+			&i.CreatedAt,
+			&i.EntityName,
+			&i.EntityType,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRelationshipsByProject = `-- name: ListRelationshipsByProject :many
 SELECT id, project_id, from_entity_id, to_entity_id, type, description, created_at FROM wiki_relationships
 WHERE project_id = $1
@@ -571,6 +695,65 @@ func (q *Queries) ListRelationshipsByProject(ctx context.Context, projectID uuid
 			&i.Type,
 			&i.Description,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScenesByEntity = `-- name: ListScenesByEntity :many
+SELECT
+    s.id         AS scene_id,
+    s.title      AS scene_title,
+    s.sort_order AS scene_order,
+    c.id         AS chapter_id,
+    c.title      AS chapter_title,
+    c.sort_order AS chapter_order,
+    sem.branch_name
+FROM scenes s
+JOIN scene_entity_mentions sem ON sem.scene_id = s.id
+JOIN chapters c ON c.id = s.chapter_id
+WHERE sem.entity_id = $1 AND sem.branch_name = $2 AND sem.suppressed = FALSE
+ORDER BY c.sort_order, s.sort_order
+`
+
+type ListScenesByEntityParams struct {
+	EntityID   uuid.UUID `json:"entity_id"`
+	BranchName string    `json:"branch_name"`
+}
+
+type ListScenesByEntityRow struct {
+	SceneID      uuid.UUID `json:"scene_id"`
+	SceneTitle   string    `json:"scene_title"`
+	SceneOrder   int32     `json:"scene_order"`
+	ChapterID    uuid.UUID `json:"chapter_id"`
+	ChapterTitle string    `json:"chapter_title"`
+	ChapterOrder int32     `json:"chapter_order"`
+	BranchName   string    `json:"branch_name"`
+}
+
+func (q *Queries) ListScenesByEntity(ctx context.Context, arg ListScenesByEntityParams) ([]ListScenesByEntityRow, error) {
+	rows, err := q.db.Query(ctx, listScenesByEntity, arg.EntityID, arg.BranchName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListScenesByEntityRow{}
+	for rows.Next() {
+		var i ListScenesByEntityRow
+		if err := rows.Scan(
+			&i.SceneID,
+			&i.SceneTitle,
+			&i.SceneOrder,
+			&i.ChapterID,
+			&i.ChapterTitle,
+			&i.ChapterOrder,
+			&i.BranchName,
 		); err != nil {
 			return nil, err
 		}
@@ -622,6 +805,30 @@ func (q *Queries) ListTimelineEventsByProject(ctx context.Context, projectID uui
 		return nil, err
 	}
 	return items, nil
+}
+
+const suppressAllMentions = `-- name: SuppressAllMentions :exec
+UPDATE scene_entity_mentions SET suppressed = TRUE
+WHERE scene_id = $1 AND branch_name = $2
+`
+
+type SuppressAllMentionsParams struct {
+	SceneID    uuid.UUID `json:"scene_id"`
+	BranchName string    `json:"branch_name"`
+}
+
+func (q *Queries) SuppressAllMentions(ctx context.Context, arg SuppressAllMentionsParams) error {
+	_, err := q.db.Exec(ctx, suppressAllMentions, arg.SceneID, arg.BranchName)
+	return err
+}
+
+const suppressMention = `-- name: SuppressMention :exec
+UPDATE scene_entity_mentions SET suppressed = TRUE WHERE id = $1
+`
+
+func (q *Queries) SuppressMention(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, suppressMention, id)
+	return err
 }
 
 const updateEntity = `-- name: UpdateEntity :one
@@ -818,6 +1025,44 @@ func (q *Queries) UpdateTimelineEvent(ctx context.Context, arg UpdateTimelineEve
 		&i.AnchorOffsetYear,
 		&i.AnchorOffsetMonth,
 		&i.AnchorOffsetDay,
+	)
+	return i, err
+}
+
+const upsertSceneEntityMention = `-- name: UpsertSceneEntityMention :one
+INSERT INTO scene_entity_mentions (scene_id, entity_id, project_id, branch_name, match_text)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (scene_id, entity_id, branch_name)
+DO UPDATE SET match_text = EXCLUDED.match_text, suppressed = FALSE
+RETURNING id, scene_id, entity_id, project_id, branch_name, match_text, suppressed, created_at
+`
+
+type UpsertSceneEntityMentionParams struct {
+	SceneID    uuid.UUID `json:"scene_id"`
+	EntityID   uuid.UUID `json:"entity_id"`
+	ProjectID  uuid.UUID `json:"project_id"`
+	BranchName string    `json:"branch_name"`
+	MatchText  string    `json:"match_text"`
+}
+
+func (q *Queries) UpsertSceneEntityMention(ctx context.Context, arg UpsertSceneEntityMentionParams) (SceneEntityMention, error) {
+	row := q.db.QueryRow(ctx, upsertSceneEntityMention,
+		arg.SceneID,
+		arg.EntityID,
+		arg.ProjectID,
+		arg.BranchName,
+		arg.MatchText,
+	)
+	var i SceneEntityMention
+	err := row.Scan(
+		&i.ID,
+		&i.SceneID,
+		&i.EntityID,
+		&i.ProjectID,
+		&i.BranchName,
+		&i.MatchText,
+		&i.Suppressed,
+		&i.CreatedAt,
 	)
 	return i, err
 }

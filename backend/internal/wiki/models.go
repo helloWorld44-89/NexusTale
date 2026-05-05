@@ -165,3 +165,31 @@ type GraphResponse struct {
 	Entities      []EntityResponse       `json:"entities"`
 	Relationships []RelationshipResponse `json:"relationships"`
 }
+
+// ========================
+// Scene entity mentions
+// ========================
+
+// MentionResponse is returned by the scene mentions list endpoint.
+// Suppressed mentions are excluded from list results.
+type MentionResponse struct {
+	ID         uuid.UUID `json:"id"`
+	SceneID    uuid.UUID `json:"scene_id"`
+	EntityID   uuid.UUID `json:"entity_id"`
+	EntityName string    `json:"entity_name"`
+	EntityType string    `json:"entity_type"`
+	MatchText  string    `json:"match_text"`
+	BranchName string    `json:"branch_name"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// EntityAppearance represents a single scene in which a wiki entity is mentioned.
+type EntityAppearance struct {
+	SceneID      uuid.UUID `json:"scene_id"`
+	SceneTitle   string    `json:"scene_title"`
+	SceneOrder   int32     `json:"scene_order"`
+	ChapterID    uuid.UUID `json:"chapter_id"`
+	ChapterTitle string    `json:"chapter_title"`
+	ChapterOrder int32     `json:"chapter_order"`
+	BranchName   string    `json:"branch_name"`
+}

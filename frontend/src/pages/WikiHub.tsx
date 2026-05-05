@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '@/services/api'
-import type { WikiEntity, EntityType, ProjectStructure } from '@/services/api'
+import type { WikiEntity, EntityType, ProjectStructure, EntityAppearance } from '@/services/api'
 import TimelineView from '@/components/wiki/TimelineView'
 import RelationshipGraph from '@/components/wiki/RelationshipGraph'
 import ResearchNotesTab from '@/components/wiki/ResearchNotesTab'
@@ -362,6 +362,9 @@ function EntityDetail({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
+  const [appearsOpen, setAppearsOpen] = useState(false)
+  const [appearances, setAppearances] = useState<EntityAppearance[] | null>(null)
+  const [appearsLoading, setAppearsLoading] = useState(false)
 
   // Keep edit fields in sync when entity is refreshed externally (e.g. after image upload).
   useEffect(() => {
@@ -588,6 +591,56 @@ function EntityDetail({
             )}
           </div>
         )}
+
+        {/* Appears In */}
+        <div className="border border-brand-border rounded-xl overflow-hidden">
+          <button
+            type="button"
+            onClick={async () => {
+              const next = !appearsOpen
+              setAppearsOpen(next)
+              if (next && appearances === null) {
+                setAppearsLoading(true)
+                try {
+                  const res = await api.wiki.entityAppearances(token, projectId, entity.id)
+                  setAppearances(res.appearances)
+                } catch {
+                  setAppearances([])
+                } finally {
+                  setAppearsLoading(false)
+                }
+              }
+            }}
+            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-brand-border/20 transition-colors"
+          >
+            <span className="text-xs font-semibold text-brand-muted uppercase tracking-wider">
+              Appears In
+              {appearances !== null && appearances.length > 0 && (
+                <span className="ml-2 px-1.5 py-0.5 rounded bg-brand-border text-brand-text font-mono">{appearances.length}</span>
+              )}
+            </span>
+            <ChevronIcon open={appearsOpen} />
+          </button>
+          {appearsOpen && (
+            <div className="border-t border-brand-border px-4 py-3">
+              {appearsLoading ? (
+                <p className="text-xs text-brand-muted">Scanning manuscript…</p>
+              ) : appearances && appearances.length > 0 ? (
+                <ul className="space-y-1">
+                  {appearances.map((a) => (
+                    <li key={`${a.scene_id}-${a.branch_name}`} className="text-sm text-brand-text">
+                      <span className="text-brand-muted">{a.chapter_title}</span>
+                      <span className="text-brand-muted mx-1.5">·</span>
+                      {a.scene_title || `Scene ${a.scene_order + 1}`}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-brand-muted italic">Not yet mentioned in any scene on this branch.</p>
+              )}
+            </div>
+          )}
+        </div>
 
         {error && <p className="text-xs text-red-400">{error}</p>}
 

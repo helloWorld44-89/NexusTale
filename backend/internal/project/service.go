@@ -17,6 +17,14 @@ import (
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
+// MentionNotifier is implemented by the wiki service (internal/wiki.Service).
+// Using an interface breaks the import cycle between project ↔ wiki.
+type MentionNotifier interface {
+	// IndexSceneMentions scans scene content and persists entity mention rows.
+	// Runs asynchronously — does not block the scene save response.
+	IndexSceneMentions(ctx context.Context, projectID, sceneID uuid.UUID, branchName, content string)
+}
+
 // SummaryNotifier is implemented by the AI service (internal/ai.Service).
 // Using an interface here breaks the import cycle between project ↔ ai.
 type SummaryNotifier interface {
@@ -33,9 +41,10 @@ type SummaryNotifier interface {
 }
 
 type Service struct {
-	queries  *sqlcgen.Queries
-	git      *GitService
-	notifier SummaryNotifier // optional; nil → branch tracking disabled
+	queries         *sqlcgen.Queries
+	git             *GitService
+	notifier        SummaryNotifier // optional; nil → branch tracking disabled
+	mentionNotifier MentionNotifier // optional; nil → mention indexing disabled
 }
 
 func NewService(queries *sqlcgen.Queries, git *GitService) *Service {
@@ -46,6 +55,12 @@ func NewService(queries *sqlcgen.Queries, git *GitService) *Service {
 // Called from cmd/api during startup after both services are initialised.
 func (s *Service) WithNotifier(n SummaryNotifier) {
 	s.notifier = n
+}
+
+// WithMentionNotifier wires the wiki mention notifier into the project service.
+// Called from cmd/api during startup after both services are initialised.
+func (s *Service) WithMentionNotifier(n MentionNotifier) {
+	s.mentionNotifier = n
 }
 
 // Projects
@@ -123,6 +138,9 @@ func (s *Service) UpdateProject(ctx context.Context, id uuid.UUID, req UpdatePro
 	}
 	if req.Description != nil {
 		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+	}
+	if req.AutoTagEnabled != nil {
+		params.AutoTagEnabled = pgtype.Bool{Bool: *req.AutoTagEnabled, Valid: true}
 	}
 
 	p, err := s.queries.UpdateProject(ctx, params)
@@ -468,6 +486,15 @@ func (s *Service) UpdateScene(ctx context.Context, id uuid.UUID, req UpdateScene
 		s.notifier.ScheduleSummarize(req.NotifyUserID, sc.ChapterID, req.ProjectID, branch)
 	}
 
+	// Index entity mentions for the updated scene.
+	if req.Content != nil && s.mentionNotifier != nil && req.ProjectID != uuid.Nil {
+		branch := req.NotifyBranch
+		if branch == "" {
+			branch = CanonBranch
+		}
+		s.mentionNotifier.IndexSceneMentions(context.Background(), req.ProjectID, sc.ID, branch, *req.Content)
+	}
+
 	result := toSceneResponse(sc)
 	if req.Content != nil {
 		result.Content = *req.Content // carry from request; not stored in DB
@@ -708,15 +735,16 @@ func toActResponse(a sqlcgen.Act) *ActResponse {
 
 func toProjectResponse(p sqlcgen.Project) *ProjectResponse {
 	return &ProjectResponse{
-		ID:          p.ID,
-		OwnerID:     p.OwnerID,
-		Title:       p.Title,
-		Description: p.Description,
-		Genres:      p.Genres,
-		Archived:    p.Archived,
-		Phase:       p.Phase,
-		CreatedAt:   p.CreatedAt.Time,
-		UpdatedAt:   p.UpdatedAt.Time,
+		ID:             p.ID,
+		OwnerID:        p.OwnerID,
+		Title:          p.Title,
+		Description:    p.Description,
+		Genres:         p.Genres,
+		Archived:       p.Archived,
+		Phase:          p.Phase,
+		AutoTagEnabled: p.AutoTagEnabled,
+		CreatedAt:      p.CreatedAt.Time,
+		UpdatedAt:      p.UpdatedAt.Time,
 	}
 }
 

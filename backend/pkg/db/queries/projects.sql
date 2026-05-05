@@ -1,22 +1,22 @@
 -- name: CreateProject :one
 INSERT INTO projects (owner_id, title, description, genres, git_repo_path)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase;
+RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase, auto_tag_enabled;
 
 -- name: GetProject :one
-SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
+SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase, auto_tag_enabled
 FROM projects
 WHERE id = $1;
 
 -- name: ListProjectsByOwner :many
-SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
+SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase, auto_tag_enabled
 FROM projects
 WHERE owner_id = $1 AND archived = false
 ORDER BY updated_at DESC;
 
 -- name: ListProjectsForUser :many
 SELECT DISTINCT p.id, p.owner_id, p.title, p.description, p.genres, p.git_repo_path,
-       p.archived, p.created_at, p.updated_at, p.structure_id, p.structure_custom, p.ai_instructions, p.phase
+       p.archived, p.created_at, p.updated_at, p.structure_id, p.structure_custom, p.ai_instructions, p.phase, p.auto_tag_enabled
 FROM projects p
 LEFT JOIN project_collaborators pc ON pc.project_id = p.id AND pc.user_id = $1
 WHERE p.archived = false
@@ -25,11 +25,12 @@ ORDER BY p.updated_at DESC;
 
 -- name: UpdateProject :one
 UPDATE projects
-SET title = COALESCE(sqlc.narg('title'), title),
-    description = COALESCE(sqlc.narg('description'), description),
-    updated_at = now()
+SET title            = COALESCE(sqlc.narg('title'), title),
+    description      = COALESCE(sqlc.narg('description'), description),
+    auto_tag_enabled = COALESCE(sqlc.narg('auto_tag_enabled'), auto_tag_enabled),
+    updated_at       = now()
 WHERE id = $1
-RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase;
+RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase, auto_tag_enabled;
 
 -- name: ArchiveProject :exec
 UPDATE projects SET archived = true, updated_at = now() WHERE id = $1;

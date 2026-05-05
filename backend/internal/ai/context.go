@@ -377,41 +377,66 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 		}
 	}
 
-	// ── 5. @[Entity] inline references ───────────────────────────────────
-	// Entities are formatted by type when structured fields are populated.
-	matches := entityRefRE.FindAllStringSubmatch(sceneContent, -1)
-	if len(matches) > 0 {
-		// Deduplicate referenced names (case-insensitive) and query only those rows.
-		seen := make(map[string]bool)
-		var names []string
-		for _, m := range matches {
-			lower := strings.ToLower(m[1])
-			if !seen[lower] {
-				seen[lower] = true
-				names = append(names, lower)
-			}
-		}
-
-		entities, _ := s.queries.GetEntitiesByNames(ctx, sqlcgen.GetEntitiesByNamesParams{
-			ProjectID: projectID,
-			Names:     names,
+	// ── 5. Entities detected in this scene ───────────────────────────────
+	// Read from pre-computed scene_entity_mentions (indexed by the wiki tagger
+	// on each save). Suppressed mentions are excluded so the author's removals
+	// are respected. Falls back to @[entity] regex when the scene has no indexed
+	// mentions yet (e.g. first open before the tagger fires).
+	if currentSceneID != uuid.Nil {
+		mentionedEntities, mErr := s.queries.ListMentionedEntitiesByScene(ctx, sqlcgen.ListMentionedEntitiesBySceneParams{
+			SceneID:    currentSceneID,
+			BranchName: branchName,
 		})
-
-		var entitySnippets []string
-		for _, e := range entities {
-			line := buildEntityContextLine(e, currentChapterIdx, len(chapters))
-			if line != "" {
-				entitySnippets = append(entitySnippets, line)
+		if mErr == nil && len(mentionedEntities) > 0 {
+			var entitySnippets []string
+			for _, e := range mentionedEntities {
+				line := buildEntityContextLine(e, currentChapterIdx, len(chapters))
+				if line != "" {
+					entitySnippets = append(entitySnippets, line)
+				}
 			}
-		}
-
-		if len(entitySnippets) > 0 {
-			if sb.Len() > 0 {
-				sb.WriteString("\n")
+			if len(entitySnippets) > 0 {
+				if sb.Len() > 0 {
+					sb.WriteString("\n")
+				}
+				sb.WriteString("## Entities in this scene\n")
+				for _, snippet := range entitySnippets {
+					sb.WriteString(snippet + "\n")
+				}
 			}
-			sb.WriteString("## Referenced entities\n")
-			for _, snippet := range entitySnippets {
-				sb.WriteString(snippet + "\n")
+		} else {
+			// Fallback: @[Entity Name] explicit references in scene content.
+			refMatches := entityRefRE.FindAllStringSubmatch(sceneContent, -1)
+			if len(refMatches) > 0 {
+				seen := make(map[string]bool)
+				var names []string
+				for _, m := range refMatches {
+					lower := strings.ToLower(m[1])
+					if !seen[lower] {
+						seen[lower] = true
+						names = append(names, lower)
+					}
+				}
+				entities, _ := s.queries.GetEntitiesByNames(ctx, sqlcgen.GetEntitiesByNamesParams{
+					ProjectID: projectID,
+					Names:     names,
+				})
+				var entitySnippets []string
+				for _, e := range entities {
+					line := buildEntityContextLine(e, currentChapterIdx, len(chapters))
+					if line != "" {
+						entitySnippets = append(entitySnippets, line)
+					}
+				}
+				if len(entitySnippets) > 0 {
+					if sb.Len() > 0 {
+						sb.WriteString("\n")
+					}
+					sb.WriteString("## Referenced entities\n")
+					for _, snippet := range entitySnippets {
+						sb.WriteString(snippet + "\n")
+					}
+				}
 			}
 		}
 	}

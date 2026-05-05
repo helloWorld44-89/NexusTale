@@ -1673,6 +1673,7 @@ export interface components {
             genres: string[];
             archived: boolean;
             phase: string;
+            auto_tag_enabled: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */

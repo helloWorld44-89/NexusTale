@@ -154,3 +154,58 @@ RETURNING *;
 
 -- name: DeleteTimelineEvent :exec
 DELETE FROM wiki_timeline_events WHERE id = $1;
+
+-- ========================
+-- Scene entity mentions
+-- ========================
+
+-- name: DeleteSceneEntityMentions :exec
+DELETE FROM scene_entity_mentions
+WHERE scene_id = $1 AND branch_name = $2;
+
+-- name: UpsertSceneEntityMention :one
+INSERT INTO scene_entity_mentions (scene_id, entity_id, project_id, branch_name, match_text)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (scene_id, entity_id, branch_name)
+DO UPDATE SET match_text = EXCLUDED.match_text, suppressed = FALSE
+RETURNING *;
+
+-- name: ListMentionsByScene :many
+SELECT sem.id, sem.scene_id, sem.entity_id, sem.project_id, sem.branch_name,
+       sem.match_text, sem.suppressed, sem.created_at,
+       we.name AS entity_name, we.type AS entity_type
+FROM scene_entity_mentions sem
+JOIN wiki_entities we ON we.id = sem.entity_id
+WHERE sem.scene_id = $1 AND sem.branch_name = $2 AND sem.suppressed = FALSE
+ORDER BY we.name ASC;
+
+-- name: SuppressMention :exec
+UPDATE scene_entity_mentions SET suppressed = TRUE WHERE id = $1;
+
+-- name: SuppressAllMentions :exec
+UPDATE scene_entity_mentions SET suppressed = TRUE
+WHERE scene_id = $1 AND branch_name = $2;
+
+-- name: ListScenesByEntity :many
+SELECT
+    s.id         AS scene_id,
+    s.title      AS scene_title,
+    s.sort_order AS scene_order,
+    c.id         AS chapter_id,
+    c.title      AS chapter_title,
+    c.sort_order AS chapter_order,
+    sem.branch_name
+FROM scenes s
+JOIN scene_entity_mentions sem ON sem.scene_id = s.id
+JOIN chapters c ON c.id = s.chapter_id
+WHERE sem.entity_id = $1 AND sem.branch_name = $2 AND sem.suppressed = FALSE
+ORDER BY c.sort_order, s.sort_order;
+
+-- name: ListMentionedEntitiesByScene :many
+SELECT we.*
+FROM wiki_entities we
+JOIN scene_entity_mentions sem ON sem.entity_id = we.id
+WHERE sem.scene_id = sqlc.arg('scene_id')::uuid
+  AND sem.branch_name = sqlc.arg('branch_name')
+  AND sem.suppressed = FALSE
+ORDER BY we.name ASC;

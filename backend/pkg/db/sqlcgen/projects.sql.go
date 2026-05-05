@@ -24,7 +24,7 @@ func (q *Queries) ArchiveProject(ctx context.Context, id uuid.UUID) error {
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (owner_id, title, description, genres, git_repo_path)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
+RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase, auto_tag_enabled
 `
 
 type CreateProjectParams struct {
@@ -58,6 +58,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.StructureCustom,
 		&i.AiInstructions,
 		&i.Phase,
+		&i.AutoTagEnabled,
 	)
 	return i, err
 }
@@ -83,7 +84,7 @@ func (q *Queries) GetAIInstructions(ctx context.Context, id uuid.UUID) (string, 
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
+SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase, auto_tag_enabled
 FROM projects
 WHERE id = $1
 `
@@ -105,6 +106,7 @@ func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error)
 		&i.StructureCustom,
 		&i.AiInstructions,
 		&i.Phase,
+		&i.AutoTagEnabled,
 	)
 	return i, err
 }
@@ -158,7 +160,7 @@ func (q *Queries) GetProjectStats(ctx context.Context, id uuid.UUID) (GetProject
 }
 
 const listProjectsByOwner = `-- name: ListProjectsByOwner :many
-SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
+SELECT id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase, auto_tag_enabled
 FROM projects
 WHERE owner_id = $1 AND archived = false
 ORDER BY updated_at DESC
@@ -187,6 +189,7 @@ func (q *Queries) ListProjectsByOwner(ctx context.Context, ownerID uuid.UUID) ([
 			&i.StructureCustom,
 			&i.AiInstructions,
 			&i.Phase,
+			&i.AutoTagEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -200,7 +203,7 @@ func (q *Queries) ListProjectsByOwner(ctx context.Context, ownerID uuid.UUID) ([
 
 const listProjectsForUser = `-- name: ListProjectsForUser :many
 SELECT DISTINCT p.id, p.owner_id, p.title, p.description, p.genres, p.git_repo_path,
-       p.archived, p.created_at, p.updated_at, p.structure_id, p.structure_custom, p.ai_instructions, p.phase
+       p.archived, p.created_at, p.updated_at, p.structure_id, p.structure_custom, p.ai_instructions, p.phase, p.auto_tag_enabled
 FROM projects p
 LEFT JOIN project_collaborators pc ON pc.project_id = p.id AND pc.user_id = $1
 WHERE p.archived = false
@@ -231,6 +234,7 @@ func (q *Queries) ListProjectsForUser(ctx context.Context, userID uuid.UUID) ([]
 			&i.StructureCustom,
 			&i.AiInstructions,
 			&i.Phase,
+			&i.AutoTagEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -258,21 +262,28 @@ func (q *Queries) UpdateAIInstructions(ctx context.Context, arg UpdateAIInstruct
 
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects
-SET title = COALESCE($2, title),
-    description = COALESCE($3, description),
-    updated_at = now()
+SET title            = COALESCE($2, title),
+    description      = COALESCE($3, description),
+    auto_tag_enabled = COALESCE($4, auto_tag_enabled),
+    updated_at       = now()
 WHERE id = $1
-RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase
+RETURNING id, owner_id, title, description, genres, git_repo_path, archived, created_at, updated_at, structure_id, structure_custom, ai_instructions, phase, auto_tag_enabled
 `
 
 type UpdateProjectParams struct {
-	ID          uuid.UUID   `json:"id"`
-	Title       pgtype.Text `json:"title"`
-	Description pgtype.Text `json:"description"`
+	ID             uuid.UUID   `json:"id"`
+	Title          pgtype.Text `json:"title"`
+	Description    pgtype.Text `json:"description"`
+	AutoTagEnabled pgtype.Bool `json:"auto_tag_enabled"`
 }
 
 func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error) {
-	row := q.db.QueryRow(ctx, updateProject, arg.ID, arg.Title, arg.Description)
+	row := q.db.QueryRow(ctx, updateProject,
+		arg.ID,
+		arg.Title,
+		arg.Description,
+		arg.AutoTagEnabled,
+	)
 	var i Project
 	err := row.Scan(
 		&i.ID,
@@ -288,6 +299,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.StructureCustom,
 		&i.AiInstructions,
 		&i.Phase,
+		&i.AutoTagEnabled,
 	)
 	return i, err
 }

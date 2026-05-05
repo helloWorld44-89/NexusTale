@@ -203,6 +203,7 @@ type Project struct {
 	StructureCustom []byte             `json:"structure_custom"`
 	AiInstructions  string             `json:"ai_instructions"`
 	Phase           string             `json:"phase"`
+	AutoTagEnabled  bool               `json:"auto_tag_enabled"`
 }
 
 type ProjectActiveBranch struct {
@@ -280,6 +281,17 @@ type Scene struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	WordCount    int32              `json:"word_count"`
 	Attributes   json.RawMessage    `json:"attributes"`
+}
+
+type SceneEntityMention struct {
+	ID         uuid.UUID          `json:"id"`
+	SceneID    uuid.UUID          `json:"scene_id"`
+	EntityID   uuid.UUID          `json:"entity_id"`
+	ProjectID  uuid.UUID          `json:"project_id"`
+	BranchName string             `json:"branch_name"`
+	MatchText  string             `json:"match_text"`
+	Suppressed bool               `json:"suppressed"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
 type StoryThread struct {

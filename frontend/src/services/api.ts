@@ -29,6 +29,26 @@ export type MagicRule              = components['schemas']['MagicRuleResponse'] 
 export type SceneAttributes        = { scene_role?: 'setup' | 'development' | 'resolution' | 'transition'; scene_goal?: string; scene_conflict?: string; scene_outcome?: string }
 export type WikiTimelineEvent      = components['schemas']['TimelineEventResponse']
 export type AutolinkMatch          = components['schemas']['AutolinkMatch']
+export interface EntityAppearance {
+  scene_id:      string
+  scene_title:   string
+  scene_order:   number
+  chapter_id:    string
+  chapter_title: string
+  chapter_order: number
+  branch_name:   string
+}
+
+export interface MentionResponse {
+  id:          string
+  scene_id:    string
+  entity_id:   string
+  entity_name: string
+  entity_type: string
+  match_text:  string
+  branch_name: string
+  created_at:  string
+}
 export type APIKeyResponse         = components['schemas']['APIKeyResponse']
 export type ProjectStats           = components['schemas']['ProjectStats']
 
@@ -539,6 +559,18 @@ export const api = {
 
     autolink: (token: string, projectId: string, text: string) =>
       request<AutolinkMatch[]>('GET', `/projects/${projectId}/wiki/autolink?text=${encodeURIComponent(text)}`, undefined, token),
+
+    entityAppearances: (token: string, projectId: string, entityId: string, branch = 'canon') =>
+      request<{ appearances: EntityAppearance[] }>('GET', `/projects/${projectId}/wiki/entities/${entityId}/appearances?branch=${encodeURIComponent(branch)}`, undefined, token),
+
+    mentions: {
+      list: (token: string, projectId: string, sceneId: string, branch = 'canon') =>
+        request<{ mentions: MentionResponse[] }>('GET', `/projects/${projectId}/scenes/${sceneId}/mentions?branch=${encodeURIComponent(branch)}`, undefined, token),
+      suppress: (token: string, projectId: string, sceneId: string, mentionId: string) =>
+        request<{ message: string }>('DELETE', `/projects/${projectId}/scenes/${sceneId}/mentions/${mentionId}`, undefined, token),
+      suppressAll: (token: string, projectId: string, sceneId: string, branch = 'canon') =>
+        request<{ message: string }>('DELETE', `/projects/${projectId}/scenes/${sceneId}/mentions?branch=${encodeURIComponent(branch)}`, undefined, token),
+    },
   },
 
   prompts: {
