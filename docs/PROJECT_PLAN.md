@@ -836,6 +836,7 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 **Alpha UX / onboarding**
 - No Go stack traces or raw DB errors in any API response (`apperror` messages audited)
 - Guide wizard surfaced prominently on first project (existing CTA on ProjectHome)
+- [ ] **P1** First-time walkthrough — 6-step tooltip overlay for new editors (C8); localStorage-persisted, skippable, re-triggerable from Settings
 - "Give feedback" link visible in the app (Settings page or TopBar) — Discord / email / form
 - Invite email template with direct link to `/invites/:token`
 - Known-limitations one-pager shared with alpha users: async collaboration only (no live co-editing), no mobile optimization, AI requires user-supplied API keys
@@ -1375,6 +1376,35 @@ CREATE TABLE scene_entity_mentions (
 - "Link" path: `POST /projects/:id/scenes/:sid/mentions` with `override: true` (manual pin, never auto-removed)
 - "Create" path: creates the entity, then adds the mention
 - Natural place to add entity aliasing (e.g. "Kira" and "Kira Voss" both tag the same entry)
+
+---
+
+### C8 — First-time user walkthrough `[Light]`
+
+A tooltip-sequence walkthrough shown automatically on a writer's first visit to the editor. Goal: close the gap between "registered" and "writing" — writers should understand the four main surfaces (manuscript, wiki, AI, git) without reading docs.
+
+**Design principles**
+- No extra npm dependency; hand-built spotlight overlay using a `position: fixed` backdrop + tooltip bubble.
+- Persisted in `localStorage` (`nexustale_tour_done = true`) — no backend change required.
+- Skippable at any step; re-triggerable from Settings → "Restart walkthrough".
+- Only fires when the user has ≥ 1 project and opens the Editor for the first time (not on the Dashboard or guide wizard, where context is already clear).
+
+**Steps (6)**
+
+| # | Target | Copy |
+|---|--------|------|
+| 1 | Welcome modal (no target) | "Welcome to NexusTale. Let's take 60 seconds to show you around." |
+| 2 | ScribeEditor writing surface | "This is where your story lives. Select a scene from the tree on the left to start writing." |
+| 3 | ActivityBar icons | "These icons open your toolkit — wiki, AI workshop, git history, context pins, and more." |
+| 4 | BeatInput toolbar | "The Beat bar at the bottom sends your scene to the AI for a continuation suggestion. Accept, retry, or discard." |
+| 5 | MentionsBar / entity chip | "As you write, NexusTale tracks which characters and places appear in each scene. Click a chip to jump to their wiki entry." |
+| 6 | TopBar Chronicle button | "Chronicle saves a named snapshot of your manuscript — like git commit for your story. Use it after any meaningful session." |
+
+**Implementation checklist**
+- [ ] `WalkthroughOverlay.tsx` — backdrop + tooltip bubble; `step` index drives which element is spotlighted (via `getBoundingClientRect` + a `position: fixed` highlight ring)
+- [ ] `useWalkthrough.ts` — reads/writes `localStorage`; exposes `{ active, step, next, skip }` to the overlay
+- [ ] Wire into `Editor.tsx`: render `<WalkthroughOverlay>` when `active === true`; pass `ref`s or query selectors for each spotlight target
+- [ ] Settings page: "Restart walkthrough" button clears the localStorage flag
 
 ---
 
