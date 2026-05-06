@@ -235,7 +235,9 @@ func pingOpenAI(ctx context.Context, key string) ([]string, error) {
 		}
 	}
 	if len(keep) == 0 {
-		keep = append(keep, fmt.Sprintf("%d models available", len(body.Data)))
+		for _, m := range body.Data {
+			keep = append(keep, m.ID)
+		}
 	}
 	return keep, nil
 }
@@ -290,8 +292,10 @@ func pingGroq(ctx context.Context, key string) ([]string, error) {
 			keep = append(keep, p)
 		}
 	}
-	if len(keep) == 0 && len(body.Data) > 0 {
-		keep = append(keep, fmt.Sprintf("%d models available", len(body.Data)))
+	if len(keep) == 0 {
+		for _, m := range body.Data {
+			keep = append(keep, m.ID)
+		}
 	}
 	return keep, nil
 }
@@ -403,8 +407,14 @@ func pingGemini(ctx context.Context, key string) ([]string, error) {
 			keep = append(keep, p)
 		}
 	}
-	if len(keep) == 0 && len(body.Data) > 0 {
-		keep = append(keep, fmt.Sprintf("%d models available", len(body.Data)))
+	if len(keep) == 0 {
+		// Priority names didn't match (Google versioned them). Return all
+		// gemini-prefixed models so the user can still pick one.
+		for _, m := range body.Data {
+			if strings.HasPrefix(m.ID, "gemini-") {
+				keep = append(keep, m.ID)
+			}
+		}
 	}
 	return keep, nil
 }
@@ -464,8 +474,10 @@ func pingOpenRouter(ctx context.Context, key string) ([]string, error) {
 			keep = append(keep, p)
 		}
 	}
-	if len(keep) == 0 && len(body.Data) > 0 {
-		keep = append(keep, fmt.Sprintf("%d models available", len(body.Data)))
+	if len(keep) == 0 {
+		for _, m := range body.Data {
+			keep = append(keep, m.ID)
+		}
 	}
 	return keep, nil
 }
