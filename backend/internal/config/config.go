@@ -51,9 +51,10 @@ type AIConfig struct {
 }
 
 type ServerConfig struct {
-	Port          string
-	Mode          string // "debug", "release", "test"
-	AllowedOrigin string // CORS allowed origin; defaults to "*" in dev, must be set in prod
+	Port             string
+	Mode             string // "debug", "release", "test"
+	AllowedOrigin    string // CORS allowed origin; defaults to "*" in dev, must be set in prod
+	RegistrationOpen bool   // when false, POST /register returns 403 (invite-only alpha)
 }
 
 type DBConfig struct {
@@ -103,6 +104,7 @@ func Load() (*Config, error) {
 	v.SetDefault("server.port", "8080")
 	v.SetDefault("server.mode", "debug")
 	v.SetDefault("server.allowedorigin", "*")
+	v.SetDefault("server.registrationopen", true)
 	v.SetDefault("db.url", "postgres://nexustale:nexustale@localhost:5432/nexustale?sslmode=disable")
 	v.SetDefault("db.maxconns", 10)
 	v.SetDefault("db.minconns", 2)
@@ -134,9 +136,10 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		Server: ServerConfig{
-			Port:          v.GetString("server.port"),
-			Mode:          v.GetString("server.mode"),
-			AllowedOrigin: v.GetString("server.allowedorigin"),
+			Port:             v.GetString("server.port"),
+			Mode:             v.GetString("server.mode"),
+			AllowedOrigin:    v.GetString("server.allowedorigin"),
+			RegistrationOpen: v.GetBool("server.registrationopen"),
 		},
 		DB: DBConfig{
 			URL:            v.GetString("db.url"),

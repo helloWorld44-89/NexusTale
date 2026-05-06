@@ -147,7 +147,7 @@ func main() {
 	promptsService := prompts.NewService(queries)
 
 	// Handlers
-	authHandler := auth.NewHandler(authService)
+	authHandler := auth.NewHandler(authService, cfg.Server.RegistrationOpen)
 	projectHandler := project.NewHandler(projectService)
 	wikiHandler := wiki.NewHandler(wikiService)
 	aiHandler := ai.NewHandler(aiService)

@@ -817,7 +817,8 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 | Customizable workspaces | ❌ | Phase D |
 
 **Environment checklist**
-- [ ] **P0** TLS certificate provisioned for the alpha domain (certbot added to Ansible deploy playbook)
+- [x] **P0** TLS certificate provisioned for the alpha domain — certbot standalone + Ansible `deploy-dev.yml`; Let's Encrypt cert issued on first deploy when `nexustale_domain` is set; weekly renewal cron
+- [x] **P0** EC2 alpha deployment pipeline — `bootstrap-ec2.yml` one-time provisioner (Docker CE, UFW, backup dirs); `.github/workflows/alpha.yml` triggers on `master` push; builds `alpha`+`{sha}` tagged images to GHCR; deploys via existing `deploy-dev.yml` Ansible playbook with `ALPHA_*` GitHub secrets
 - [ ] **P0** All P0 security items resolved
 - [x] **P0** Postgres daily backup: `pg_dump` cron → compressed dump → off-host storage (7-day retention) — Ansible cron at 02:00; 7-day rotation
 - [x] **P0** Git repo backup: nightly tar of `repos/` alongside DB dump — Ansible cron at 02:15
@@ -841,6 +842,8 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - Invite email template with direct link to `/invites/:token`
 - Known-limitations one-pager shared with alpha users: async collaboration only (no live co-editing), no mobile optimization, AI requires user-supplied API keys
 - [x] **P1** Public landing page at `/` with waitlist form — hero, feature highlights, known limitations, `POST /api/v1/waitlist` (migration 030, no auth); unauthenticated visitors see this page; authenticated users redirect to `/dashboard`
+- [x] **P1** Invite-only registration gate — `NEXUSTALE_SERVER_REGISTRATIONOPEN` env var (default `false` in Ansible/compose); `POST /register` returns 403 + "join the waitlist at nexus-tale.com" when closed; `GET /auth/registration-status` lets frontend show closed-alpha screen on Register page; flip to `true` (or remove) when opening beta
+- [x] **P1** AI model picker fix — `pingGemini`/`pingOpenAI`/`pingOpenRouter`/`pingGroq` now return actual model ID lists instead of a count string when priority list doesn't match; Gemini prefix filter removed (API returns IDs without `gemini-` prefix)
 
 **Rollback plan**
 - Docker images tagged by git SHA (`:{sha}`) — rollback = re-run Ansible with previous SHA
@@ -853,6 +856,7 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - Core user loop (register → write → Chronicle → export) completed without developer assistance by ≥5 non-dev users
 - No P0 bugs open >48 hours sustained over a 2-week window
 - Phase D backlog updated with top requests from alpha feedback
+- [ ] **Beta gate** — flip `NEXUSTALE_SERVER_REGISTRATIONOPEN=true` in `infra/ansible/deploy-dev.yml` and `docker-compose.deploy.yml` default; remove the 403 path from `auth/handler.go`; update landing page CTA from "join waitlist" to "sign up"
 
 ---
 
