@@ -9,11 +9,12 @@ import (
 )
 
 type Handler struct {
-	svc *Service
+	svc              *Service
+	registrationOpen bool
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, registrationOpen bool) *Handler {
+	return &Handler{svc: svc, registrationOpen: registrationOpen}
 }
 
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
@@ -21,6 +22,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/login", h.Login)
 	rg.POST("/refresh", h.Refresh)
 	rg.POST("/logout", RequireAuth(h.svc), h.Logout)
+	rg.GET("/registration-status", h.RegistrationStatus)
 
 	// Authenticated user routes
 	me := rg.Group("/users/me", RequireAuth(h.svc))
@@ -29,6 +31,13 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) Register(c *gin.Context) {
+	if !h.registrationOpen {
+		c.JSON(http.StatusForbidden, gin.H{
+			"message": "NexusTale is currently invite-only. Registration is not open yet — join the waitlist at nexus-tale.com.",
+		})
+		return
+	}
+
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "validation error", "detail": err.Error()})
@@ -42,6 +51,10 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, resp)
+}
+
+func (h *Handler) RegistrationStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"open": h.registrationOpen})
 }
 
 func (h *Handler) Login(c *gin.Context) {

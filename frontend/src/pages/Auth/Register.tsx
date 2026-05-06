@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useAuthStore } from '@/app/store/authStore'
-import { ApiError } from '@/services/api'
+import { ApiError, api } from '@/services/api'
 import AuthLayout from './AuthLayout'
 
 interface RegisterForm {
@@ -16,6 +16,11 @@ export default function Register() {
   const navigate = useNavigate()
   const registerUser = useAuthStore((s) => s.register)
   const [serverError, setServerError] = useState<string | null>(null)
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    api.auth.registrationStatus().then((s) => setRegistrationOpen(s.open)).catch(() => setRegistrationOpen(true))
+  }, [])
 
   const {
     register,
@@ -32,6 +37,36 @@ export default function Register() {
     } catch (e) {
       setServerError(e instanceof ApiError ? e.message : 'Something went wrong. Please try again.')
     }
+  }
+
+  if (registrationOpen === false) {
+    return (
+      <AuthLayout>
+        <div className="auth-card text-center">
+          <div className="mb-6 flex justify-center">
+            <span className="text-5xl">🔒</span>
+          </div>
+          <h2 className="text-2xl font-bold text-brand-text mb-2">Invite-only alpha</h2>
+          <p className="text-brand-muted text-sm mb-6">
+            NexusTale is currently in closed alpha. Registration is not open yet.
+          </p>
+          <a
+            href="https://nexus-tale.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary inline-block mb-6"
+          >
+            Join the waitlist
+          </a>
+          <p className="text-center text-sm text-brand-muted">
+            Already have an account?{' '}
+            <Link to="/login" className="btn-ghost">
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </AuthLayout>
+    )
   }
 
   return (
