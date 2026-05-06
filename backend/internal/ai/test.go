@@ -408,12 +408,8 @@ func pingGemini(ctx context.Context, key string) ([]string, error) {
 		}
 	}
 	if len(keep) == 0 {
-		// Priority names didn't match (Google versioned them). Return all
-		// gemini-prefixed models so the user can still pick one.
 		for _, m := range body.Data {
-			if strings.HasPrefix(m.ID, "gemini-") {
-				keep = append(keep, m.ID)
-			}
+			keep = append(keep, m.ID)
 		}
 	}
 	return keep, nil
