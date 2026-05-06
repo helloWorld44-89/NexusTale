@@ -117,9 +117,10 @@ jobs:
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.ALPHA_SSH_KEY }}" > ~/.ssh/alpha_deploy_key
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.ALPHA_SSH_KEY }}" > ~/.ssh/alpha_deploy_key
           chmod 600 ~/.ssh/alpha_deploy_key
-          ssh-keyscan -H "${{ secrets.ALPHA_VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "${{ secrets.ALPHA_VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Write Ansible vars file
         run: |
