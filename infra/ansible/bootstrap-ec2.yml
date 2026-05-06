@@ -1,0 +1,143 @@
+---
+# bootstrap-ec2.yml
+#
+# One-time setup for a fresh Ubuntu EC2 instance.
+# Run this ONCE before the first alpha deploy.
+# After this, the regular deploy-dev.yml playbook handles all updates.
+#
+# Usage (from your local machine):
+#   ansible-playbook infra/ansible/bootstrap-ec2.yml \
+#     -i "<EC2_PUBLIC_IP>," \
+#     --extra-vars "vm_user=ubuntu" \
+#     --private-key ~/.ssh/your-ec2-key.pem
+#
+# Tested on: Ubuntu 22.04 LTS and Ubuntu 24.04 LTS (amd64)
+# Not compatible with Amazon Linux — use Ubuntu when launching the EC2 instance.
+
+- name: Bootstrap EC2 instance for NexusTale alpha
+  hosts: all
+  remote_user: "{{ vm_user | default('ubuntu') }}"
+  become: true
+  gather_facts: true
+
+  tasks:
+
+    # ── System update ─────────────────────────────────────────────────────────
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - unzip
+          - git
+          - mailutils       # for healthz alert emails
+          - postfix         # local MTA for cron mail delivery
+        state: present
+
+    # ── Docker ────────────────────────────────────────────────────────────────
+
+    - name: Add Docker GPG key
+      ansible.builtin.shell: |
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+          -o /etc/apt/keyrings/docker.asc
+        chmod a+r /etc/apt/keyrings/docker.asc
+      args:
+        creates: /etc/apt/keyrings/docker.asc
+
+    - name: Add Docker apt repository
+      ansible.builtin.shell: |
+        echo \
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+          https://download.docker.com/linux/ubuntu \
+          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+          > /etc/apt/sources.list.d/docker.list
+      args:
+        creates: /etc/apt/sources.list.d/docker.list
+
+    - name: Install Docker Engine and Compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Enable and start Docker service
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Add deploy user to docker group
+      ansible.builtin.user:
+        name: "{{ vm_user | default('ubuntu') }}"
+        groups: docker
+        append: true
+
+    # ── Filesystem ───────────────────────────────────────────────────────────
+
+    - name: Create deploy directory
+      ansible.builtin.file:
+        path: /opt/docker/nexustale
+        state: directory
+        owner: "{{ vm_user | default('ubuntu') }}"
+        mode: "0750"
+
+    - name: Create backup directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - /opt/backups/nexustale/db
+        - /opt/backups/nexustale/repos
+
+    # ── Firewall (ufw) ────────────────────────────────────────────────────────
+    # ufw is a convenience layer; EC2 security groups are the real perimeter.
+    # Allow only SSH, HTTP (for Let's Encrypt), and HTTPS.
+    # Ports 8080 (API) and 9000/9001 (MinIO) stay closed to the public.
+
+    - name: Allow SSH
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+
+    - name: Allow HTTP
+      community.general.ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+
+    - name: Allow HTTPS
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+
+    - name: Enable ufw
+      community.general.ufw:
+        state: enabled
+        policy: deny
+
+    # ── Verify ────────────────────────────────────────────────────────────────
+
+    - name: Verify Docker is working
+      ansible.builtin.command: docker run --rm hello-world
+      register: docker_hello
+      changed_when: false
+
+    - name: Print Docker verification
+      ansible.builtin.debug:
+        msg: "Docker is working correctly on {{ inventory_hostname }}"

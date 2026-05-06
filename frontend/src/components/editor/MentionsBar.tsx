@@ -90,7 +90,7 @@ export default function MentionsBar({
 
   return (
     <>
-      <div className="flex items-center gap-1.5 px-8 py-1.5 border-t border-brand-border/40 bg-brand-bg flex-wrap">
+      <div data-tour="mentions-bar" className="flex items-center gap-1.5 px-8 py-1.5 border-t border-brand-border/40 bg-brand-bg flex-wrap">
         <span className="text-[10px] text-brand-muted uppercase tracking-wider font-semibold shrink-0 mr-0.5">
           In this scene
         </span>

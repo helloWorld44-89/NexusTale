@@ -836,7 +836,7 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 **Alpha UX / onboarding**
 - No Go stack traces or raw DB errors in any API response (`apperror` messages audited)
 - Guide wizard surfaced prominently on first project (existing CTA on ProjectHome)
-- [ ] **P1** First-time walkthrough — 6-step tooltip overlay for new editors (C8); localStorage-persisted, skippable, re-triggerable from Settings
+- [x] **P1** First-time walkthrough — 6-step tooltip overlay for new editors (C8); localStorage-persisted, skippable, re-triggerable from Settings
 - "Give feedback" link visible in the app (Settings page or TopBar) — Discord / email / form
 - Invite email template with direct link to `/invites/:token`
 - Known-limitations one-pager shared with alpha users: async collaboration only (no live co-editing), no mobile optimization, AI requires user-supplied API keys
@@ -1334,9 +1334,9 @@ CREATE TABLE scene_entity_mentions (
 - "Clear all tags" button at the end of the chip row
 - Global toggle in Settings → Manuscript → "Auto-tag wiki entities" (calls `PATCH /projects/:id` with `auto_tag_enabled: false`)
 
-- [ ] Backend: `scene_entity_mentions` migration + `tagger.go` detection service + 3 routes
-- [ ] `BuildContext`: switch entity resolution to use `scene_entity_mentions` table
-- [ ] Frontend: `MentionsBar.tsx` chip row + right-click remove + global settings toggle
+- [x] Backend: `scene_entity_mentions` migration + `tagger.go` detection service + 3 routes
+- [x] `BuildContext`: switch entity resolution to use `scene_entity_mentions` table
+- [x] Frontend: `MentionsBar.tsx` chip row + right-click remove + global settings toggle
 
 ---
 
@@ -1363,10 +1363,10 @@ CREATE TABLE scene_entity_mentions (
 - Contents: entity name, type badge, first ~150 chars of description, optional portrait thumbnail, "Open in Wiki →" link
 - Positions above or below the span based on available viewport space
 
-- [ ] Migrate ScribeEditor textarea → TipTap; verify all existing features still work
-- [ ] `EntityMention` TipTap Mark + client-side position detection from C7.0 mention list
-- [ ] `EntityHoverCard.tsx` popup component
-- [ ] Right-click → "Remove tag" on highlighted span
+- [x] Migrate ScribeEditor textarea → TipTap; verify all existing features still work
+- [x] `EntityMention` TipTap Mark + client-side position detection from C7.0 mention list
+- [x] `EntityHoverCard.tsx` popup component
+- [x] Right-click → "Remove tag" on highlighted span
 
 ---
 
@@ -1401,10 +1401,10 @@ A tooltip-sequence walkthrough shown automatically on a writer's first visit to 
 | 6 | TopBar Chronicle button | "Chronicle saves a named snapshot of your manuscript — like git commit for your story. Use it after any meaningful session." |
 
 **Implementation checklist**
-- [ ] `WalkthroughOverlay.tsx` — backdrop + tooltip bubble; `step` index drives which element is spotlighted (via `getBoundingClientRect` + a `position: fixed` highlight ring)
-- [ ] `useWalkthrough.ts` — reads/writes `localStorage`; exposes `{ active, step, next, skip }` to the overlay
-- [ ] Wire into `Editor.tsx`: render `<WalkthroughOverlay>` when `active === true`; pass `ref`s or query selectors for each spotlight target
-- [ ] Settings page: "Restart walkthrough" button clears the localStorage flag
+- [x] `WalkthroughOverlay.tsx` — backdrop + tooltip bubble; `step` index drives which element is spotlighted (via `getBoundingClientRect` + a `position: fixed` highlight ring)
+- [x] `useWalkthrough.ts` — reads/writes `localStorage`; exposes `{ active, step, next, skip }` to the overlay
+- [x] Wire into `Editor.tsx`: render `<WalkthroughOverlay>` when `active === true`; `data-tour` attributes on each spotlight target
+- [x] Settings page: "Restart walkthrough" button clears the localStorage flag
 
 ---
 
