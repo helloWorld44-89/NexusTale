@@ -266,7 +266,7 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-brand-bg">
+    <div data-tour="scribe-editor" className="flex-1 flex flex-col overflow-hidden bg-brand-bg">
 
       {/* Scene title strip */}
       <div className="px-8 pt-8 pb-3 max-w-3xl w-full mx-auto">

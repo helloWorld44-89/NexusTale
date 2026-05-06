@@ -18,6 +18,8 @@ import ProjectExplorer from '@/components/project/ProjectExplorer'
 import type { ActItem } from '@/components/project/ProjectExplorer'
 import ActivityBar from '@/components/layout/ActivityBar'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
+import WalkthroughOverlay from '@/components/shared/WalkthroughOverlay'
+import { useWalkthrough } from '@/hooks/useWalkthrough'
 
 export type LeftPanel = 'chat' | 'context' | 'workshop' | 'git' | 'wiki' | 'annotations' | 'none'
 
@@ -72,6 +74,8 @@ export default function Editor() {
   const saveTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSaveRef  = useRef<(() => void) | null>(null)
   const scribeEditorRef = useRef<ScribeEditorHandle>(null)
+
+  const walkthrough = useWalkthrough(!loading)
 
   const handlePhaseChange = useCallback(async (phase: string) => {
     if (!projectId || !accessToken) return
@@ -507,6 +511,14 @@ export default function Editor() {
           wordCount={wordCount}
           chapterTitle={activeChapter?.title ?? ''}
           sceneTitle={activeScene?.title ?? ''}
+        />
+      )}
+
+      {walkthrough.active && (
+        <WalkthroughOverlay
+          step={walkthrough.step}
+          onNext={walkthrough.next}
+          onSkip={walkthrough.skip}
         />
       )}
     </div>

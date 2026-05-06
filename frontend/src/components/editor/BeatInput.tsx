@@ -132,7 +132,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
 
   if (!open) {
     return (
-      <div className="flex justify-center items-center gap-3 py-2 border-t border-brand-border/40">
+      <div data-tour="beat-input" className="flex justify-center items-center gap-3 py-2 border-t border-brand-border/40">
         <button
           onClick={openBeat}
           className="flex items-center gap-1.5 px-3 py-1 rounded text-xs text-brand-purple hover:text-brand-text hover:bg-brand-purple/10 border border-brand-purple/30 hover:border-brand-purple/60 transition-all"

@@ -17,7 +17,7 @@ export default function ActivityBar({
   onToggleContext, onToggleWorkshop, onToggleAnnotations, annotationCount,
 }: ActivityBarProps) {
   return (
-    <div className="w-12 flex flex-col items-center py-2 gap-1 bg-brand-bg border-r border-brand-border shrink-0">
+    <div data-tour="activity-bar" className="w-12 flex flex-col items-center py-2 gap-1 bg-brand-bg border-r border-brand-border shrink-0">
       <ActivityButton
         active={activePanel === 'chat'}
         title="AI Chat (Ctrl+Shift+C)"
@@ -46,6 +46,7 @@ export default function ActivityBar({
         active={activePanel === 'git'}
         title="Chronicle (Git)"
         onClick={onToggleGit}
+        dataTour="chronicle-button"
       >
         <BranchIcon />
       </ActivityButton>
@@ -76,17 +77,20 @@ function ActivityButton({
   onClick,
   children,
   badge,
+  dataTour,
 }: {
   active: boolean
   title: string
   onClick: () => void
   children: React.ReactNode
   badge?: number
+  dataTour?: string
 }) {
   return (
     <button
       title={title}
       onClick={onClick}
+      data-tour={dataTour}
       className={`w-9 h-9 flex items-center justify-center rounded transition-colors relative ${
         active
           ? 'text-brand-cyan'

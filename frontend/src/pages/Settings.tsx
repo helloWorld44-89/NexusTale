@@ -836,6 +836,23 @@ export default function Settings() {
           </div>
         </section>
 
+        {/* Editor Walkthrough */}
+        <section>
+          <h2 className="text-lg font-semibold text-brand-text mb-1">Editor Walkthrough</h2>
+          <p className="text-sm text-brand-text-muted mb-4">
+            Replay the 6-step tour that introduces the editor surfaces.
+          </p>
+          <button
+            onClick={() => {
+              localStorage.removeItem('nexustale_tour_done')
+              window.history.back()
+            }}
+            className="px-4 py-2 rounded-lg border border-brand-border text-brand-muted text-sm font-medium hover:text-brand-text hover:border-brand-cyan/40 transition-colors"
+          >
+            Restart walkthrough
+          </button>
+        </section>
+
         {/* Danger Zone */}
         <section>
           <h2 className="text-lg font-semibold text-red-400 mb-1">Danger Zone</h2>
