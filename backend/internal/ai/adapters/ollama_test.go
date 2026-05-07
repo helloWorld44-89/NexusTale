@@ -177,8 +177,8 @@ func TestOllamaAdapter_StreamComplete_Non200ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-200 response, got nil")
 	}
-	if !strings.Contains(err.Error(), "404") {
-		t.Errorf("expected 404 in error message, got: %v", err)
+	if !strings.Contains(err.Error(), "model not found") {
+		t.Errorf("expected 'model not found' in error message, got: %v", err)
 	}
 }
 
