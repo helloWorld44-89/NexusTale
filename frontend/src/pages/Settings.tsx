@@ -877,6 +877,11 @@ export default function Settings() {
         </section>
       </main>
 
+      {/* Version footer */}
+      <p className="text-center text-xs text-brand-muted/50 py-6">
+        NexusTale {import.meta.env.VITE_APP_VERSION ?? 'dev'}
+      </p>
+
       {/* Delete account confirm dialog */}
       {showDeleteDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
