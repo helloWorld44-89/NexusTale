@@ -359,6 +359,9 @@ export const api = {
 
     refresh: (refreshToken: string) =>
       request<TokenPair>('POST', '/auth/refresh', { refresh_token: refreshToken }),
+
+    registrationStatus: () =>
+      request<{ open: boolean }>('GET', '/auth/registration-status'),
   },
 
   projects: {

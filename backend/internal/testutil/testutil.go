@@ -133,7 +133,7 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 	collabService        := collaboration.NewService(queries)
 	collabService.WithNotificationService(notifService)
 
-	authHandler        := auth.NewHandler(authService)
+	authHandler        := auth.NewHandler(authService, true) // open in tests
 	projectHandler     := project.NewHandler(projectService)
 	wikiHandler        := wiki.NewHandler(wikiService)
 	researchHandler    := research.NewHandler(researchService)
