@@ -28,6 +28,7 @@ import (
 	"github.com/jconder44/nexustale/internal/wiki"
 	"github.com/jconder44/nexustale/pkg/db"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
+	"github.com/jconder44/nexustale/pkg/ratelimit"
 	"github.com/jconder44/nexustale/pkg/storage"
 )
 
@@ -198,6 +199,7 @@ func main() {
 	v1 := router.Group("/api/v1")
 	{
 		authGroup := v1.Group("/auth")
+		authGroup.Use(ratelimit.ByIP(10, time.Minute))
 		authHandler.RegisterRoutes(authGroup)
 
 		authHandler.RegisterAPIKeyRoutes(v1)
@@ -222,6 +224,7 @@ func main() {
 		wikiHandler.RegisterMentionRoutes(mentionGroup)
 
 		aiGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
+		aiGroup.Use(ratelimit.ByUser(30, time.Minute))
 		aiHandler.RegisterRoutes(aiGroup)
 
 		// User-scoped AI routes (no project context required).
