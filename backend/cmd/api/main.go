@@ -31,6 +31,11 @@ import (
 	"github.com/jconder44/nexustale/pkg/storage"
 )
 
+// Version is set at build time via:
+//   go build -ldflags "-X main.Version=v0.1.0"
+// Defaults to "dev" for local builds.
+var Version = "dev"
+
 // corsMiddleware sets CORS headers. allowedOrigin is compared against the
 // request Origin header; "*" permits any origin (dev only).
 func corsMiddleware(allowedOrigin string) gin.HandlerFunc {
@@ -187,7 +192,7 @@ func main() {
 	router.Use(corsMiddleware(cfg.Server.AllowedOrigin))
 
 	router.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "version": Version})
 	})
 
 	v1 := router.Group("/api/v1")

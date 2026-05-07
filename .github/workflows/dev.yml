@@ -59,6 +59,12 @@ jobs:
           sqlc generate
           git diff --exit-code pkg/db/sqlcgen/
 
+      - name: Compute version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Version: $VERSION"
+
       - name: Prune Docker build cache and unused images
         run: docker system prune -af
 
@@ -68,6 +74,7 @@ jobs:
       - name: Build and push API image
         run: |
           docker build \
+            --build-arg APP_VERSION=${{ env.APP_VERSION }} \
             -f infra/docker/Dockerfile.api \
             -t ghcr.io/helloworld44-89/nexustale/api:dev \
             -t ghcr.io/helloworld44-89/nexustale/api:${{ github.sha }} \
@@ -78,6 +85,7 @@ jobs:
       - name: Build and push frontend image
         run: |
           docker build \
+            --build-arg APP_VERSION=${{ env.APP_VERSION }} \
             -f infra/docker/Dockerfile.frontend \
             -t ghcr.io/helloworld44-89/nexustale/frontend:dev \
             -t ghcr.io/helloworld44-89/nexustale/frontend:${{ github.sha }} \
