@@ -502,9 +502,9 @@ export default function Settings() {
             <section>
               <h2 className="text-lg font-semibold text-brand-text mb-1">Google Gemini</h2>
               <p className="text-sm text-brand-text-muted mb-4">
-                Gemini 2.0 Flash is the recommended default — fast and has a generous free tier.
-                Switch to <span className="font-mono text-brand-text">gemini-1.5-pro</span> for the
-                1M-token context window (fits an entire novel in context).
+                Gemini 2.5 Flash is the recommended default — fast, generous free tier, and the
+                best-supported model on Gemini's OpenAI-compatible endpoint. Select a model below
+                after clicking Test Connection.
               </p>
               <div className="rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3">

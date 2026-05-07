@@ -387,15 +387,15 @@ func pingGemini(ctx context.Context, key string) ([]string, error) {
 		return nil, fmt.Errorf("unexpected Gemini response: %w", err)
 	}
 
-	// Return a curated set. gemini-2.0-flash is the recommended default
-	// (fast, generous free tier). gemini-1.5-pro has the 1M-token context window.
+	// Return a curated set of currently supported models.
+	// Prefer the versioned 2.x IDs which are stable on the OpenAI-compat endpoint.
+	// 1.5 models were deprecated Feb 2025 and may not generate via this endpoint.
 	priority := []string{
-		"gemini-2.0-flash",
-		"gemini-2.0-flash-lite",
 		"gemini-2.5-flash",
 		"gemini-2.5-pro",
-		"gemini-1.5-flash",
-		"gemini-1.5-pro",
+		"gemini-2.0-flash",
+		"gemini-2.0-flash-001",
+		"gemini-2.0-flash-lite",
 	}
 	// The /v1beta/openai/models endpoint returns IDs as "models/gemini-2.0-flash".
 	// Strip the prefix so priority lookup and fallback both use bare model names.
