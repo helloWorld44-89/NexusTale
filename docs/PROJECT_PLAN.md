@@ -748,7 +748,7 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - [x] **P0** JWT secret + encryption key rotated to ≥32-byte random values in prod (not dev defaults) — `config.ValidateProd()` exits on startup if defaults detected in release mode
 - [x] **P0** MinIO root credentials changed from defaults — `config.ValidateProd()` rejects defaults in release mode
 - [x] **P0** CORS `AllowOrigins` locked to the app domain, not `*`, in prod Gin config — `corsMiddleware` + `NEXUSTALE_SERVER_ALLOWEDORIGIN`
-- [ ] **P0** TLS on all external traffic — nginx terminates (Let's Encrypt / certbot); HSTS header set
+- [x] **P0** TLS on all external traffic — nginx terminates (Let's Encrypt / certbot); HSTS `max-age=63072000; includeSubDomains` set in `infra/ansible/templates/nginx.ssl.conf.j2`
 - [x] **P1** Refresh token revocation: tokens invalidated on use (rotation), not only on logout — `Refresh()` already calls `DeleteRefreshToken` before issuing new pair; audited clean
 - [x] **P1** `RequireProjectAccess` middleware applied to every project-scoped route; reviewer read-only enforced server-side on Chronicle/Diverge
 - [x] **P1** `encrypted_key` (AI keys) never logged or returned in any response; only `key_hint` is external — `APIKeyResponse` omits `EncryptedKey`; `toAPIKeyResponse()` maps only safe fields; `DecryptAPIKey()` used only internally
@@ -819,7 +819,7 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 **Environment checklist**
 - [x] **P0** TLS certificate provisioned for the alpha domain — certbot standalone + Ansible `deploy-dev.yml`; Let's Encrypt cert issued on first deploy when `nexustale_domain` is set; weekly renewal cron
 - [x] **P0** EC2 alpha deployment pipeline — `bootstrap-ec2.yml` one-time provisioner (Docker CE, UFW, backup dirs); `.github/workflows/alpha.yml` triggers on `master` push; builds `alpha`+`{sha}` tagged images to GHCR; deploys via existing `deploy-dev.yml` Ansible playbook with `ALPHA_*` GitHub secrets
-- [ ] **P0** All P0 security items resolved
+- [x] **P0** All P0 security items resolved
 - [x] **P0** Postgres daily backup: `pg_dump` cron → compressed dump → off-host storage (7-day retention) — Ansible cron at 02:00; 7-day rotation
 - [x] **P0** Git repo backup: nightly tar of `repos/` alongside DB dump — Ansible cron at 02:15
 - [x] **P1** Structured log capture: Docker `json-file` driver with `max-size=50m`, `max-file=5` — `x-logging` anchor in `docker-compose.deploy.yml` applied to all services
@@ -828,8 +828,8 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - [ ] **P2** Admin AI usage view: `ai_usage` table queryable via psql or a simple Grafana panel
 
 **Pre-launch code checklist**
-- [ ] **P0** All P0 code review items resolved
-- [ ] **P0** All P0 security review items resolved
+- [x] **P0** All P0 code review items resolved
+- [x] **P0** All P0 security review items resolved
 - [x] **P1** `govulncheck` + `npm audit` clean
 - [x] **P1** `npx tsc --noEmit` and `go build ./...` clean on the release commit
 - [x] Full smoke test on alpha env: register → guide wizard → write scene → Chronicle → wiki entity → Markdown export → invite collaborator → open MR → resolve → merge

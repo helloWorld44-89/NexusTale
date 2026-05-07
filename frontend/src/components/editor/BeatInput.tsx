@@ -20,15 +20,16 @@ interface BeatInputProps {
 }
 
 export default function BeatInput({ token, projectId, sceneId, promptId, branch, projectPhase, onAccept }: BeatInputProps) {
-  const [open, setOpen]           = useState(false)
-  const [mode, setMode]           = useState<Mode>('beat')
-  const [beat, setBeat]           = useState('')
-  const [generated, setGenerated] = useState('')
-  const [streaming, setStreaming] = useState(false)
-  const [error, setError]         = useState<string | null>(null)
-  const [history, setHistory]     = useState<BeatHistoryEntry[]>([])
+  const [open, setOpen]                   = useState(false)
+  const [mode, setMode]                   = useState<Mode>('beat')
+  const [beat, setBeat]                   = useState('')
+  const [generated, setGenerated]         = useState('')
+  const [streaming, setStreaming]         = useState(false)
+  const [streamAttempted, setStreamAttempted] = useState(false)
+  const [error, setError]                 = useState<string | null>(null)
+  const [history, setHistory]             = useState<BeatHistoryEntry[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
-  const abortRef                  = useRef<AbortController | null>(null)
+  const abortRef                          = useRef<AbortController | null>(null)
 
   // Abort any in-flight stream when the component unmounts.
   useEffect(() => {
@@ -49,6 +50,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
     setGenerated('')
     setError(null)
     setStreaming(true)
+    setStreamAttempted(true)
     abortRef.current = new AbortController()
 
     try {
@@ -117,6 +119,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
     setBeat('')
     setError(null)
     setStreaming(false)
+    setStreamAttempted(false)
     setOpen(false)
   }
 
@@ -206,7 +209,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
       {mode === 'continue' && (
         <div className="flex items-center gap-2 mb-2">
           <span className="flex-1 text-xs text-brand-muted italic">
-            {streaming ? 'Writing from here…' : 'Continuation ready'}
+            {streaming ? 'Writing from here…' : generated ? 'Continuation ready — accept or retry' : 'Starting continuation…'}
           </span>
           {streaming && (
             <button
@@ -256,6 +259,13 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
             <span className="inline-block w-1.5 h-4 ml-0.5 bg-brand-cyan/70 animate-pulse align-middle" />
           )}
         </div>
+      )}
+
+      {/* Empty result — stream completed but nothing was generated */}
+      {!streaming && !generated && !error && mode === 'continue' && streamAttempted && (
+        <p className="text-xs text-brand-muted mb-2">
+          Nothing was generated — your scene may be empty, or check your AI key in Settings.
+        </p>
       )}
 
       {error && (

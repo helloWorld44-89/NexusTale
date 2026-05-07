@@ -110,7 +110,7 @@ func Load() (*Config, error) {
 	v.SetDefault("db.minconns", 2)
 	v.SetDefault("db.migrationspath", "file://pkg/db/migrations")
 	v.SetDefault("auth.jwtsecret", "change-me-in-production")
-	v.SetDefault("auth.accesstokenexpiry", "15m")
+	v.SetDefault("auth.accesstokenexpiry", "8h")
 	v.SetDefault("auth.refreshtokenexpiry", "168h") // 7 days
 	v.SetDefault("auth.bcryptcost", 12)
 	v.SetDefault("redis.url", "redis://localhost:6379")

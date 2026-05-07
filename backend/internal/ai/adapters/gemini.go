@@ -38,6 +38,7 @@ type GeminiAdapter struct {
 }
 
 func NewGeminiAdapter(apiKey, model string) *GeminiAdapter {
+	model = strings.TrimPrefix(model, "models/")
 	if model == "" {
 		model = "gemini-2.0-flash"
 	}
@@ -59,7 +60,12 @@ func (a *GeminiAdapter) buildMessages(req CompleteRequest) []openAIMessage {
 	if req.SystemPrompt != "" && !a.thinking {
 		msgs = append(msgs, openAIMessage{Role: "system", Content: req.SystemPrompt})
 	}
-	msgs = append(msgs, openAIMessage{Role: "user", Content: req.Content})
+	content := req.Content
+	if content == "" {
+		// Gemini rejects requests with an empty user turn.
+		content = "Continue the story."
+	}
+	msgs = append(msgs, openAIMessage{Role: "user", Content: content})
 	return msgs
 }
 
