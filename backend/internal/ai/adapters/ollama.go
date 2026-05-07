@@ -11,6 +11,17 @@ import (
 	"time"
 )
 
+// ollamaErrorMessage parses Ollama's error body: {"error": "..."}.
+func ollamaErrorMessage(status int, body []byte) error {
+	var env struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &env) == nil && env.Error != "" {
+		return fmt.Errorf("Ollama error: %s", env.Error)
+	}
+	return fmt.Errorf("ollama %d: %s", status, string(body))
+}
+
 // OllamaAdapter speaks to a local Ollama server (default http://localhost:11434).
 // It uses the /api/chat endpoint with the OpenAI-compatible message format.
 // No API key is required.
@@ -109,7 +120,7 @@ func (a *OllamaAdapter) Complete(ctx context.Context, req CompleteRequest) (stri
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("ollama %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, ollamaErrorMessage(resp.StatusCode, b)
 	}
 
 	// Non-streaming Ollama returns a single JSON object (not NDJSON).
@@ -146,7 +157,7 @@ func (a *OllamaAdapter) StreamComplete(ctx context.Context, req CompleteRequest,
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("ollama %d: %s", resp.StatusCode, string(b))
+		return Usage{}, ollamaErrorMessage(resp.StatusCode, b)
 	}
 
 	return parseOllamaStream(resp.Body, w)
@@ -176,7 +187,7 @@ func (a *OllamaAdapter) Chat(ctx context.Context, req ChatRequest) (string, Usag
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("ollama %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, ollamaErrorMessage(resp.StatusCode, b)
 	}
 
 	var chunk ollamaStreamChunk
@@ -212,7 +223,7 @@ func (a *OllamaAdapter) StreamChat(ctx context.Context, req ChatRequest, w io.Wr
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("ollama %d: %s", resp.StatusCode, string(b))
+		return Usage{}, ollamaErrorMessage(resp.StatusCode, b)
 	}
 
 	return parseOllamaStream(resp.Body, w)

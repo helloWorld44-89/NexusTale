@@ -130,7 +130,7 @@ func (a *DeepSeekAdapter) Complete(ctx context.Context, req CompleteRequest) (st
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("deepseek %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, openAIErrorMessage("DeepSeek", resp.StatusCode, b)
 	}
 
 	var result openAIResponse
@@ -175,7 +175,7 @@ func (a *DeepSeekAdapter) StreamComplete(ctx context.Context, req CompleteReques
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("deepseek %d: %s", resp.StatusCode, string(b))
+		return Usage{}, openAIErrorMessage("DeepSeek", resp.StatusCode, b)
 	}
 
 	return parseOpenAIStream(resp.Body, w)
@@ -199,7 +199,7 @@ func (a *DeepSeekAdapter) Chat(ctx context.Context, req ChatRequest) (string, Us
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("deepseek %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, openAIErrorMessage("DeepSeek", resp.StatusCode, b)
 	}
 
 	var result openAIResponse
@@ -234,7 +234,7 @@ func (a *DeepSeekAdapter) StreamChat(ctx context.Context, req ChatRequest, w io.
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("deepseek %d: %s", resp.StatusCode, string(b))
+		return Usage{}, openAIErrorMessage("DeepSeek", resp.StatusCode, b)
 	}
 
 	return parseOpenAIStream(resp.Body, w)
@@ -302,7 +302,7 @@ func (a *DeepSeekAdapter) ChatTools(ctx context.Context, msgs []Message, extraMs
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return ToolChatResponse{}, fmt.Errorf("deepseek %d: %s", resp.StatusCode, string(b))
+		return ToolChatResponse{}, openAIErrorMessage("DeepSeek", resp.StatusCode, b)
 	}
 
 	var result openAIToolsResponse

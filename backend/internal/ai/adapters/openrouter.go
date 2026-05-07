@@ -137,7 +137,7 @@ func (a *OpenRouterAdapter) Complete(ctx context.Context, req CompleteRequest) (
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("openrouter %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, openAIErrorMessage("OpenRouter", resp.StatusCode, b)
 	}
 
 	var result openAIResponse
@@ -182,7 +182,7 @@ func (a *OpenRouterAdapter) StreamComplete(ctx context.Context, req CompleteRequ
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("openrouter %d: %s", resp.StatusCode, string(b))
+		return Usage{}, openAIErrorMessage("OpenRouter", resp.StatusCode, b)
 	}
 
 	return parseOpenAIStream(resp.Body, w)
@@ -206,7 +206,7 @@ func (a *OpenRouterAdapter) Chat(ctx context.Context, req ChatRequest) (string, 
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("openrouter %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, openAIErrorMessage("OpenRouter", resp.StatusCode, b)
 	}
 
 	var result openAIResponse
@@ -241,7 +241,7 @@ func (a *OpenRouterAdapter) StreamChat(ctx context.Context, req ChatRequest, w i
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("openrouter %d: %s", resp.StatusCode, string(b))
+		return Usage{}, openAIErrorMessage("OpenRouter", resp.StatusCode, b)
 	}
 
 	return parseOpenAIStream(resp.Body, w)
@@ -308,7 +308,7 @@ func (a *OpenRouterAdapter) ChatTools(ctx context.Context, msgs []Message, extra
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return ToolChatResponse{}, fmt.Errorf("openrouter %d: %s", resp.StatusCode, string(b))
+		return ToolChatResponse{}, openAIErrorMessage("OpenRouter", resp.StatusCode, b)
 	}
 
 	var result openAIToolsResponse

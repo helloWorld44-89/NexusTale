@@ -70,6 +70,34 @@ type anthropicResponse struct {
 	} `json:"usage"`
 }
 
+// anthropicErrorMessage parses the Anthropic error envelope:
+//
+//	{"type":"error","error":{"type":"overloaded_error","message":"..."}}
+//
+// Falls back to the raw body if parsing fails.
+func anthropicErrorMessage(status int, body []byte) error {
+	var envelope struct {
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &envelope) == nil && envelope.Error.Message != "" {
+		msg := envelope.Error.Message
+		if status == 529 || envelope.Error.Type == "overloaded_error" {
+			return fmt.Errorf("Anthropic is overloaded — please try again in a moment")
+		}
+		if status == 429 {
+			return fmt.Errorf("Anthropic rate limit exceeded: %s", msg)
+		}
+		if status == 401 || status == 403 {
+			return fmt.Errorf("Anthropic authentication error: %s", msg)
+		}
+		return fmt.Errorf("Anthropic error %d (%s): %s", status, envelope.Error.Type, msg)
+	}
+	return fmt.Errorf("anthropic %d: %s", status, string(body))
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func (a *AnthropicAdapter) estimateCost(input, output int) float64 {
@@ -128,7 +156,7 @@ func (a *AnthropicAdapter) Complete(ctx context.Context, req CompleteRequest) (s
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, anthropicErrorMessage(resp.StatusCode, b)
 	}
 
 	var result anthropicResponse
@@ -170,7 +198,7 @@ func (a *AnthropicAdapter) StreamComplete(ctx context.Context, req CompleteReque
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
+		return Usage{}, anthropicErrorMessage(resp.StatusCode, b)
 	}
 
 	return parseAnthropicStream(resp.Body, w)
@@ -210,7 +238,7 @@ func (a *AnthropicAdapter) Chat(ctx context.Context, req ChatRequest) (string, U
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, anthropicErrorMessage(resp.StatusCode, b)
 	}
 
 	var result anthropicResponse
@@ -261,7 +289,7 @@ func (a *AnthropicAdapter) StreamChat(ctx context.Context, req ChatRequest, w io
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
+		return Usage{}, anthropicErrorMessage(resp.StatusCode, b)
 	}
 
 	return parseAnthropicStream(resp.Body, w)
@@ -370,7 +398,7 @@ func (a *AnthropicAdapter) ChatTools(ctx context.Context, msgs []Message, extraM
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return ToolChatResponse{}, fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
+		return ToolChatResponse{}, anthropicErrorMessage(resp.StatusCode, b)
 	}
 
 	var result anthropicToolResponse

@@ -130,7 +130,7 @@ func (a *GroqAdapter) Complete(ctx context.Context, req CompleteRequest) (string
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("groq %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, openAIErrorMessage("Groq", resp.StatusCode, b)
 	}
 
 	var result openAIResponse
@@ -175,7 +175,7 @@ func (a *GroqAdapter) StreamComplete(ctx context.Context, req CompleteRequest, w
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("groq %d: %s", resp.StatusCode, string(b))
+		return Usage{}, openAIErrorMessage("Groq", resp.StatusCode, b)
 	}
 
 	return parseOpenAIStream(resp.Body, w)
@@ -199,7 +199,7 @@ func (a *GroqAdapter) Chat(ctx context.Context, req ChatRequest) (string, Usage,
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("groq %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, openAIErrorMessage("Groq", resp.StatusCode, b)
 	}
 
 	var result openAIResponse
@@ -234,7 +234,7 @@ func (a *GroqAdapter) StreamChat(ctx context.Context, req ChatRequest, w io.Writ
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("groq %d: %s", resp.StatusCode, string(b))
+		return Usage{}, openAIErrorMessage("Groq", resp.StatusCode, b)
 	}
 
 	return parseOpenAIStream(resp.Body, w)
@@ -299,7 +299,7 @@ func (a *GroqAdapter) ChatTools(ctx context.Context, msgs []Message, extraMsgs [
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return ToolChatResponse{}, fmt.Errorf("groq %d: %s", resp.StatusCode, string(b))
+		return ToolChatResponse{}, openAIErrorMessage("Groq", resp.StatusCode, b)
 	}
 
 	var result openAIToolsResponse
