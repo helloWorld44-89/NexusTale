@@ -501,6 +501,12 @@ The author opts in to giving Nexus direct write access to the manuscript — the
 - ✅ WorkshopPanel: `AgentPhase` state (idle/planning/executing/replying); status bar switches copy per phase with spinner; Stop button always visible during agent run; round counter in planning state; agent-optimized 2-row input + `AgentSendIcon`; passes `max_rounds:25` when tools enabled
 - ✅ `NexusThinking` component: 18 general + 10 agent sci-fi/fantasy phrases, random start, 2.2s cycle with 0.3s fade, pulsing orb icon — wired into ChatBar, WorkshopPanel (agentMode when Writes ON), BeatInput (shown before first token arrives)
 
+**Step 5 — Wiki tools** ✅ complete (2026-05-07)
+- ✅ 4 new tools added to `ManuscriptTools` in `ai/tools.go`: `list_wiki_entities` (optional type filter), `create_wiki_entity` (type enum validated), `update_wiki_entity` (partial update via `pgtype.Text`), `create_wiki_relationship` (from/to entity IDs + relationship type/description)
+- ✅ Implementations use `s.queries` (sqlcgen) directly — no circular import with `internal/wiki`
+- ✅ `ToolEvent.created_type` extended with `"wiki_entity"` and `"wiki_relationship"` values
+- ✅ WorkshopPanel `canUndo()` + `handleUndo()` handle both new created types via `api.wiki.deleteEntity` / `api.wiki.deleteRelationship`
+
 #### C3 — Collaboration (git-backed, async)
 
 Novel collaboration is fundamentally **async** — co-authors work on different chapters at different times, editors annotate a draft and hand it back, reviewers read and comment. This makes a git-backed PR model a better fit than real-time CRDT for this domain.
@@ -969,6 +975,7 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - ✅ `[Medium]` **Manuscript tool definitions** — `append_to_scene/replace/create_scene/create_chapter/create_act`; server-side execution; `ToolEvent` SSE with undo metadata; OpenAI + Anthropic adapter support
 - ✅ `[Medium]` **Author control + feedback** — "Writes ON/OFF" toggle; collapsible AgentRunBlock with per-action Undo; live scene refresh; `onStructureChange` for create undos
 - ✅ `[Heavy]` **Agent mode** — max 25 rounds; `agent_planning` SSE events; AgentPhase state machine; NexusThinking cycling annotations
+- ✅ `[Medium]` **Wiki tools** — `list_wiki_entities/create_wiki_entity/update_wiki_entity/create_wiki_relationship`; sqlcgen direct queries; `ToolEvent.created_type` extended (`wiki_entity`/`wiki_relationship`); undo in WorkshopPanel calls `api.wiki.deleteEntity/deleteRelationship`
 
 **C3 — Collaboration (git-backed async)**
 - ✅ `[Medium]` **C3.0** — Collaborator roles + invite system (migrations 022 + 023; `internal/collaboration`; `CollaboratorsPanel`; accept page; project list union)

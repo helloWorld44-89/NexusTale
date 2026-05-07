@@ -321,6 +321,10 @@ export default function WorkshopPanel({
       } else if (evt.created_type === 'act' && evt.created_id && evt.project_id) {
         await api.acts.delete(token, evt.project_id, evt.created_id)
         onStructureChange?.()
+      } else if (evt.created_type === 'wiki_entity' && evt.created_id && evt.project_id) {
+        await api.wiki.deleteEntity(token, evt.project_id, evt.created_id)
+      } else if (evt.created_type === 'wiki_relationship' && evt.created_id && evt.project_id) {
+        await api.wiki.deleteRelationship(token, evt.project_id, evt.created_id)
       }
       setMessages((prev) =>
         prev.map((m, i) => i === msgIndex ? { ...m, toolUndone: true } : m)
@@ -797,7 +801,9 @@ function canUndo(evt: ToolCallEvent): boolean {
   if ((evt.tool === 'append_to_scene' || evt.tool === 'replace_scene_content') && evt.scene_id && evt.chapter_id) return true
   if (evt.created_type === 'scene'   && evt.created_id && evt.chapter_id) return true
   if (evt.created_type === 'chapter' && evt.created_id && evt.act_id && evt.project_id) return true
-  if (evt.created_type === 'act'     && evt.created_id && evt.project_id) return true
+  if (evt.created_type === 'act'          && evt.created_id && evt.project_id) return true
+  if (evt.created_type === 'wiki_entity'  && evt.created_id && evt.project_id) return true
+  if (evt.created_type === 'wiki_relationship' && evt.created_id && evt.project_id) return true
   return false
 }
 

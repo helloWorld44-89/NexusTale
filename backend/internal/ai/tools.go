@@ -93,6 +93,62 @@ var ManuscriptTools = []adapters.ToolDefinition{
 			"required": ["title"]
 		}`),
 	},
+	{
+		Name: "list_wiki_entities",
+		Description: "List all wiki entities in the project (characters, locations, factions, items, concepts, lore). " +
+			"Returns each entity's ID, type, name, and summary. Call this before create_wiki_relationship so you " +
+			"have the correct entity IDs.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"type": {"type": "string", "description": "Optional filter: character, location, faction, item, concept, or lore. Omit for all."}
+			}
+		}`),
+	},
+	{
+		Name: "create_wiki_entity",
+		Description: "Create a new wiki entry for a character, location, faction, item, concept, or lore element. " +
+			"Use this when the user asks you to add something to the wiki, or when you create a character/place in " +
+			"prose and want to record it in the project's world reference.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"type":    {"type": "string", "enum": ["character","location","faction","item","concept","lore"], "description": "Entity type"},
+				"name":    {"type": "string", "description": "Name of the entity"},
+				"summary": {"type": "string", "description": "One or two sentence description of this entity"}
+			},
+			"required": ["type", "name"]
+		}`),
+	},
+	{
+		Name: "update_wiki_entity",
+		Description: "Update the name or summary of an existing wiki entity. " +
+			"Call list_wiki_entities first to find the correct entity_id.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"entity_id": {"type": "string", "description": "UUID of the entity to update"},
+				"name":      {"type": "string", "description": "New name (omit to keep existing)"},
+				"summary":   {"type": "string", "description": "New summary (omit to keep existing)"}
+			},
+			"required": ["entity_id"]
+		}`),
+	},
+	{
+		Name: "create_wiki_relationship",
+		Description: "Record a relationship between two wiki entities (e.g. 'mentor of', 'allied with', 'sworn enemy of'). " +
+			"Call list_wiki_entities first to find the correct entity IDs.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"from_entity_id": {"type": "string", "description": "UUID of the source entity"},
+				"to_entity_id":   {"type": "string", "description": "UUID of the target entity"},
+				"type":           {"type": "string", "description": "Relationship label, e.g. 'mentor of', 'enemy of', 'located in'"},
+				"description":    {"type": "string", "description": "Optional details about the relationship"}
+			},
+			"required": ["from_entity_id", "to_entity_id", "type"]
+		}`),
+	},
 }
 
 // ToolEvent carries the result and undo metadata for a single tool execution.
@@ -113,9 +169,9 @@ type ToolEvent struct {
 	// CreatedID + CreatedType identify what was made; ParentID and ProjectID
 	// are routing context so the frontend can call the right DELETE endpoint.
 	CreatedID   string `json:"created_id,omitempty"`
-	CreatedType string `json:"created_type,omitempty"` // "scene"|"chapter"|"act"
+	CreatedType string `json:"created_type,omitempty"` // "scene"|"chapter"|"act"|"wiki_entity"|"wiki_relationship"
 	ActID       string `json:"act_id,omitempty"`        // for chapter delete: /projects/:pid/acts/:aid/chapters/:cid
-	ProjectID   string `json:"project_id,omitempty"`    // for act/chapter delete
+	ProjectID   string `json:"project_id,omitempty"`    // for act/chapter/wiki delete
 }
 
 // executeToolCall dispatches a single tool invocation and returns both the
@@ -166,6 +222,14 @@ func (s *Service) runTool(ctx context.Context, projectID uuid.UUID, tc adapters.
 		return s.toolCreateChapter(ctx, projectID, tc.Input)
 	case "create_act":
 		return s.toolCreateAct(ctx, projectID, tc.Input)
+	case "list_wiki_entities":
+		return s.toolListWikiEntities(ctx, projectID, tc.Input)
+	case "create_wiki_entity":
+		return s.toolCreateWikiEntity(ctx, projectID, tc.Input)
+	case "update_wiki_entity":
+		return s.toolUpdateWikiEntity(ctx, tc.Input)
+	case "create_wiki_relationship":
+		return s.toolCreateWikiRelationship(ctx, projectID, tc.Input)
 	default:
 		return ToolEvent{}, fmt.Errorf("unknown tool: %q", tc.Name)
 	}
@@ -390,6 +454,141 @@ func (s *Service) toolCreateAct(ctx context.Context, projectID uuid.UUID, input 
 		Result:      fmt.Sprintf("Created act %q (ID: %s) in project %s.", act.Title, act.ID, projectID),
 		CreatedID:   act.ID.String(),
 		CreatedType: "act",
+		ProjectID:   projectID.String(),
+	}, nil
+}
+
+// ── wiki tools ────────────────────────────────────────────────────────────────
+
+func (s *Service) toolListWikiEntities(ctx context.Context, projectID uuid.UUID, input json.RawMessage) (ToolEvent, error) {
+	var args struct {
+		Type string `json:"type"`
+	}
+	json.Unmarshal(input, &args) // optional — ignore parse errors
+	entities, err := s.queries.ListEntitiesByProject(ctx, sqlcgen.ListEntitiesByProjectParams{
+		ProjectID:  projectID,
+		Type: pgtype.Text{String: args.Type, Valid: args.Type != ""},
+	})
+	if err != nil {
+		return ToolEvent{}, fmt.Errorf("list entities: %w", err)
+	}
+	if len(entities) == 0 {
+		return ToolEvent{Result: "No wiki entities found for this project yet."}, nil
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Wiki entities (%d):\n\n", len(entities)))
+	for _, e := range entities {
+		summary := e.Summary
+		if len(summary) > 120 {
+			summary = summary[:120] + "…"
+		}
+		if summary != "" {
+			fmt.Fprintf(&sb, "[%s] %s (ID: %s) — %s\n", e.Type, e.Name, e.ID, summary)
+		} else {
+			fmt.Fprintf(&sb, "[%s] %s (ID: %s)\n", e.Type, e.Name, e.ID)
+		}
+	}
+	return ToolEvent{Result: sb.String()}, nil
+}
+
+func (s *Service) toolCreateWikiEntity(ctx context.Context, projectID uuid.UUID, input json.RawMessage) (ToolEvent, error) {
+	var args struct {
+		Type    string `json:"type"`
+		Name    string `json:"name"`
+		Summary string `json:"summary"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return ToolEvent{}, fmt.Errorf("invalid input: %w", err)
+	}
+	validTypes := map[string]bool{
+		"character": true, "location": true, "faction": true,
+		"item": true, "concept": true, "lore": true,
+	}
+	if !validTypes[args.Type] {
+		return ToolEvent{}, fmt.Errorf("invalid entity type %q — must be one of: character, location, faction, item, concept, lore", args.Type)
+	}
+	if args.Name == "" {
+		return ToolEvent{}, fmt.Errorf("name is required")
+	}
+	entity, err := s.queries.CreateEntity(ctx, sqlcgen.CreateEntityParams{
+		ProjectID:  projectID,
+		Type:       args.Type,
+		Name:       args.Name,
+		Summary:    args.Summary,
+		Attributes: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		return ToolEvent{}, fmt.Errorf("create entity: %w", err)
+	}
+	return ToolEvent{
+		Result:      fmt.Sprintf("Created %s %q in the wiki (ID: %s).", args.Type, entity.Name, entity.ID),
+		CreatedID:   entity.ID.String(),
+		CreatedType: "wiki_entity",
+		ProjectID:   projectID.String(),
+	}, nil
+}
+
+func (s *Service) toolUpdateWikiEntity(ctx context.Context, input json.RawMessage) (ToolEvent, error) {
+	var args struct {
+		EntityID string  `json:"entity_id"`
+		Name     *string `json:"name"`
+		Summary  *string `json:"summary"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return ToolEvent{}, fmt.Errorf("invalid input: %w", err)
+	}
+	entityID, err := uuid.Parse(args.EntityID)
+	if err != nil {
+		return ToolEvent{}, fmt.Errorf("invalid entity_id: %w", err)
+	}
+	params := sqlcgen.UpdateEntityParams{ID: entityID}
+	if args.Name != nil {
+		params.Name = pgtype.Text{String: *args.Name, Valid: true}
+	}
+	if args.Summary != nil {
+		params.Summary = pgtype.Text{String: *args.Summary, Valid: true}
+	}
+	entity, err := s.queries.UpdateEntity(ctx, params)
+	if err != nil {
+		return ToolEvent{}, fmt.Errorf("update entity: %w", err)
+	}
+	return ToolEvent{
+		Result: fmt.Sprintf("Updated %s %q (ID: %s).", entity.Type, entity.Name, entity.ID),
+	}, nil
+}
+
+func (s *Service) toolCreateWikiRelationship(ctx context.Context, projectID uuid.UUID, input json.RawMessage) (ToolEvent, error) {
+	var args struct {
+		FromEntityID string `json:"from_entity_id"`
+		ToEntityID   string `json:"to_entity_id"`
+		Type         string `json:"type"`
+		Description  string `json:"description"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return ToolEvent{}, fmt.Errorf("invalid input: %w", err)
+	}
+	fromID, err := uuid.Parse(args.FromEntityID)
+	if err != nil {
+		return ToolEvent{}, fmt.Errorf("invalid from_entity_id: %w", err)
+	}
+	toID, err := uuid.Parse(args.ToEntityID)
+	if err != nil {
+		return ToolEvent{}, fmt.Errorf("invalid to_entity_id: %w", err)
+	}
+	rel, err := s.queries.CreateRelationship(ctx, sqlcgen.CreateRelationshipParams{
+		ProjectID:    projectID,
+		FromEntityID: fromID,
+		ToEntityID:   toID,
+		Type:         args.Type,
+		Description:  args.Description,
+	})
+	if err != nil {
+		return ToolEvent{}, fmt.Errorf("create relationship: %w", err)
+	}
+	return ToolEvent{
+		Result:      fmt.Sprintf("Recorded relationship: %s → [%s] → %s (ID: %s).", fromID, args.Type, toID, rel.ID),
+		CreatedID:   rel.ID.String(),
+		CreatedType: "wiki_relationship",
 		ProjectID:   projectID.String(),
 	}, nil
 }
