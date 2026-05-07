@@ -397,9 +397,11 @@ func pingGemini(ctx context.Context, key string) ([]string, error) {
 		"gemini-1.5-flash",
 		"gemini-1.5-pro",
 	}
+	// The /v1beta/openai/models endpoint returns IDs as "models/gemini-2.0-flash".
+	// Strip the prefix so priority lookup and fallback both use bare model names.
 	available := map[string]bool{}
 	for _, m := range body.Data {
-		available[m.ID] = true
+		available[strings.TrimPrefix(m.ID, "models/")] = true
 	}
 	keep := []string{}
 	for _, p := range priority {
@@ -409,7 +411,7 @@ func pingGemini(ctx context.Context, key string) ([]string, error) {
 	}
 	if len(keep) == 0 {
 		for _, m := range body.Data {
-			keep = append(keep, m.ID)
+			keep = append(keep, strings.TrimPrefix(m.ID, "models/"))
 		}
 	}
 	return keep, nil
