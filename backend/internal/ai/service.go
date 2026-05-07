@@ -176,7 +176,9 @@ func (s *Service) openRouterModelForUser(ctx context.Context, userID uuid.UUID) 
 // Stored as provider="gemini_model" in user_api_keys (e.g. "gemini-1.5-pro").
 func (s *Service) geminiModelForUser(ctx context.Context, userID uuid.UUID) string {
 	if model, err := s.authSvc.DecryptAPIKey(ctx, userID, "gemini_model"); err == nil && model != "" {
-		return model
+		// Strip the "models/" prefix that the Gemini list API returned pre-fix.
+		// The OpenAI-compatible endpoint requires bare IDs like "gemini-2.0-flash".
+		return strings.TrimPrefix(model, "models/")
 	}
 	return ""
 }

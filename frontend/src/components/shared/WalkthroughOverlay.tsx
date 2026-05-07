@@ -163,24 +163,28 @@ function Tooltip({
   onSkip: () => void
 }) {
   const TOOLTIP_W = 280
-  const TOOLTIP_H = 140  // rough estimate for placement logic
+  const TOOLTIP_H = 180  // conservative estimate; real height varies by content
 
   let style: React.CSSProperties = {}
 
   if (rect) {
+    const viewW = window.innerWidth
     const viewH = window.innerHeight
     const spaceBelow = viewH - (rect.y + rect.h)
     const spaceAbove = rect.y
 
-    const left = Math.max(8, Math.min(rect.x + rect.w / 2 - TOOLTIP_W / 2, window.innerWidth - TOOLTIP_W - 8))
+    const left = Math.max(8, Math.min(rect.x + rect.w / 2 - TOOLTIP_W / 2, viewW - TOOLTIP_W - 8))
 
+    let top: number
     if (spaceBelow >= TOOLTIP_H + 16 || spaceBelow >= spaceAbove) {
-      // Place below
-      style = { left, top: rect.y + rect.h + 12, width: TOOLTIP_W }
+      top = rect.y + rect.h + 12
     } else {
-      // Place above
-      style = { left, top: rect.y - TOOLTIP_H - 12, width: TOOLTIP_W }
+      top = rect.y - TOOLTIP_H - 12
     }
+    // Clamp so the tooltip never escapes the viewport vertically.
+    top = Math.max(8, Math.min(top, viewH - TOOLTIP_H - 8))
+
+    style = { left, top, width: TOOLTIP_W }
   } else {
     // No rect: fall back to bottom-center
     style = {
