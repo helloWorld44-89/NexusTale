@@ -141,7 +141,7 @@ export interface ToolCallEvent {
   before_content?: string
   // Create ops (create_scene, create_chapter, create_act)
   created_id?:    string
-  created_type?:  'scene' | 'chapter' | 'act'
+  created_type?:  'scene' | 'chapter' | 'act' | 'wiki_entity' | 'wiki_relationship'
   act_id?:        string   // for chapter delete endpoint
   project_id?:    string   // for act/chapter delete endpoints
 }
