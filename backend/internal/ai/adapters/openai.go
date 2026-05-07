@@ -446,9 +446,12 @@ func (a *OpenAIAdapter) BuildToolResultMessages(results []ToolResult) []json.Raw
 // ── SSE parser ────────────────────────────────────────────────────────────────
 
 // parseOpenAIStream reads the OpenAI SSE response and writes NexusTale SSE format.
+// The scanner buffer is set to 1 MB to handle long thinking-model lines
+// (Gemini 2.5 Flash can send entire reasoning traces as a single SSE line).
 func parseOpenAIStream(body io.Reader, w io.Writer) (Usage, error) {
 	var u Usage
 	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1 MB max line
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
@@ -457,7 +460,7 @@ func parseOpenAIStream(body io.Reader, w io.Writer) (Usage, error) {
 		payload := strings.TrimPrefix(line, "data: ")
 		if payload == "[DONE]" {
 			fmt.Fprintf(w, "data: [DONE]\n\n")
-			break
+			return u, nil
 		}
 
 		var chunk openAIStreamChunk
@@ -482,6 +485,8 @@ func parseOpenAIStream(body io.Reader, w io.Writer) (Usage, error) {
 		encoded, _ := json.Marshal(map[string]string{"delta": delta})
 		fmt.Fprintf(w, "data: %s\n\n", encoded)
 	}
+	// Always close the stream so the client doesn't hang.
+	fmt.Fprintf(w, "data: [DONE]\n\n")
 	return u, scanner.Err()
 }
 

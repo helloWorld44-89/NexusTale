@@ -70,9 +70,14 @@ func (a *GeminiAdapter) buildMessages(req CompleteRequest) []openAIMessage {
 }
 
 func (a *GeminiAdapter) buildChatMessages(req ChatRequest) []openAIMessage {
-	msgs := make([]openAIMessage, len(req.Messages))
-	for i, m := range req.Messages {
-		msgs[i] = openAIMessage{Role: m.Role, Content: m.Content}
+	msgs := make([]openAIMessage, 0, len(req.Messages))
+	for _, m := range req.Messages {
+		content := m.Content
+		// Gemini rejects requests with any empty turn in the conversation.
+		if content == "" && m.Role == "user" {
+			content = "Continue."
+		}
+		msgs = append(msgs, openAIMessage{Role: m.Role, Content: content})
 	}
 	return msgs
 }

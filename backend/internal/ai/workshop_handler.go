@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -357,7 +358,9 @@ func (h *Handler) WorkshopChat(c *gin.Context) {
 			_, streamErr = h.svc.StreamChat(c.Request.Context(), userID, svcReq, pw)
 		}
 		if streamErr != nil {
+			slog.Error("ai: workshop StreamChat error", "error", streamErr)
 			fmt.Fprintf(pw, "data: {\"error\":%q}\n\n", streamErr.Error())
+			fmt.Fprintf(pw, "data: [DONE]\n\n")
 		}
 	}()
 

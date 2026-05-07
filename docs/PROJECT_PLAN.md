@@ -907,7 +907,7 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - Canonical scene format in Git: Markdown files at `scenes/{id}.md`.
 - DB stays on Postgres with recursive CTEs (no graph DB).
 - **Git-first architecture** (C+ migration): git working tree is the source of truth for scene content; Postgres is metadata-only after migration 029. Export reads working tree files, not DB. Chronicle and TravelTo are pure git operations. This is a pre-alpha gate — alpha does not open until all 5 steps are deployed and tested.
-- **MinIO replacement** (pre-beta): replace MinIO with local filesystem for binary storage before beta. MinIO's 3-method surface (`PutObject`, `PresignedGetURL`, `DeleteObject`) maps cleanly to local file paths + API-served download URLs. Reduces ops complexity and removes the S3 dependency for self-hosted writers.
+- **MinIO replacement** (pre-beta): replace MinIO with local filesystem for binary storage before beta. MinIO's 3-method surface (`PutObject`, `PresignedGetURL`, `DeleteObject`) maps cleanly to local file paths + API-served download URLs. Reduces ops complexity and removes the S3 dependency for self-hosted writers. Full migration plan in [Section 10 — MinIO Migration](#10-minio-migration-plan-pre-beta).
 
 ---
 
@@ -1429,3 +1429,64 @@ A tooltip-sequence walkthrough shown automatically on a writer's first visit to 
 11. **Ollama in local compose** — optional service for AI dev without cloud keys.
 
 This plan is meant to evolve — trim or reorder phases based on your first beta cohort’s feedback.
+
+---
+
+## 10. MinIO Migration Plan (pre-beta)
+
+**Goal**: Replace the MinIO object storage dependency with a local filesystem backend before public beta. This reduces operational complexity (one fewer container, no S3 credentials to manage) and makes self-hosting friendlier.
+
+### What currently uses MinIO
+
+| Feature | What’s stored | Size profile |
+|---|---|---|
+| Export jobs (B4) | `.zip`, `.epub`, `.docx` files | Ephemeral — downloaded once, expire after 24h |
+| Wiki entity images (C1) | Portrait images | ~100–500 KB each |
+| User avatars | Profile photos | ~50–200 KB each |
+
+### Architecture
+
+**Add `NEXUSTALE_STORAGE_BACKEND` config toggle** (`minio` | `local`, default `minio` to keep existing deployments working). The three-method `storage.Client` interface (`PutObject`, `GetObject`, `DeleteObject`, `PresignedGetURL`) stays unchanged — only the implementation switches.
+
+```
+pkg/storage/
+  client.go      ← shared interface (exists)
+  minio.go       ← existing MinIO implementation (rename from storage.go)
+  local.go       ← new: files at NEXUSTALE_STORAGE_PATH + /api/v1/files proxy
+```
+
+**Local storage behaviour**:
+- Files written to `$NEXUSTALE_STORAGE_PATH/{key}` (e.g. `/data/uploads/exports/abc123.epub`)
+- `PresignedGetURL` returns `/api/v1/files/{key}` instead of a time-limited S3 URL
+- New route `GET /api/v1/files/*key` streams the file; auth-gated for private files (wiki images, avatars), public for exports (URL contains a random job UUID as the key)
+
+### Implementation phases
+
+**Phase 1 — New backend, zero behaviour change** (~3–4 hrs code)
+- [ ] Rename `pkg/storage/storage.go` → `pkg/storage/minio.go`
+- [ ] Create `pkg/storage/local.go` — `LocalClient` implementing the same interface
+- [ ] Add `NEXUSTALE_STORAGE_BACKEND` and `NEXUSTALE_STORAGE_PATH` to `config.go`
+- [ ] Wire backend selection in `storage.New()` factory in `main.go`
+- [ ] Add `GET /api/v1/files/*key` download handler (auth middleware, streams file)
+- [ ] OpenAPI spec: add `/files/{key}` route
+
+**Phase 2 — Deploy local backend** (~1 hr ops)
+- [ ] Set `NEXUSTALE_STORAGE_BACKEND=local` and `NEXUSTALE_STORAGE_PATH=/data/uploads` in `.env` template
+- [ ] Add `volumes: [nexustale_uploads:/data/uploads]` in `docker-compose.deploy.yml`
+- [ ] Remove MinIO service and `MINIO_*` secrets from compose + Ansible playbook
+- [ ] Ansible: ensure `/data/uploads` directory exists with correct permissions
+
+**Phase 3 — One-time object migration** (~30 min)
+```bash
+# For each export_jobs.result_key + wiki_entities.image_key in DB:
+mc cp minio/nexustale/{key} /data/uploads/{key}
+# Verify checksums, then flip STORAGE_BACKEND=local and restart
+```
+
+### Trade-offs
+- Export download URLs change from presigned MinIO URLs (1h expiry) to `/api/v1/files/{key}` (no expiry, auth-gated) — cleaner for users, no "link expired" confusion
+- If the API is ever scaled horizontally, local storage requires a shared NFS/EFS mount — not a concern through beta
+- MinIO stays in `docker-compose.dev.yml` for local dev until Phase 2 is deployed, so no dev workflow changes needed
+
+### Migration number
+No SQL migration needed — keys are already stored as plain strings in `export_jobs.result_key`, `wiki_entities.image_key`, and `users.avatar_key`. The same keys work under both backends as long as the root path is consistent.

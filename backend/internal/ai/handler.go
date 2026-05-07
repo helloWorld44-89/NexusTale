@@ -152,7 +152,9 @@ func (h *Handler) Complete(c *gin.Context) {
 	go func() {
 		defer pw.Close()
 		if _, err := h.svc.StreamComplete(c.Request.Context(), userID, svcReq, pw); err != nil {
+			slog.Error("ai: StreamComplete error", "provider", svcReq.Provider, "error", err)
 			fmt.Fprintf(pw, "data: {\"error\":%q}\n\n", err.Error())
+			fmt.Fprintf(pw, "data: [DONE]\n\n")
 		}
 	}()
 
@@ -215,7 +217,9 @@ func (h *Handler) Chat(c *gin.Context) {
 	go func() {
 		defer pw.Close()
 		if _, err := h.svc.StreamChat(c.Request.Context(), userID, svcReq, pw); err != nil {
+			slog.Error("ai: StreamChat error", "provider", svcReq.Provider, "error", err)
 			fmt.Fprintf(pw, "data: {\"error\":%q}\n\n", err.Error())
+			fmt.Fprintf(pw, "data: [DONE]\n\n")
 		}
 	}()
 
