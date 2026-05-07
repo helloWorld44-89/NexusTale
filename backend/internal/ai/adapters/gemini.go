@@ -122,6 +122,31 @@ func (a *GeminiAdapter) doRequest(ctx context.Context, data []byte) (*http.Respo
 	return a.client.Do(req)
 }
 
+// geminiErrorMessage parses the Gemini API error response body and returns a
+// human-readable message. Falls back to the raw body if parsing fails.
+func geminiErrorMessage(status int, body []byte) error {
+	// Gemini wraps errors in a JSON array: [{"error":{"code":429,"message":"..."}}]
+	var arr []struct {
+		Error struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			Status  string `json:"status"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &arr) == nil && len(arr) > 0 && arr[0].Error.Message != "" {
+		msg := arr[0].Error.Message
+		// Trim verbose quota details after the first line.
+		if i := strings.Index(msg, "\n*"); i > 0 {
+			msg = strings.TrimSpace(msg[:i])
+		}
+		if status == 429 {
+			return fmt.Errorf("Gemini quota exceeded (%s): %s", arr[0].Error.Status, msg)
+		}
+		return fmt.Errorf("Gemini error %d (%s): %s", status, arr[0].Error.Status, msg)
+	}
+	return fmt.Errorf("gemini %d: %s", status, string(body))
+}
+
 // ── Complete ──────────────────────────────────────────────────────────────────
 
 func (a *GeminiAdapter) Complete(ctx context.Context, req CompleteRequest) (string, Usage, error) {
@@ -144,7 +169,7 @@ func (a *GeminiAdapter) Complete(ctx context.Context, req CompleteRequest) (stri
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("gemini %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, geminiErrorMessage(resp.StatusCode, b)
 	}
 
 	var result openAIResponse
@@ -189,7 +214,7 @@ func (a *GeminiAdapter) StreamComplete(ctx context.Context, req CompleteRequest,
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("gemini %d: %s", resp.StatusCode, string(b))
+		return Usage{}, geminiErrorMessage(resp.StatusCode, b)
 	}
 
 	return parseOpenAIStream(resp.Body, w)
@@ -213,7 +238,7 @@ func (a *GeminiAdapter) Chat(ctx context.Context, req ChatRequest) (string, Usag
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("gemini %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, geminiErrorMessage(resp.StatusCode, b)
 	}
 
 	var result openAIResponse
@@ -248,7 +273,7 @@ func (a *GeminiAdapter) StreamChat(ctx context.Context, req ChatRequest, w io.Wr
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return Usage{}, fmt.Errorf("gemini %d: %s", resp.StatusCode, string(b))
+		return Usage{}, geminiErrorMessage(resp.StatusCode, b)
 	}
 
 	return parseOpenAIStream(resp.Body, w)
@@ -316,7 +341,7 @@ func (a *GeminiAdapter) ChatTools(ctx context.Context, msgs []Message, extraMsgs
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return ToolChatResponse{}, fmt.Errorf("gemini %d: %s", resp.StatusCode, string(b))
+		return ToolChatResponse{}, geminiErrorMessage(resp.StatusCode, b)
 	}
 
 	var result openAIToolsResponse
