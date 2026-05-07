@@ -663,13 +663,14 @@ export const api = {
           if (!line.startsWith('data: ')) continue
           const payload = line.slice(6)
           if (payload === '[DONE]') return
+          let evt: { delta?: string; error?: string }
           try {
-            const evt = JSON.parse(payload) as { delta?: string; error?: string }
-            if (evt.error) throw new Error(evt.error)
-            if (evt.delta) onDelta(evt.delta)
+            evt = JSON.parse(payload) as { delta?: string; error?: string }
           } catch {
-            // skip malformed chunks
+            continue // skip malformed JSON chunks
           }
+          if (evt.error) throw new Error(evt.error)
+          if (evt.delta) onDelta(evt.delta)
         }
       }
     },
@@ -725,13 +726,14 @@ export const api = {
           if (!line.startsWith('data: ')) continue
           const payload = line.slice(6)
           if (payload === '[DONE]') return
+          let evt: { delta?: string; error?: string }
           try {
-            const evt = JSON.parse(payload) as { delta?: string; error?: string }
-            if (evt.error) throw new Error(evt.error)
-            if (evt.delta) onDelta(evt.delta)
+            evt = JSON.parse(payload) as { delta?: string; error?: string }
           } catch {
-            // skip malformed chunks
+            continue // skip malformed JSON chunks
           }
+          if (evt.error) throw new Error(evt.error)
+          if (evt.delta) onDelta(evt.delta)
         }
       }
     },
@@ -830,18 +832,19 @@ export const api = {
             if (!line.startsWith('data: ')) continue
             const payload = line.slice(6)
             if (payload === '[DONE]') return
+            let evt: { delta?: string; error?: string }
             try {
-              const evt = JSON.parse(payload) as { delta?: string; error?: string }
-              if (evt.error) throw new Error(evt.error)
-              if (evt.delta) onDelta(evt.delta)
-              if ((evt as ToolCallEvent).tool && onToolCall) {
-                onToolCall(evt as ToolCallEvent)
-              }
-              if ((evt as { agent_planning?: boolean; round?: number }).agent_planning && onAgentPlanning) {
-                onAgentPlanning((evt as { round: number }).round)
-              }
+              evt = JSON.parse(payload) as { delta?: string; error?: string }
             } catch {
-              // skip malformed chunks
+              continue // skip malformed JSON chunks
+            }
+            if (evt.error) throw new Error(evt.error)
+            if (evt.delta) onDelta(evt.delta)
+            if ((evt as ToolCallEvent).tool && onToolCall) {
+              onToolCall(evt as ToolCallEvent)
+            }
+            if ((evt as { agent_planning?: boolean; round?: number }).agent_planning && onAgentPlanning) {
+              onAgentPlanning((evt as { round: number }).round)
             }
           }
         }
