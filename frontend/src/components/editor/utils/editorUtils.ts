@@ -1,9 +1,11 @@
 import type { Editor } from '@tiptap/react'
 import type { Node as PMNode } from '@tiptap/pm/model'
 
-// Converts plain text (textarea-style) → TipTap HTML.
-// '\n\n' → paragraph break; '\n' → <br> within a paragraph.
-export function plainToHTML(text: string): string {
+// Converts Markdown (or plain text) → TipTap HTML.
+// '\n\n' → paragraph break; '\n' → <br>.
+// Inline: ***text*** → bold+italic, **text** → bold, *text* → italic, `text` → code.
+// Plain text is valid Markdown (no markers), so old stored content loads unchanged.
+export function markdownToHTML(text: string): string {
   if (!text) return '<p></p>'
   return text
     .split('\n\n')
@@ -12,25 +14,53 @@ export function plainToHTML(text: string): string {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
+        .replace(/\*\*\*(.+?)\*\*\*/gs, '<strong><em>$1</em></strong>')
+        .replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/gs, '<em>$1</em>')
+        .replace(/`(.+?)`/gs, '<code>$1</code>')
         .replace(/\n/g, '<br>')
       }</p>`,
     )
     .join('')
 }
 
-// Inverse of plainToHTML — get the full plain-text value from TipTap.
-// Serialises editor content to plain text that round-trips through plainToHTML.
-// '\n\n' between block nodes (paragraph break), '\n' for hardBreak (line break).
-// The blockSeparator MUST match the paragraph delimiter in plainToHTML so that
-// editorGetText(editor) === content whenever the editor was initialised from
-// plainToHTML(content) — otherwise the content sync guard always fails and
-// setContent() fires on every render, potentially clobbering in-progress edits.
+// Keep plainToHTML as an alias so other callers (if any) aren't broken.
+export const plainToHTML = markdownToHTML
+
+// Serialise a TipTap editor document to a Markdown string.
+// Paragraphs separated by '\n\n'; hard breaks become '\n'.
+// Bold → **text**, Italic → *text*, Bold+Italic → ***text***, Code → `text`.
+// Round-trips correctly with markdownToHTML — the sync guard in ScribeEditor
+// relies on editorGetMarkdown(editor) === content after setContent(markdownToHTML(content)).
+export function editorGetMarkdown(editor: Editor): string {
+  const blocks: string[] = []
+  editor.state.doc.forEach(blockNode => {
+    const parts: string[] = []
+    blockNode.forEach(inlineNode => {
+      if (inlineNode.type.name === 'hardBreak') {
+        parts.push('\n')
+        return
+      }
+      const raw      = inlineNode.text ?? ''
+      const hasBold   = inlineNode.marks.some(m => m.type.name === 'bold')
+      const hasItalic = inlineNode.marks.some(m => m.type.name === 'italic')
+      const hasCode   = inlineNode.marks.some(m => m.type.name === 'code')
+      if (hasCode)                   parts.push(`\`${raw}\``)
+      else if (hasBold && hasItalic) parts.push(`***${raw}***`)
+      else if (hasBold)              parts.push(`**${raw}**`)
+      else if (hasItalic)            parts.push(`*${raw}*`)
+      else                           parts.push(raw)
+    })
+    blocks.push(parts.join(''))
+  })
+  return blocks.join('\n\n')
+}
+
+// editorGetText kept for any external callers; prefer editorGetMarkdown in ScribeEditor.
 export function editorGetText(editor: Editor): string {
   return editor.getText({
     blockSeparator: '\n\n',
-    textSerializers: {
-      hardBreak: () => '\n',
-    },
+    textSerializers: { hardBreak: () => '\n' },
   })
 }
 

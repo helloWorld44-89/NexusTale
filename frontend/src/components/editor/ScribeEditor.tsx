@@ -7,7 +7,7 @@ import BeatInput from './BeatInput'
 import MentionsBar from './MentionsBar'
 import EntityHoverCard from './EntityHoverCard'
 import { EntityMentionExtension, mentionPluginKey } from './extensions/EntityMentionExtension'
-import { plainToHTML, editorGetText, buildCharToPos, buildPosToChar } from './utils/editorUtils'
+import { markdownToHTML, editorGetMarkdown, buildCharToPos, buildPosToChar } from './utils/editorUtils'
 import { api, type Annotation, type MentionResponse } from '@/services/api'
 
 export interface ScribeEditorHandle {
@@ -72,9 +72,9 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
 
   const editor = useEditor({
     extensions: [StarterKit, EntityMentionExtension],
-    content: plainToHTML(content),
+    content: markdownToHTML(content),
     onUpdate: ({ editor: ed }) => {
-      onChangeRef.current(editorGetText(ed))
+      onChangeRef.current(editorGetMarkdown(ed))
     },
     editable: sceneSelected,
   })
@@ -82,9 +82,9 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
   // Sync external content changes (from AI tools, beat accept, etc.).
   useEffect(() => {
     if (!editor) return
-    const current = editorGetText(editor)
+    const current = editorGetMarkdown(editor)
     if (current === content) return
-    editor.commands.setContent(plainToHTML(content), { emitUpdate: false })
+    editor.commands.setContent(markdownToHTML(content), { emitUpdate: false })
   }, [content, editor])
 
   // Sync editability when sceneSelected changes.
