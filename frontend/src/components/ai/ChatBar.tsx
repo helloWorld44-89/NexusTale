@@ -109,14 +109,15 @@ export default function ChatBar({ token, projectId, sceneId, branch, promptId, o
         promptId,
       )
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong.'
       if ((err as Error).name !== 'AbortError') {
+        const msg = err instanceof Error ? err.message : 'Something went wrong.'
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, text: m.text || msg, streaming: false }
-              : m
-          )
+          prev.map((m) => {
+            if (m.id !== assistantId) return m
+            // Append the error so it's visible even when partial text arrived.
+            const separator = m.text ? '\n\n' : ''
+            return { ...m, text: m.text + separator + `⚠ ${msg}`, streaming: false }
+          })
         )
       }
     } finally {

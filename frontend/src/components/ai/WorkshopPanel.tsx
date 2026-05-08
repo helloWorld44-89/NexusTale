@@ -258,11 +258,11 @@ export default function WorkshopPanel({
       if ((err as Error).name !== 'AbortError') {
         const msg = err instanceof Error ? err.message : 'Something went wrong.'
         setMessages((prev) =>
-          prev.map((m, i) =>
-            i === prev.length - 1 && m.role === 'assistant'
-              ? { ...m, content: m.content || msg }
-              : m
-          )
+          prev.map((m, i) => {
+            if (i !== prev.length - 1 || m.role !== 'assistant') return m
+            const separator = m.content ? '\n\n' : ''
+            return { ...m, content: m.content + separator + `⚠ ${msg}` }
+          })
         )
       }
     } finally {
