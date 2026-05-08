@@ -1,4 +1,6 @@
 // TopBar — project breadcrumb + navigation + panel toggles + user menu.
+declare const __APP_VERSION__: string
+
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { LeftPanel } from '@/pages/Editor'
@@ -77,6 +79,7 @@ export default function TopBar({
         >
           <img src="/app-icon.png" alt="" className="w-4 h-4 opacity-80" />
           <span className="text-brand-cyan text-xs font-semibold tracking-wide">NexusTale</span>
+          <span className="text-[9px] text-brand-muted/50 font-mono leading-none self-end mb-px">v{__APP_VERSION__}</span>
         </Link>
 
         <span className="text-brand-border/60 text-xs px-0.5">·</span>
