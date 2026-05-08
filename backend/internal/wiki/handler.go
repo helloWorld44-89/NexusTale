@@ -58,14 +58,6 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/entities/:eid/image", h.UploadEntityImage)
 	rg.DELETE("/entities/:eid/image", h.DeleteEntityImage)
 	rg.GET("/entities/:eid/appearances", h.ListEntityAppearances)
-}
-
-// RegisterMentionRoutes mounts mention routes under /projects/:id/scenes/:sid.
-// Called from cmd/api/main.go with a separate router group.
-func (h *Handler) RegisterMentionRoutes(rg *gin.RouterGroup) {
-	rg.GET("/mentions", h.ListSceneMentions)
-	rg.DELETE("/mentions/:mid", h.SuppressMention)
-	rg.DELETE("/mentions", h.SuppressAllMentions)
 
 	rg.GET("/relationships", h.ListRelationships)
 	rg.POST("/relationships", h.CreateRelationship)
@@ -84,6 +76,14 @@ func (h *Handler) RegisterMentionRoutes(rg *gin.RouterGroup) {
 	rg.DELETE("/timeline/:tid", h.DeleteTimelineEvent)
 
 	rg.GET("/autolink", h.Autolink)
+}
+
+// RegisterMentionRoutes mounts mention routes under /projects/:id/scenes/:sid.
+// Called from cmd/api/main.go with a separate router group.
+func (h *Handler) RegisterMentionRoutes(rg *gin.RouterGroup) {
+	rg.GET("/mentions", h.ListSceneMentions)
+	rg.DELETE("/mentions/:mid", h.SuppressMention)
+	rg.DELETE("/mentions", h.SuppressAllMentions)
 }
 
 // ========================
