@@ -25,6 +25,54 @@ const ENTITY_TEMPLATES: Record<EntityType, string> = {
   lore:      'What happened: \n\nCauses: \n\nConsequences: \n\nWho was present: ',
 }
 
+type TemplateField = { key: string; label: string; hint: string; rows: number }
+
+const TEMPLATE_FIELDS: Record<EntityType, TemplateField[]> = {
+  character: [
+    { key: 'motivation',    label: 'Core Motivation',  hint: 'What they want above all else',      rows: 2 },
+    { key: 'arc',           label: 'Arc',              hint: '[start state] → [end state]',         rows: 1 },
+    { key: 'voice',         label: 'Voice & Presence', hint: 'How they speak and carry themselves', rows: 2 },
+    { key: 'relationships', label: 'Key Relationships', hint: 'Their most important connections',   rows: 2 },
+  ],
+  location: [
+    { key: 'description',  label: 'Description',            hint: 'What it looks, feels, and sounds like', rows: 2 },
+    { key: 'history',      label: 'History & Significance', hint: 'How it came to be; why it matters',     rows: 2 },
+    { key: 'inhabitants',  label: 'Who Lives Here',         hint: 'Residents, factions, or creatures',     rows: 1 },
+    { key: 'plot',         label: 'Connections to Plot',    hint: 'How the story uses this place',         rows: 1 },
+  ],
+  faction: [
+    { key: 'purpose',    label: 'Purpose & Values',        hint: 'What they stand for and strive toward', rows: 2 },
+    { key: 'leadership', label: 'Leadership',              hint: 'Who leads and how power is held',       rows: 1 },
+    { key: 'relations',  label: 'Other Faction Relations', hint: 'Allies, rivals, and enemies',           rows: 1 },
+    { key: 'resources',  label: 'Resources',               hint: 'Wealth, power, or unique assets',       rows: 1 },
+  ],
+  item: [
+    { key: 'function',     label: 'What It Does',       hint: 'Its purpose or power',               rows: 2 },
+    { key: 'origin',       label: 'Origin',             hint: 'Where it came from; how it was made', rows: 1 },
+    { key: 'possessor',    label: 'Who Possesses It',   hint: 'Current and past holders',            rows: 1 },
+    { key: 'significance', label: 'Story Significance', hint: 'Why it matters to the plot',          rows: 2 },
+  ],
+  concept: [
+    { key: 'what', label: 'What It Is',         hint: 'A plain-language definition',          rows: 2 },
+    { key: 'how',  label: 'How It Works',       hint: 'Mechanics, rules, or principles',      rows: 2 },
+    { key: 'who',  label: 'Who Knows About It', hint: 'Familiarity across the cast',          rows: 1 },
+    { key: 'role', label: 'Role in the Story',  hint: 'Theme it embodies or problem it poses', rows: 1 },
+  ],
+  lore: [
+    { key: 'what',         label: 'What Happened',  hint: 'The event or fact, plainly stated', rows: 2 },
+    { key: 'causes',       label: 'Causes',         hint: 'Why it happened',                   rows: 1 },
+    { key: 'consequences', label: 'Consequences',   hint: 'How it shaped the world',           rows: 2 },
+    { key: 'witnesses',    label: 'Who Was Present', hint: 'Characters who experienced it',    rows: 1 },
+  ],
+}
+
+function buildSummaryFromFields(type: EntityType, fields: Record<string, string>): string {
+  return TEMPLATE_FIELDS[type]
+    .filter((f) => fields[f.key]?.trim())
+    .map((f) => `${f.label}:\n${fields[f.key].trim()}`)
+    .join('\n\n')
+}
+
 const TYPE_COLORS: Record<EntityType, string> = {
   character: 'text-brand-cyan bg-brand-cyan/10',
   location: 'text-brand-gold bg-brand-gold/10',
@@ -426,14 +474,15 @@ function CreateEntityModal({
 }) {
   const [type, setType] = useState<EntityType>('character')
   const [name, setName] = useState('')
-  const [summary, setSummary] = useState(ENTITY_TEMPLATES['character'])
   const [usingTemplate, setUsingTemplate] = useState(true)
+  const [templateFields, setTemplateFields] = useState<Record<string, string>>({})
+  const [freeText, setFreeText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   function handleTypeChange(t: EntityType) {
     setType(t)
-    if (usingTemplate) setSummary(ENTITY_TEMPLATES[t])
+    if (usingTemplate) setTemplateFields({})
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -442,7 +491,8 @@ function CreateEntityModal({
     setSubmitting(true)
     setError(null)
     try {
-      const entity = await api.wiki.createEntity(token, projectId, { type, name: name.trim(), summary: summary.trim() })
+      const summary = usingTemplate ? buildSummaryFromFields(type, templateFields) : freeText.trim()
+      const entity = await api.wiki.createEntity(token, projectId, { type, name: name.trim(), summary })
       onCreated(entity)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to create entity')
@@ -498,31 +548,49 @@ function CreateEntityModal({
             />
           </div>
 
-          {/* Summary */}
-          <div className="flex flex-col flex-1 min-h-0">
-            <div className="flex items-center justify-between mb-1.5">
+          {/* Summary — structured fields or free text */}
+          <div className="flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-medium text-brand-muted uppercase tracking-wider">Summary</label>
-              {usingTemplate && (
-                <span className="flex items-center gap-1 text-[10px] text-brand-muted">
-                  <span className="px-1.5 py-0.5 rounded bg-brand-border/60">Using template</span>
-                  <button
-                    type="button"
-                    onClick={() => { setSummary(''); setUsingTemplate(false) }}
-                    className="hover:text-brand-text transition-colors"
-                    title="Clear template"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (usingTemplate) { setFreeText(''); setUsingTemplate(false) }
+                  else { setTemplateFields({}); setUsingTemplate(true) }
+                }}
+                className="text-[10px] text-brand-muted hover:text-brand-text transition-colors"
+              >
+                {usingTemplate ? 'Switch to free text' : 'Use template fields'}
+              </button>
             </div>
-            <AutoTextarea
-              value={summary}
-              onChange={(e) => { setSummary((e.target as HTMLTextAreaElement).value); setUsingTemplate(false) }}
-              placeholder="Brief description…"
-              minRows={4}
-              className="input-field w-full text-sm"
-            />
+
+            {usingTemplate ? (
+              <div className="space-y-3">
+                {TEMPLATE_FIELDS[type].map((f) => (
+                  <div key={f.key}>
+                    <label className="block text-[10px] font-medium text-brand-muted mb-1">
+                      {f.label}
+                      <span className="ml-1.5 font-normal opacity-60">{f.hint}</span>
+                    </label>
+                    <AutoTextarea
+                      value={templateFields[f.key] ?? ''}
+                      onChange={(e) => setTemplateFields((prev) => ({ ...prev, [f.key]: (e.target as HTMLTextAreaElement).value }))}
+                      minRows={f.rows}
+                      className="input-field w-full text-sm"
+                      placeholder="…"
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <AutoTextarea
+                value={freeText}
+                onChange={(e) => setFreeText((e.target as HTMLTextAreaElement).value)}
+                placeholder="Brief description…"
+                minRows={6}
+                className="input-field w-full text-sm"
+              />
+            )}
           </div>
 
           {error && <p className="text-xs text-red-400">{error}</p>}
