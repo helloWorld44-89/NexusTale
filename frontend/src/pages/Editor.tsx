@@ -187,6 +187,15 @@ export default function Editor() {
   const handleContentChange = useCallback((sceneId: string, value: string) => {
     setSceneContents((prev) => ({ ...prev, [sceneId]: value }))
 
+    // Keep sceneData.word_count in sync so SceneMetadataPanel shows the same
+    // number as the StatusBar without waiting for the server round-trip.
+    const wc = value.trim() === '' ? 0 : value.trim().split(/\s+/).length
+    setSceneData((prev) => {
+      const sc = prev[sceneId]
+      if (!sc) return prev
+      return { ...prev, [sceneId]: { ...sc, word_count: wc } }
+    })
+
     const doSave = () => {
       const chapterId = sceneToChapter[sceneId]
       if (!chapterId || !accessToken) return
