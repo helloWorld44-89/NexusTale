@@ -185,12 +185,12 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
   // ── Right-click suppress from editor decorations ──────────────────────────
 
   const [editorSuppressMenu, setEditorSuppressMenu] = useState<{
-    x: number; y: number; mentionId: string
+    x: number; y: number; mentionId: string; selectedText: string
   } | null>(null)
 
   function handleEditorContextMenu(e: React.MouseEvent<HTMLDivElement>) {
     const span = (e.target as HTMLElement).closest('[data-mention-id]') as HTMLElement | null
-    if (!span) return
+    if (!span) return  // fall through to native context menu
     e.preventDefault()
     clearHoverTimers()
     setHoverTarget(null)
@@ -198,7 +198,29 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
       x: e.clientX,
       y: e.clientY,
       mentionId: span.getAttribute('data-mention-id')!,
+      selectedText: window.getSelection()?.toString() ?? '',
     })
+  }
+
+  function handleMenuCopy() {
+    if (!editorSuppressMenu?.selectedText) return
+    navigator.clipboard.writeText(editorSuppressMenu.selectedText)
+    setEditorSuppressMenu(null)
+  }
+
+  function handleMenuCut() {
+    if (!editorSuppressMenu?.selectedText || !editor) return
+    navigator.clipboard.writeText(editorSuppressMenu.selectedText)
+    editor.commands.deleteSelection()
+    setEditorSuppressMenu(null)
+  }
+
+  function handleMenuPaste() {
+    if (!editor) return
+    navigator.clipboard.readText().then(text => {
+      editor.commands.insertContent(text)
+    })
+    setEditorSuppressMenu(null)
   }
 
   async function handleSuppressFromEditor(mentionId: string) {
@@ -378,8 +400,29 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
             style={{ left: editorSuppressMenu.x, top: editorSuppressMenu.y }}
           >
             <button
-              onClick={() => handleSuppressFromEditor(editorSuppressMenu.mentionId)}
+              onClick={handleMenuCopy}
+              disabled={!editorSuppressMenu.selectedText}
+              className="w-full text-left px-3 py-1.5 text-xs text-brand-text hover:bg-brand-border/30 transition-colors disabled:opacity-40"
+            >
+              Copy
+            </button>
+            <button
+              onClick={handleMenuCut}
+              disabled={!editorSuppressMenu.selectedText}
+              className="w-full text-left px-3 py-1.5 text-xs text-brand-text hover:bg-brand-border/30 transition-colors disabled:opacity-40"
+            >
+              Cut
+            </button>
+            <button
+              onClick={handleMenuPaste}
               className="w-full text-left px-3 py-1.5 text-xs text-brand-text hover:bg-brand-border/30 transition-colors"
+            >
+              Paste
+            </button>
+            <div className="my-1 border-t border-brand-border/40" />
+            <button
+              onClick={() => handleSuppressFromEditor(editorSuppressMenu.mentionId)}
+              className="w-full text-left px-3 py-1.5 text-xs text-brand-muted hover:bg-brand-border/30 transition-colors"
             >
               Remove tag
             </button>
