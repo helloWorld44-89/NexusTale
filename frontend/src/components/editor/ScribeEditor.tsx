@@ -1,6 +1,6 @@
 // ScribeEditor — centered writing area with TipTap editor, entity highlights,
 // hover cards, Beat expansion toolbar, and annotation popover.
-import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
+import { useRef, useState, useEffect, useLayoutEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import BeatInput from './BeatInput'
@@ -63,8 +63,10 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
   ref,
 ) {
   // Keep onChange stable in closures even if the prop identity changes.
+  // useLayoutEffect (not useEffect) so the ref is updated synchronously after
+  // every render — no gap where a TipTap onUpdate event fires against a stale handler.
   const onChangeRef = useRef(onChange)
-  useEffect(() => { onChangeRef.current = onChange }, [onChange])
+  useLayoutEffect(() => { onChangeRef.current = onChange }, [onChange])
 
   // ── TipTap editor ─────────────────────────────────────────────────────────
 

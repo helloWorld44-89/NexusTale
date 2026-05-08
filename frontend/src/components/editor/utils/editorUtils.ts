@@ -19,9 +19,15 @@ export function plainToHTML(text: string): string {
 }
 
 // Inverse of plainToHTML — get the full plain-text value from TipTap.
-// Uses '\n\n' between block nodes (TipTap default) and '\n' for hardBreak.
+// Serialises editor content to plain text that round-trips through plainToHTML.
+// '\n\n' between block nodes (paragraph break), '\n' for hardBreak (line break).
+// The blockSeparator MUST match the paragraph delimiter in plainToHTML so that
+// editorGetText(editor) === content whenever the editor was initialised from
+// plainToHTML(content) — otherwise the content sync guard always fails and
+// setContent() fires on every render, potentially clobbering in-progress edits.
 export function editorGetText(editor: Editor): string {
   return editor.getText({
+    blockSeparator: '\n\n',
     textSerializers: {
       hardBreak: () => '\n',
     },
