@@ -16,14 +16,6 @@ const AUTOLINK_DEBOUNCE_MS = 1200
 
 const ENTITY_TYPES: EntityType[] = ['character', 'location', 'faction', 'item', 'concept', 'lore']
 
-const ENTITY_TEMPLATES: Record<EntityType, string> = {
-  character: 'Core Motivation: \n\nArc: [start state] → [end state]\n\nVoice & Presence: \n\nKey Relationships: ',
-  location:  'Description: \n\nHistory & Significance: \n\nWho lives here: \n\nConnections to plot: ',
-  faction:   'Purpose & Values: \n\nLeadership: \n\nRelationship to other factions: \n\nResources: ',
-  item:      'What it does: \n\nOrigin: \n\nWho possesses it: \n\nSignificance to the story: ',
-  concept:   'What it is: \n\nHow it works: \n\nWho knows about it: \n\nRole in the story: ',
-  lore:      'What happened: \n\nCauses: \n\nConsequences: \n\nWho was present: ',
-}
 
 type TemplateField = { key: string; label: string; hint: string; rows: number }
 
