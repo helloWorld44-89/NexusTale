@@ -387,6 +387,7 @@ export default function Editor() {
                 projectId={projectId}
                 sceneId={selectedSceneId ?? undefined}
                 branch={currentBranch}
+                promptId={selectedPromptId}
                 onInsertToScene={activeScene ? handleInsertToScene : undefined}
               />
             </ErrorBoundary>
@@ -408,6 +409,7 @@ export default function Editor() {
                 projectPhase={projectPhase}
                 sceneId={selectedSceneId ?? undefined}
                 branch={currentBranch}
+                promptId={selectedPromptId}
                 onInsertToScene={activeScene ? handleInsertToScene : undefined}
                 onToolWrite={handleToolWrite}
                 onStructureChange={handleTreeRefresh}

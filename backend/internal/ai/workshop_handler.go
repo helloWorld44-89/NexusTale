@@ -312,6 +312,7 @@ func (h *Handler) WorkshopChat(c *gin.Context) {
 		MaxTokens    int                `json:"max_tokens"`
 		ToolsEnabled bool               `json:"tools_enabled"` // C2.5: let AI write directly to manuscript
 		MaxRounds    int                `json:"max_rounds"`    // 0 → service default (25)
+		PromptID     string             `json:"prompt_id"`     // optional writing style preset
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "detail": err.Error()})
@@ -329,6 +330,27 @@ func (h *Handler) WorkshopChat(c *gin.Context) {
 		}
 	}
 
+	// Resolve the writing style preset for this workshop session.
+	// If the frontend sent an explicit prompt_id, use it.
+	// Otherwise fall back to the first prose-category preset on the project so that
+	// an auto-created voice preset from the guide wizard is applied automatically.
+	var promptID uuid.UUID
+	if req.PromptID != "" {
+		if id, err := uuid.Parse(req.PromptID); err == nil {
+			promptID = id
+		}
+	}
+	if promptID == uuid.Nil {
+		if prompts, err := h.svc.queries.ListProjectPrompts(c.Request.Context(), projectID); err == nil {
+			for _, p := range prompts {
+				if p.Category == "prose" && p.Content != "" {
+					promptID = p.ID
+					break
+				}
+			}
+		}
+	}
+
 	branch := h.svc.ResolveBranch(c.Request.Context(), c.GetHeader("X-NexusTale-Branch"), userID, projectID)
 
 	// Determine system prompt: use workshop-category preset if configured.
@@ -341,6 +363,7 @@ func (h *Handler) WorkshopChat(c *gin.Context) {
 		Messages:             req.Messages,
 		Provider:             req.Provider,
 		MaxTokens:            req.MaxTokens,
+		PromptID:             promptID,
 		SystemPromptOverride: systemPrompt,
 		WorkshopMode:         true,
 	}

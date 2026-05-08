@@ -68,9 +68,29 @@ type ProgressResponse struct {
 // These are decoded only when running side effects on completion.
 
 type premiseData struct {
-	Logline string   `json:"logline"`
-	Theme   string   `json:"theme"`
-	Genres  []string `json:"genres"`
+	Logline      string   `json:"logline"`
+	Theme        string   `json:"theme"`
+	Genres       []string `json:"genres"`
+	Audience     string   `json:"audience"`      // middle_grade | young_adult | new_adult | adult
+	WritingVoice string   `json:"writing_voice"` // sparse_direct | lyrical | ya_contemporary | epic_sweeping | thriller_pacing | literary
+}
+
+// audienceDirectives maps audience keys to content-guideline sentences injected into the AI Bible.
+var audienceDirectives = map[string]string{
+	"middle_grade":  "Content guidelines: Middle-grade story for ages 8–12. Keep content age-appropriate: danger and adventure are welcome, but avoid graphic violence, explicit romance, and strong language.",
+	"young_adult":   "Content guidelines: Young adult story for ages 13–18. Violence should have weight but not be gratuitous. Romance stays tasteful. Avoid strong profanity and explicit content.",
+	"new_adult":     "Content guidelines: New adult story for ages 18–25. Mature themes, moderate language, and romantic tension are appropriate. Avoid explicitly graphic content.",
+	"adult":         "Content guidelines: Adult fiction. Mature themes and language are appropriate when they serve the story.",
+}
+
+// voicePresets maps writing voice keys to the style guidance text stored in the auto-created project_prompt.
+var voicePresets = map[string]struct{ name, content string }{
+	"sparse_direct":   {name: "Sparse & Direct", content: "Write in a spare, direct style: short sentences, strong verbs, no filler adverbs. Trust the reader to feel what you show. When in doubt, cut."},
+	"lyrical":         {name: "Lyrical", content: "Write with a lyrical, sensory voice: rich imagery, varied rhythm, attention to sound and texture. Let sentences breathe between action beats."},
+	"ya_contemporary": {name: "YA Contemporary", content: "Write in a YA contemporary voice: conversational, close, with strong interiority. Sentences that feel like how a teenager actually thinks and notices the world."},
+	"epic_sweeping":   {name: "Epic / Sweeping", content: "Write in an elevated, sweeping style: longer sentences that carry weight, language that implies history and scope, a sense that the world existed before the story began."},
+	"thriller_pacing": {name: "Thriller Pacing", content: "Write for tension: short paragraphs, punchy sentences, white space. End every paragraph with a reason to read the next one."},
+	"literary":        {name: "Literary", content: "Write with literary depth: psychological complexity, ambiguous morality, prose that earns close reading. Let character interiority drive the scene."},
 }
 
 type characterEntry struct {
@@ -249,6 +269,9 @@ func (s *Service) GenerateAIInstructions(ctx context.Context, projectID uuid.UUI
 			if d.Theme != "" {
 				sb.WriteString("Theme: " + d.Theme + "\n")
 			}
+			if directive, ok := audienceDirectives[d.Audience]; ok {
+				sb.WriteString("\n" + directive + "\n")
+			}
 		}
 	}
 
@@ -363,6 +386,8 @@ func (s *Service) AutoFillAIInstructions(ctx context.Context, projectID uuid.UUI
 
 func (s *Service) runSideEffects(ctx context.Context, projectID uuid.UUID, stepKey string, data json.RawMessage) error {
 	switch stepKey {
+	case "premise":
+		return s.effectPremise(ctx, projectID, data)
 	case "characters":
 		return s.effectCharacters(ctx, projectID, data)
 	case "world":
@@ -372,7 +397,32 @@ func (s *Service) runSideEffects(ctx context.Context, projectID uuid.UUID, stepK
 	case "first_scene":
 		return s.effectFirstScene(ctx, projectID, data)
 	}
-	return nil // premise has no side effects beyond persisting the data
+	return nil
+}
+
+// effectPremise creates a writing-voice project_prompt when the premise step is completed
+// and a voice was selected. This gives the SceneMetadataPanel dropdown a pre-populated
+// starting style without the user needing to create one manually.
+func (s *Service) effectPremise(ctx context.Context, projectID uuid.UUID, raw json.RawMessage) error {
+	var d premiseData
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return fmt.Errorf("decode premise data: %w", err)
+	}
+	preset, ok := voicePresets[d.WritingVoice]
+	if !ok {
+		return nil // no voice selected — nothing to create
+	}
+	if _, err := s.queries.CreateProjectPrompt(ctx, sqlcgen.CreateProjectPromptParams{
+		ProjectID:     projectID,
+		Name:          preset.name,
+		Category:      "prose",
+		Content:       preset.content,
+		SystemContent: "",
+		SortOrder:     0,
+	}); err != nil {
+		slog.Warn("guide: create voice preset failed", "voice", d.WritingVoice, "error", err)
+	}
+	return nil
 }
 
 func (s *Service) effectCharacters(ctx context.Context, projectID uuid.UUID, raw json.RawMessage) error {

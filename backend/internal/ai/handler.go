@@ -78,6 +78,7 @@ type chatRequest struct {
 	Messages  []adapters.Message `json:"messages"`
 	Provider  string             `json:"provider"`
 	MaxTokens int                `json:"max_tokens"`
+	PromptID  string             `json:"prompt_id"` // optional writing style preset
 }
 
 type summarizeRequest struct {
@@ -200,6 +201,13 @@ func (h *Handler) Chat(c *gin.Context) {
 		sceneID = id
 	}
 
+	var promptID uuid.UUID
+	if req.PromptID != "" {
+		if id, err := uuid.Parse(req.PromptID); err == nil {
+			promptID = id
+		}
+	}
+
 	branch := h.svc.ResolveBranch(c.Request.Context(), c.GetHeader("X-NexusTale-Branch"), userID, projectID)
 
 	svcReq := ChatRequest{
@@ -209,6 +217,7 @@ func (h *Handler) Chat(c *gin.Context) {
 		Messages:   req.Messages,
 		Provider:   req.Provider,
 		MaxTokens:  req.MaxTokens,
+		PromptID:   promptID,
 	}
 
 	setSSeHeaders(c)

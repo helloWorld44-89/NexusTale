@@ -688,6 +688,7 @@ export const api = {
       onDelta: (text: string) => void,
       signal?: AbortSignal,
       branch?: string,
+      promptId?: string | null,
     ): Promise<void> => {
       const branchHeaders: Record<string, string> = branch
         ? { 'X-NexusTale-Branch': branch }
@@ -699,7 +700,7 @@ export const api = {
           Authorization: `Bearer ${token}`,
           ...branchHeaders,
         },
-        body: JSON.stringify({ messages, scene_id: sceneId ?? '' }),
+        body: JSON.stringify({ messages, scene_id: sceneId ?? '', prompt_id: promptId ?? '' }),
         signal,
       })
 
@@ -794,6 +795,7 @@ export const api = {
         onToolCall?: (event: ToolCallEvent) => void,
         onAgentPlanning?: (round: number) => void,
         maxRounds?: number,
+        promptId?: string | null,
       ): Promise<void> => {
         const res = await fetch(`${BASE}/projects/${projectId}/ai/workshop/${sessionId}/chat`, {
           method: 'POST',
@@ -804,9 +806,10 @@ export const api = {
           },
           body: JSON.stringify({
             messages,
-            scene_id:     sceneId ?? '',
+            scene_id:      sceneId ?? '',
             tools_enabled: toolsEnabled ?? false,
-            max_rounds:   maxRounds ?? 0,
+            max_rounds:    maxRounds ?? 0,
+            prompt_id:     promptId ?? '',
           }),
           signal,
         })

@@ -17,6 +17,7 @@ interface ChatBarProps {
   projectId: string
   sceneId?: string
   branch?: string
+  promptId?: string | null
   onInsertToScene?: (text: string) => void
 }
 
@@ -32,7 +33,7 @@ const NO_CONNECTION_MSG: Message = {
   text: "No AI connection configured. Add a provider key or Ollama URL in Settings to activate Nexus.",
 }
 
-export default function ChatBar({ token, projectId, sceneId, branch, onInsertToScene }: ChatBarProps) {
+export default function ChatBar({ token, projectId, sceneId, branch, promptId, onInsertToScene }: ChatBarProps) {
   const [messages, setMessages]     = useState<Message[]>([])
   const [input, setInput]           = useState('')
   const [streaming, setStreaming]   = useState(false)
@@ -105,6 +106,7 @@ export default function ChatBar({ token, projectId, sceneId, branch, onInsertToS
         },
         abortRef.current.signal,
         branch,
+        promptId,
       )
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong.'

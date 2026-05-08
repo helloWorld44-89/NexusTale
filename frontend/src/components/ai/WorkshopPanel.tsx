@@ -13,6 +13,7 @@ interface WorkshopPanelProps {
   projectPhase?:      string
   sceneId?:           string
   branch?:            string
+  promptId?:          string | null
   onInsertToScene?:   (text: string) => void
   onToolWrite?:       (sceneId: string, chapterId: string) => void
   onStructureChange?: () => void
@@ -65,6 +66,7 @@ export default function WorkshopPanel({
   projectPhase,
   sceneId,
   branch,
+  promptId,
   onInsertToScene,
   onToolWrite,
   onStructureChange,
@@ -250,6 +252,7 @@ export default function WorkshopPanel({
         },
         // Pass 25 rounds for agent mode so large drafting tasks can complete.
         toolsEnabled ? 25 : undefined,
+        promptId,
       )
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {

@@ -30,7 +30,7 @@ const DISPLAY_LABELS: Record<DisplayStep, string> = {
 // ── per-step default data ─────────────────────────────────────────────────────
 function defaultData(step: StepKey): Record<string, unknown> {
   switch (step) {
-    case 'premise':     return { logline: '', theme: '', genres: [] }
+    case 'premise':     return { logline: '', theme: '', genres: [], audience: '', writing_voice: '' }
     case 'characters':  return { characters: [{ name: '', role: 'protagonist', description: '' }] }
     case 'world':       return { setting: '', locations: [{ name: '', description: '' }], magic_systems: [] }
     case 'outline':     return { chapters: [{ title: 'Chapter 1', summary: '' }] }
@@ -378,8 +378,26 @@ type FormProps = {
   onBlur: () => void
 }
 
+const AUDIENCE_OPTIONS: { key: string; label: string; hint: string }[] = [
+  { key: 'middle_grade',  label: 'Middle Grade',  hint: 'Ages 8–12' },
+  { key: 'young_adult',   label: 'Young Adult',   hint: 'Ages 13–18' },
+  { key: 'new_adult',     label: 'New Adult',     hint: 'Ages 18–25' },
+  { key: 'adult',         label: 'Adult',         hint: 'General adult' },
+]
+
+const VOICE_OPTIONS: { key: string; label: string; description: string }[] = [
+  { key: 'sparse_direct',   label: 'Sparse & Direct',   description: 'Short sentences, strong verbs, no filler. Trust the reader.' },
+  { key: 'lyrical',         label: 'Lyrical',           description: 'Rich imagery, varied rhythm, sensory detail.' },
+  { key: 'ya_contemporary', label: 'YA Contemporary',   description: 'Conversational, close, strong interiority.' },
+  { key: 'epic_sweeping',   label: 'Epic / Sweeping',   description: 'Elevated register, sense of history and scope.' },
+  { key: 'thriller_pacing', label: 'Thriller Pacing',   description: 'Short paragraphs, momentum-first, white space.' },
+  { key: 'literary',        label: 'Literary',          description: 'Psychological depth, ambiguous morality, earned prose.' },
+]
+
 function PremiseForm({ data, onChange, onBlur }: FormProps) {
-  const genres = (data.genres as string[] | undefined) ?? []
+  const genres      = (data.genres       as string[] | undefined) ?? []
+  const audience    = (data.audience     as string  | undefined)  ?? ''
+  const writingVoice = (data.writing_voice as string | undefined) ?? ''
 
   const toggleGenre = (g: string) => {
     onChange('genres', genres.includes(g) ? genres.filter((x) => x !== g) : [...genres, g])
@@ -388,7 +406,7 @@ function PremiseForm({ data, onChange, onBlur }: FormProps) {
   const GENRE_OPTIONS = ['Fantasy', 'Sci-Fi', 'Horror', 'Romance', 'Thriller', 'Mystery', 'Historical', 'Literary']
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <Field label="Logline" hint="One sentence: who wants what, why it's hard, what's at stake.">
         <textarea
           rows={3}
@@ -422,6 +440,44 @@ function PremiseForm({ data, onChange, onBlur }: FormProps) {
                   : 'bg-brand-bg border border-brand-border text-brand-muted hover:border-brand-cyan/30 hover:text-brand-text'}`}
             >
               {g}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Target Audience" hint="Sets content guidelines in the AI bible so every mode stays appropriate.">
+        <div className="flex flex-wrap gap-2 mt-1">
+          {AUDIENCE_OPTIONS.map((a) => (
+            <button
+              key={a.key}
+              type="button"
+              onClick={() => { onChange('audience', audience === a.key ? '' : a.key); onBlur() }}
+              className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors border text-left
+                ${audience === a.key
+                  ? 'bg-brand-cyan/15 text-brand-cyan border-brand-cyan/40'
+                  : 'bg-brand-bg border-brand-border text-brand-muted hover:border-brand-cyan/30 hover:text-brand-text'}`}
+            >
+              <span className="block font-semibold">{a.label}</span>
+              <span className="block text-[10px] opacity-70 mt-0.5">{a.hint}</span>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Prose Voice" hint="Creates a writing style preset in your project. You can change it later in the scene panel.">
+        <div className="grid grid-cols-2 gap-2 mt-1">
+          {VOICE_OPTIONS.map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              onClick={() => { onChange('writing_voice', writingVoice === v.key ? '' : v.key); onBlur() }}
+              className={`px-3 py-2.5 rounded-lg text-left text-xs transition-colors border
+                ${writingVoice === v.key
+                  ? 'bg-brand-purple/15 text-brand-purple border-brand-purple/40'
+                  : 'bg-brand-bg border-brand-border text-brand-muted hover:border-brand-cyan/30 hover:text-brand-text'}`}
+            >
+              <span className="block font-semibold text-[11px]">{v.label}</span>
+              <span className="block text-[10px] opacity-70 mt-0.5 leading-snug">{v.description}</span>
             </button>
           ))}
         </div>

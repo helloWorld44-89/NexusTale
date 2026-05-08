@@ -284,8 +284,9 @@ type ChatRequest struct {
 	Messages             []adapters.Message
 	Provider             string
 	MaxTokens            int
-	SystemPromptOverride string // if non-empty, replaces the default Nexus identity prompt
-	WorkshopMode         bool   // use digest-based history window instead of plain truncation
+	PromptID             uuid.UUID // optional writing style preset — content appended to system prompt
+	SystemPromptOverride string    // if non-empty, replaces the default Nexus identity prompt
+	WorkshopMode         bool      // use digest-based history window instead of plain truncation
 }
 
 // StreamComplete streams the AI response for scene continuation or beat expansion.
@@ -534,6 +535,12 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 			"and assist with writing. Be concise unless the user asks for detail.\n\n" + ctxBlock
 	}
 
+	// Append writing style guidance when the writer has a style preset selected.
+	// We append content (not system_content) so the Nexus identity + context are preserved.
+	if style := s.fetchStyleContent(ctx, req.PromptID); style != "" {
+		nexusSystem += "\n\n## Writing style\n" + style
+	}
+
 	messages = append([]adapters.Message{{Role: "system", Content: nexusSystem}}, messages...)
 
 	usage, err := adapter.StreamChat(ctx, adapters.ChatRequest{
@@ -593,6 +600,10 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 			"list_project_structure first so you have the correct UUIDs. Never guess or invent IDs.\n\n" +
 			"When the author asks you to write, expand, or create story content, use the appropriate tool. " +
 			"After each tool call, briefly confirm what you did and what comes next.\n\n" + ctxBlock
+	}
+
+	if style := s.fetchStyleContent(ctx, req.PromptID); style != "" {
+		nexusSystem += "\n\n## Writing style\n" + style
 	}
 
 	var historyMsgs []adapters.Message
@@ -889,6 +900,21 @@ func (s *Service) recordUsage(projectID, userID uuid.UUID, model string, usage a
 			slog.Warn("ai: failed to record usage", "error", err)
 		}
 	}()
+}
+
+// fetchStyleContent loads a project_prompt by ID and returns its content field.
+// This is the style guidance text (not system_content, which is a full system-prompt
+// replacement only appropriate for beat/continue mode). Returns "" on any error or when
+// the preset has no content — callers can unconditionally append the result.
+func (s *Service) fetchStyleContent(ctx context.Context, promptID uuid.UUID) string {
+	if promptID == uuid.Nil {
+		return ""
+	}
+	p, err := s.queries.GetProjectPrompt(ctx, promptID)
+	if err != nil {
+		return ""
+	}
+	return p.Content
 }
 
 // applyPromptPreset modifies adapterReq in place according to the stored preset:
