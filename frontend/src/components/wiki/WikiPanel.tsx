@@ -1,6 +1,6 @@
 // WikiPanel — left-panel view for browsing and editing wiki entities.
 // Mounted in Editor when leftPanel === 'wiki'.
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '@/services/api'
 import type { WikiEntity, EntityType, AutolinkMatch } from '@/services/api'
@@ -314,14 +314,14 @@ function EntityDetail({
         <div>
           <label className="block text-[10px] font-semibold text-brand-muted uppercase tracking-wider mb-1">Summary</label>
           {editing ? (
-            <textarea
+            <AutoTextarea
               value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              rows={4}
-              className="input-field resize-none w-full text-sm"
+              onChange={(e) => setSummary((e.target as HTMLTextAreaElement).value)}
+              minRows={3}
+              className="input-field w-full text-sm"
             />
           ) : (
-            <p className="text-sm text-brand-text leading-relaxed">
+            <p className="text-sm text-brand-text leading-relaxed whitespace-pre-wrap">
               {entity.summary || <span className="text-brand-muted italic">No summary.</span>}
             </p>
           )}
@@ -383,6 +383,34 @@ function EntityDetail({
   )
 }
 
+// ── Auto-growing textarea ─────────────────────────────────────────────────────
+
+function AutoTextarea({
+  value,
+  minRows = 3,
+  className = '',
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { minRows?: number }) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }, [value])
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      rows={minRows}
+      className={`${className} resize-none overflow-hidden`}
+      {...props}
+    />
+  )
+}
+
 // ── Create entity modal ───────────────────────────────────────────────────────
 
 function CreateEntityModal({
@@ -423,9 +451,10 @@ function CreateEntityModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-brand-bg-card border border-brand-border rounded-2xl p-6 w-full max-w-sm shadow-card">
-        <div className="flex items-center justify-between mb-5">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-4 pb-4 sm:pb-0">
+      <div className="bg-brand-bg-card border border-brand-border rounded-2xl w-full max-w-xl shadow-card flex flex-col max-h-[85dvh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <h2 className="text-base font-bold text-brand-text">New Wiki Entry</h2>
           <button onClick={onClose} className="text-brand-muted hover:text-brand-text transition-colors">
             <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -434,11 +463,12 @@ function CreateEntityModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Type selector */}
+        {/* Scrollable body */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-y-auto px-6 pb-6 space-y-4">
+          {/* Type */}
           <div>
             <label className="block text-xs font-medium text-brand-muted uppercase tracking-wider mb-2">Type</label>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
               {ENTITY_TYPES.map((t) => (
                 <button
                   key={t}
@@ -456,6 +486,7 @@ function CreateEntityModal({
             </div>
           </div>
 
+          {/* Name */}
           <div>
             <label className="block text-xs font-medium text-brand-muted uppercase tracking-wider mb-1.5">Name *</label>
             <input
@@ -467,7 +498,8 @@ function CreateEntityModal({
             />
           </div>
 
-          <div>
+          {/* Summary */}
+          <div className="flex flex-col flex-1 min-h-0">
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-medium text-brand-muted uppercase tracking-wider">Summary</label>
               {usingTemplate && (
@@ -484,18 +516,18 @@ function CreateEntityModal({
                 </span>
               )}
             </div>
-            <textarea
+            <AutoTextarea
               value={summary}
-              onChange={(e) => { setSummary(e.target.value); setUsingTemplate(false) }}
+              onChange={(e) => { setSummary((e.target as HTMLTextAreaElement).value); setUsingTemplate(false) }}
               placeholder="Brief description…"
-              rows={usingTemplate ? 6 : 3}
-              className="input-field resize-none w-full text-xs"
+              minRows={4}
+              className="input-field w-full text-sm"
             />
           </div>
 
           {error && <p className="text-xs text-red-400">{error}</p>}
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex gap-2 pt-1 shrink-0">
             <button type="button" onClick={onClose} className="flex-1 py-2 rounded-lg border border-brand-border text-brand-muted text-sm hover:text-brand-text transition-colors">
               Cancel
             </button>

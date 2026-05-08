@@ -1,7 +1,7 @@
 // Guide — 6-step novel wizard that scaffolds a project from premise to first scene.
 // Steps 1-5 are backed by guide_steps on the server; Step 3.5 (Structure) is
 // an optional frontend-only step whose result lands in projects.structure_id.
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
 import { api } from '@/services/api'
@@ -270,9 +270,8 @@ export default function Guide() {
 
         {/* Main — active step form */}
         <main className="flex-1 min-w-0">
-          {allComplete ? (
-            <AllDone projectId={id!} />
-          ) : activeStep === 'structure' ? (
+          {allComplete && <CompletionBanner projectId={id!} />}
+          {activeStep === 'structure' ? (
             /* ── Structure step — its own self-contained component ── */
             <div>
               <div className="mb-6">
@@ -394,6 +393,33 @@ const VOICE_OPTIONS: { key: string; label: string; description: string }[] = [
   { key: 'literary',        label: 'Literary',          description: 'Psychological depth, ambiguous morality, earned prose.' },
 ]
 
+const CHARACTER_TEMPLATE =
+  'Core Motivation: \n\nArc: [start state] → [end state]\n\nVoice & Presence: \n\nKey Relationships: '
+
+function AutoTextarea({
+  value,
+  minRows = 3,
+  className = '',
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { minRows?: number }) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      rows={minRows}
+      className={`${className} resize-none overflow-hidden`}
+      {...props}
+    />
+  )
+}
+
 function PremiseForm({ data, onChange, onBlur }: FormProps) {
   const genres      = (data.genres       as string[] | undefined) ?? []
   const audience    = (data.audience     as string  | undefined)  ?? ''
@@ -504,41 +530,63 @@ function CharactersForm({ data, onChange, onBlur }: FormProps) {
     onBlur()
   }
 
+  const ROLE_LABELS: Record<string, string> = {
+    protagonist:   'Protagonist',
+    antagonist:    'Antagonist',
+    supporting:    'Supporting',
+    mentor:        'Mentor',
+    love_interest: 'Love interest',
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {chars.map((ch, i) => (
-        <div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-4 border-b border-brand-border last:border-0">
-          <input
-            type="text"
-            value={ch.name}
-            onChange={(e) => update(i, 'name', e.target.value)}
-            onBlur={onBlur}
-            placeholder="Character name"
-            className={inputCls}
-          />
-          <select
-            value={ch.role}
-            onChange={(e) => { update(i, 'role', e.target.value); onBlur() }}
-            className={inputCls}
-          >
-            <option value="protagonist">Protagonist</option>
-            <option value="antagonist">Antagonist</option>
-            <option value="supporting">Supporting</option>
-            <option value="mentor">Mentor</option>
-            <option value="love_interest">Love interest</option>
-          </select>
-          <div className="flex gap-2">
+        <div key={i} className="bg-brand-bg border border-brand-border rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-3">
             <input
               type="text"
-              value={ch.description}
-              onChange={(e) => update(i, 'description', e.target.value)}
+              value={ch.name}
+              onChange={(e) => update(i, 'name', e.target.value)}
               onBlur={onBlur}
-              placeholder="Brief description"
+              placeholder="Character name"
               className={inputCls + ' flex-1'}
             />
+            <select
+              value={ch.role}
+              onChange={(e) => { update(i, 'role', e.target.value); onBlur() }}
+              className={inputCls + ' shrink-0'}
+              aria-label="Role"
+            >
+              {Object.entries(ROLE_LABELS).map(([val, lbl]) => (
+                <option key={val} value={val}>{lbl}</option>
+              ))}
+            </select>
             {chars.length > 1 && (
-              <button onClick={() => remove(i)} className="text-brand-muted hover:text-red-400 transition-colors px-1">
+              <button
+                onClick={() => remove(i)}
+                className="text-brand-muted hover:text-red-400 transition-colors shrink-0"
+                aria-label="Remove character"
+              >
                 ×
+              </button>
+            )}
+          </div>
+          <div className="relative">
+            <AutoTextarea
+              value={ch.description}
+              onChange={(e) => update(i, 'description', (e.target as HTMLTextAreaElement).value)}
+              onBlur={onBlur}
+              placeholder="Describe this character…"
+              minRows={2}
+              className={inputCls + ' w-full'}
+            />
+            {!ch.description && (
+              <button
+                type="button"
+                onClick={() => { update(i, 'description', CHARACTER_TEMPLATE); onBlur() }}
+                className="absolute bottom-2 right-2.5 text-[10px] text-brand-cyan/70 hover:text-brand-cyan transition-colors"
+              >
+                Use template
               </button>
             )}
           </div>
@@ -740,33 +788,33 @@ function FirstSceneForm({ data, onChange, onBlur }: FormProps) {
   )
 }
 
-// ── All done screen ───────────────────────────────────────────────────────────
+// ── Completion banner — shown above step form when all steps are done ─────────
 
-function AllDone({ projectId }: { projectId: string }) {
+function CompletionBanner({ projectId }: { projectId: string }) {
   const navigate = useNavigate()
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mb-6">
-        <svg className="w-8 h-8 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <div className="mb-6 bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-5 py-4 flex flex-wrap items-center gap-4">
+      <div className="w-9 h-9 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+        <svg className="w-5 h-5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20 6L9 17l-5-5" />
         </svg>
       </div>
-      <h2 className="text-2xl font-bold text-brand-text mb-3">Your novel is scaffolded!</h2>
-      <p className="text-brand-muted max-w-md mb-8">
-        Characters, locations, and chapters have been added to your project. Head to the editor to start writing.
-      </p>
-      <div className="flex gap-4">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-brand-text">Novel scaffolded!</p>
+        <p className="text-xs text-brand-muted mt-0.5">All steps complete. Select any step to edit it, or start writing.</p>
+      </div>
+      <div className="flex gap-2 shrink-0">
         <button
           onClick={() => navigate(`/projects/${projectId}/editor`)}
-          className="px-6 py-2.5 rounded-lg bg-brand-cyan text-brand-bg text-sm font-semibold hover:bg-brand-cyan/80 transition-colors"
+          className="px-3 py-1.5 rounded-lg bg-brand-cyan text-brand-bg text-xs font-semibold hover:bg-brand-cyan/80 transition-colors"
         >
           Open Editor
         </button>
         <button
           onClick={() => navigate(`/projects/${projectId}`)}
-          className="px-5 py-2.5 rounded-lg border border-brand-border text-brand-muted text-sm hover:text-brand-text hover:border-brand-cyan/30 transition-colors"
+          className="px-3 py-1.5 rounded-lg border border-brand-border text-brand-muted text-xs hover:text-brand-text hover:border-brand-cyan/30 transition-colors"
         >
-          Back to Project
+          Project Home
         </button>
       </div>
     </div>
