@@ -105,7 +105,20 @@ const ScribeEditor = forwardRef<ScribeEditorHandle, ScribeEditorProps>(function 
     }
   }, [token, projectId, sceneId, branch])
 
+  // Immediate load when scene or branch changes.
   useEffect(() => { loadMentions() }, [loadMentions])
+
+  // Delayed refresh so the backend tagger's results appear without a reload.
+  // Backend debounce is 5s; autosave fires at 1.5s — so 7.5s gives ~1s buffer.
+  const loadMentionsRef = useRef(loadMentions)
+  useEffect(() => { loadMentionsRef.current = loadMentions }, [loadMentions])
+  const mentionRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (mentionRefreshTimer.current) clearTimeout(mentionRefreshTimer.current)
+    mentionRefreshTimer.current = setTimeout(() => loadMentionsRef.current(), 7500)
+    return () => { if (mentionRefreshTimer.current) clearTimeout(mentionRefreshTimer.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content])
 
   // Push updated mentions into the decoration plugin.
   useEffect(() => {

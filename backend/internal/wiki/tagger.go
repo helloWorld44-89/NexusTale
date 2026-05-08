@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,9 +67,28 @@ func (s *Service) IndexSceneMentions(ctx context.Context, projectID, sceneID uui
 	s.tagger.schedule(sceneID, projectID, branchName, content, s.runDetection)
 }
 
+// buildSearchTerms returns the entity name plus, for multi-word names, each
+// individual word long enough to avoid false positives (≥4 chars). The full
+// name is always tried first so the longest match wins the chip label.
+// Example: "Kira Nerys" → ["Kira Nerys", "Kira", "Nerys"]
+//          "Commander Voss" → ["Commander Voss", "Commander", "Voss"]
+//          "The Void" → ["The Void", "Void"]  ("The" skipped — 3 chars)
+func buildSearchTerms(name string) []string {
+	terms := []string{name}
+	words := strings.Fields(name)
+	if len(words) > 1 {
+		for _, w := range words {
+			if len(w) >= 4 {
+				terms = append(terms, w)
+			}
+		}
+	}
+	return terms
+}
+
 // runDetection is called by the tagger after the debounce delay. It checks
 // auto_tag_enabled, runs whole-word case-insensitive detection, then atomically
-// replaces the non-suppressed mention rows for (scene_id, branch_name).
+// replaces the mention rows for (scene_id, branch_name).
 func (s *Service) runDetection(sceneID, projectID uuid.UUID, branchName, content string) {
 	ctx := context.Background()
 
@@ -95,14 +115,22 @@ func (s *Service) runDetection(sceneID, projectID uuid.UUID, branchName, content
 		matchText string
 	}
 	var matches []match
+	seen := make(map[uuid.UUID]bool)
 	for _, e := range entities {
-		re, reErr := regexp.Compile(`(?i)\b` + regexp.QuoteMeta(e.Name) + `\b`)
-		if reErr != nil {
+		if seen[e.ID] {
 			continue
 		}
-		found := re.FindString(content)
-		if found != "" {
-			matches = append(matches, match{entity: e, matchText: found})
+		for _, term := range buildSearchTerms(e.Name) {
+			re, reErr := regexp.Compile(`(?i)\b` + regexp.QuoteMeta(term) + `\b`)
+			if reErr != nil {
+				continue
+			}
+			found := re.FindString(content)
+			if found != "" {
+				matches = append(matches, match{entity: e, matchText: found})
+				seen[e.ID] = true
+				break
+			}
 		}
 	}
 
