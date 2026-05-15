@@ -1,0 +1,29 @@
+meta {
+  name: list-waitlist-signups
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/admin/waitlist
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns signups array", function() {
+    expect(res.body.signups).to.be.an("array");
+  });
+
+  test("returns total count", function() {
+    expect(res.body.total).to.be.a("number");
+  });
+}

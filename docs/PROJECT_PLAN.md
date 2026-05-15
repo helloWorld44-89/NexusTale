@@ -866,10 +866,101 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 
 ---
 
+### C9 — Manuscript Import `[Medium — demand-gated]`
+
+> **Status:** Planned, not started. Track demand from alpha users before building. If ≥ 5 alpha writers request it unprompted, prioritize above Phase D items.
+
+Writers arriving mid-draft need a way to bring existing work into NexusTale without starting over. This feature adds an import flow that parses a document into NexusTale's act → chapter → scene hierarchy and creates a new project from it.
+
+**Scope: new-project-only** (importing into an existing project is higher risk and lower demand — defer indefinitely).
+
+#### Supported formats (priority order)
+
+| Format | Complexity | Rationale |
+|--------|------------|-----------|
+| Markdown (`.md`) | Low | Natural format for many writers and AI-native workflows |
+| DOCX (`.docx`) | Medium | Highest writer prevalence; we already write OOXML in `export/docx.go` — parsing is the reverse |
+| Plain text (`.txt`) | Low | Fallback for anything copy-pasted out of Google Docs or Notion |
+| Scrivener (`.scriv`) | High | Proprietary zip+XML; high value but non-trivial — Phase D only |
+| Fountain (`.fountain`) | Low | Screenplay format; niche for prose writers — Phase D only |
+
+#### Structure inference strategy
+
+Heading-based (primary): `# Chapter Title` or DOCX `Heading 1` → chapter; `## Scene Title` or `Heading 2` → scene.
+Separator-based (fallback): `# # #` or `***` between paragraphs → scene break; double blank line → chapter break.
+No AI-assisted splitting in v1 — too expensive and unpredictable. Add as a Phase D enhancement if writers report flat documents don't parse well.
+
+#### UX flow
+
+1. Dashboard "New Project" → "Import a manuscript" button (alongside "Start from scratch" and "Use a guide wizard").
+2. File picker — accepts `.md`, `.docx`, `.txt`.
+3. **Preview & confirm screen** — shows the inferred chapter/scene tree before anything is written. Writer can rename, merge, or split nodes. This step is mandatory — no silent imports.
+4. "Create project" — writes acts/chapters/scenes to DB, fires the normal Chronicle initial commit, redirects to the editor.
+
+#### Backend shape
+
+- `POST /projects/import` — multipart upload; returns a preview payload (chapter/scene tree as JSON) without writing to DB.
+- `POST /projects/import/confirm` — accepts the (possibly edited) preview payload and creates the project, chapters, and scenes transactionally.
+- `internal/import/` package: `parser.go` (format dispatch), `markdown.go`, `docx.go`, `txt.go`, `preview.go` (tree builder).
+- No new migration needed for v1 — reuses existing `projects`, `chapters`, `scenes` tables.
+
+#### Demand signal to watch for
+
+- Alpha feedback mentions "import" or "bring my draft"
+- Discord/email requests referencing Scrivener, Word, or Google Docs migration
+- If ≥ 5 unprompted requests land → promote above Phase D items in the next planning cycle
+
+---
+
+### C9.5 — Entity Rename Cascade `[Medium]`
+
+> **Status:** Planned, not started. Closely tied to C7.0 (scene_entity_mentions) — implement after C9 or whenever a writer hits this pain point in alpha.
+
+When a writer renames a wiki entity, NexusTale offers to find and replace every occurrence of the old name (and its aliases) throughout the manuscript prose. The approval step reuses the existing `ProseDiffViewer` infrastructure so the writer sees a real word-level before/after diff — not a checkbox list — for each affected scene.
+
+#### Trigger condition
+
+The cascade prompt only appears if **the entity has ≥ 1 tagged occurrence** in `scene_entity_mentions` after the rename saves. Silent rename if no occurrences exist.
+
+#### UX flow
+
+1. Writer edits entity name in `EntityDetail` and saves.
+2. Backend `PUT /wiki/entities/:eid` detects the name changed; response includes `{ rename_cascade_available: true, occurrence_count: N, old_name: string }` when N ≥ 1.
+3. Frontend shows a **non-blocking banner** below the entity header: *"'John' appears in N places across M scenes. Update the manuscript? → Review & Update / Skip"*.
+4. "Review & Update" opens **`RenameCascadeModal`** — a full-screen modal built on the same `SceneDiffCard` + `WordDiffView` components extracted from `ProseDiffViewer`. Each card shows the scene title, the word-level diff (old name in red strikethrough, new name in green), and two resolution buttons: **Apply** (green) / **Skip** (muted). Paginated at 20 cards, same as `ProseDiffViewer`.
+5. Alias groups: if the entity matches as both "John" and "Commander John", those are separate cards (or a sub-section within the same scene card) — each independently approvable.
+6. Footer: "Apply to N scenes" button, enabled once all cards are resolved. Progress indicator while git writes happen.
+7. On success: banner updates to *"Done — renamed in N scenes. A Chronicle entry was created."*
+
+#### Frontend refactor required
+
+Extract `SceneDiffCard`, `WordDiffView`, `ResBtn`, and `extractTexts` from `ProseDiffViewer.tsx` into `components/shared/ProseDiff/` so both `ProseDiffViewer` and the new `RenameCascadeModal` can import them without duplication. `ProseDiffViewer` is rewired to import from the shared location — no behaviour change.
+
+`RenameCascadeModal` replaces the three-way resolution (canon / coauthor / manual) with two-way (apply / skip). No manual edit mode — if the rename produces wrong prose, the writer fixes it in the scene editor afterward.
+
+#### Backend shape
+
+- `PUT /wiki/entities/:eid` — extend response with `rename_cascade_available`, `occurrence_count`, `old_name` when name changes.
+- `POST /wiki/entities/:eid/rename-cascade/preview` — body: `{ old_name, new_name }`. Queries `scene_entity_mentions` for all non-suppressed matches grouped by scene; fetches each scene's content from git; applies the rename in memory; generates a unified diff (before → after) per scene using the same diff library as the MR system. Returns `[{ scene_id, scene_title, chapter_title, match_texts: string[], unified_diff: string }]`. **Does not write anything.**
+- `POST /wiki/entities/:eid/rename-cascade/confirm` — body: `{ new_name, scene_ids: string[] }` (only the scenes the writer approved). Reads each scene from git, applies whole-word case-preserving replace for all approved match_texts, writes back. All writes land in a **single Chronicle commit**: `rename: John → Kael (44 occurrences across 11 scenes)`. Updates `match_text` in `scene_entity_mentions` for affected rows.
+- No new migration — operates on existing `scene_entity_mentions` + git scene storage.
+
+#### Case-preserving replacement
+
+`john` → `kael`, `John` → `Kael`, `JOHN` → `KAEL`. Title-case/lower/upper check on the matched substring — no NLP needed.
+
+#### Edge cases to handle
+
+- **Stale mentions** — preview re-scans live git content; skips `scene_entity_mentions` rows where the old name is no longer present in the scene.
+- **Suppressed mentions** — excluded from preview entirely.
+- **Concurrent edit** — confirm uses an optimistic check (read scene content again before write; abort that scene if content changed since preview).
+
+---
+
 ### Phase D — Premium / advanced
 
 - Map builder v2; image generation pipelines
-- Scrivener/Fountain; advanced Git branching UX
+- Scrivener/Fountain import (see C9 for simpler format coverage; Phase D adds these two formats only)
 - Multi-region, scale-out collab tuning
 - **Keyboard shortcuts** — writer-defined hotkeys for common editing actions (bold, italic, scene save, beat trigger, focus mode, etc.); shortcut map to be specified before implementation
 - **Customizable workspaces** — per-user, per-project saved panel layouts (open panels, widths, active scene/chapter); named presets ("drafting", "research", "editing") switchable from the TopBar; `user_workspaces` table (JSONB layout blob); synced across sessions so the editor reopens exactly where the writer left off
@@ -1425,6 +1516,66 @@ A tooltip-sequence walkthrough shown automatically on a writer's first visit to 
 - Scrivener/Fountain; advanced Git branching UX
 - Multi-region, scale-out collab tuning
 - **Keyboard shortcuts** — writer-defined hotkeys for common editing actions (bold, italic, scene save, beat trigger, focus mode, etc.); shortcut map to be specified before implementation
+
+---
+
+#### D-FQ1 — Pacing Slider `[Light]`
+
+A writer-controlled dial that tells the AI how fast to move the narrative — everything from slow-burn introspective prose to relentless propulsive action.
+
+**What it controls:** when the AI generates a beat or continuation, the pacing value is injected into the system prompt as a `## Pacing` directive. Low values produce longer sentences, more interiority, lingering sensory detail. High values produce shorter paragraphs, stronger verbs, faster scene cuts.
+
+**Storage:**
+- **Global default** — `projects.default_pacing SMALLINT NOT NULL DEFAULT 50` (0–100). Added in its own migration alongside D-FQ2.
+- **Per-scene override** — stored in the existing `scene_attributes` JSONB column (migration 032) under key `"pacing"`. `null` means "use project default."
+
+**UI — two surfaces:**
+- *Settings → AI Configuration*: a labeled slider with five named stops (Glacial · Measured · Standard · Propulsive · Relentless) that sets the project-wide default. Persisted via `PATCH /projects/:id`.
+- *SceneMetadataPanel*: the same slider below the existing scene-role fields. When a writer changes it, the value is saved immediately to `scene_attributes` via `PATCH /projects/:id/scenes/:sid`. A small "Using project default" label is shown when no per-scene value is set; setting the slider to any position creates a per-scene override; a reset link clears it back to default.
+
+**AI integration:**
+- `parseSceneContextAttrs` (already exported from `context.go`) reads `pacing` from the JSONB. `buildSceneDirective` checks the per-scene value, falls back to the project default, and appends:
+  ```
+  ## Pacing
+  Write at a [Measured / Propulsive / …] pace. [One-sentence elaboration per level.]
+  ```
+- Directive injected into the beat and continue system prompts in `StreamComplete`.
+
+- [ ] Migration: `projects.default_pacing SMALLINT NOT NULL DEFAULT 50`
+- [ ] Backend: extend `UpdateProject` sqlc query; expose `default_pacing` in `ProjectResponse` + OpenAPI spec
+- [ ] `parseSceneContextAttrs` / `buildSceneDirective`: read pacing; inject `## Pacing` block
+- [ ] Frontend: project-default slider in Settings → AI Configuration; per-scene slider in SceneMetadataPanel with "Using project default" / reset affordance
+
+---
+
+#### D-FQ2 — Dialogue vs. Description Slider `[Light]`
+
+A writer-controlled balance dial that tells the AI how much of its output should be direct speech versus narrative prose/description.
+
+**What it controls:** the `prose_balance` value is injected into the system prompt as a `## Prose balance` directive. Low values (description-heavy) produce rich sensory narration with sparse dialogue. High values (dialogue-heavy) produce scenes driven by back-and-forth exchange with minimal action beats.
+
+**Storage:**
+- **Global default** — `projects.default_prose_balance SMALLINT NOT NULL DEFAULT 50` (0–100). Added in the same migration as D-FQ1.
+- **Per-scene override** — stored in `scene_attributes` JSONB under key `"prose_balance"`. `null` means "use project default."
+
+**UI — two surfaces (mirrors pacing slider):**
+- *Settings → AI Configuration*: labeled slider with five named stops (All Description · Mostly Description · Balanced · Mostly Dialogue · All Dialogue). Persisted via `PATCH /projects/:id`.
+- *SceneMetadataPanel*: inline slider alongside the pacing control, same reset-to-default affordance. Renders the balance label (e.g. "Mostly Dialogue") as secondary text so the intent is always readable without moving the slider.
+
+**AI integration:**
+- `buildSceneDirective` reads per-scene → project default → 50 (Balanced). Appends:
+  ```
+  ## Prose balance
+  Lean toward [dialogue / description / a balanced mix]. [One-sentence elaboration per level.]
+  ```
+- Injected into the same beat/continue prompts as the pacing directive (both in one `## Writing guidance` block when both are present, to avoid prompt clutter).
+
+- [ ] Migration: `projects.default_prose_balance SMALLINT NOT NULL DEFAULT 50` (same migration as D-FQ1)
+- [ ] Backend: extend `UpdateProject` sqlc query; expose `default_prose_balance` in `ProjectResponse` + OpenAPI spec
+- [ ] `parseSceneContextAttrs` / `buildSceneDirective`: read prose_balance; inject `## Prose balance` block; merge with pacing into `## Writing guidance` when both are set
+- [ ] Frontend: project-default slider in Settings → AI Configuration; per-scene slider in SceneMetadataPanel alongside pacing
+
+---
 - **Customizable workspaces** — per-user, per-project saved panel layouts (open panels, widths, active scene/chapter); named presets ("drafting", "research", "editing") switchable from the TopBar; `user_workspaces` table (JSONB layout blob); synced across sessions so the editor reopens exactly where the writer left off
 - **Series / shared universe support** — a Series container holding multiple Projects with a shared wiki layer; entities created at the Series level are accessible across all Projects in the series; cross-project references (a character introduced in Book 1 appears in Book 3’s wiki); the primary use case is multi-book SFF series (the "Cosmere model" — a single author building a connected universe across many volumes). Requires significant data model changes: `series` table, `series_id FK` on Projects, wiki entity scope (`project` vs `series`), and UI to navigate between books within a series.
   - [ ] Terminology review before naming: do not use "Cosmere" or any Sanderson universe name in feature copy. NexusTale-native name TBD (e.g. "Universe," "Series," "Chronicle").

@@ -268,8 +268,10 @@ func main() {
 		threadsGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		threadsHandler.RegisterRoutes(threadsGroup)
 
-		// Waitlist — public, no auth.
+		// Waitlist — public submit, admin-only list.
 		waitlistHandler.RegisterRoutes(v1)
+		adminGroup := v1.Group("/admin", auth.RequireAuth(authService), auth.RequireRole(auth.RoleAdmin))
+		waitlistHandler.RegisterAdminRoutes(adminGroup)
 	}
 
 	// Server with graceful shutdown

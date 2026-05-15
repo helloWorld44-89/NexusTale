@@ -1,10 +1,14 @@
 package waitlist
 
-// Handler exposes the public waitlist endpoint.
+// Handler exposes the public waitlist endpoint and the admin list endpoint.
 //
 // Routes (no auth required):
 //
 //	POST /waitlist   → submit an invite request
+//
+// Routes (admin only — mount via RegisterAdminRoutes on an auth+role-gated group):
+//
+//	GET /admin/waitlist  → list all signups
 
 import (
 	"log/slog"
@@ -23,9 +27,31 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// RegisterRoutes mounts the waitlist route on the provided group (no auth middleware).
+// RegisterRoutes mounts the public waitlist route (no auth middleware).
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/waitlist", h.Create)
+}
+
+// RegisterAdminRoutes mounts admin-only waitlist routes on rg, which must
+// already have RequireAuth + RequireRole(admin) middleware applied.
+func (h *Handler) RegisterAdminRoutes(rg *gin.RouterGroup) {
+	rg.GET("/waitlist", h.List)
+}
+
+// List returns all waitlist signups ordered by most-recent first.
+//
+// GET /api/v1/admin/waitlist
+func (h *Handler) List(c *gin.Context) {
+	signups, err := h.svc.List(c.Request.Context())
+	if err != nil {
+		slog.Error("waitlist list failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"signups": signups,
+		"total":   len(signups),
+	})
 }
 
 // Create processes an invite-request submission.

@@ -23,6 +23,24 @@ type SignupResponse struct {
 	CreatedAt     string `json:"created_at"`
 }
 
+// List returns all waitlist signups ordered by most-recent first.
+func (s *Service) List(ctx context.Context) ([]SignupResponse, error) {
+	rows, err := s.queries.ListWaitlistSignups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SignupResponse, len(rows))
+	for i, r := range rows {
+		out[i] = SignupResponse{
+			ID:            r.ID.String(),
+			Email:         r.Email,
+			WhatTheyWrite: r.WhatTheyWrite,
+			CreatedAt:     r.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	}
+	return out, nil
+}
+
 // Create inserts or updates a waitlist signup. Duplicate emails are accepted
 // and update the what_they_write field (idempotent).
 func (s *Service) Create(ctx context.Context, email, whatTheyWrite string) (SignupResponse, error) {
