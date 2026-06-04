@@ -2,8 +2,6 @@ module github.com/jconder44/nexustale
 
 go 1.25.0
 
-toolchain go1.26.4
-
 require (
 	github.com/bmaupin/go-epub v1.1.0
 	github.com/gin-gonic/gin v1.10.0
