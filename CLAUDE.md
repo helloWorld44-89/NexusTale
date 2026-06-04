@@ -24,7 +24,7 @@ NexusTale is a sci-fi/fantasy novel-writing tool. Assist with narrative systems,
 
 ## Stack (backend)
 
-- **Go 1.23**, **Gin** for HTTP.
+- **Go 1.25**, **Gin** for HTTP.
 - **PostgreSQL** (pgx), **Redis**, **MinIO** for local/dev (see compose file).
 - **sqlc** for type-safe SQL → `pkg/db/sqlcgen`.
 - **JWT** auth, **golang-migrate** for schema changes.

@@ -12,8 +12,8 @@ post {
 
 body:json {
   {
-    "email": "writer@nexustale.dev",
-    "password": "password123"
+    "email": "REDACTED_EMAIL@example.com",
+    "password": "REDACTED_PASSWORD"
   }
 }
 
@@ -29,12 +29,12 @@ tests {
   test("status is 200", function() {
     expect(res.status).to.equal(200);
   });
-
+  
   test("returns user data", function() {
     expect(res.body.user.email).to.equal("writer@nexustale.dev");
     expect(res.body.user.display_name).to.equal("Test Writer");
   });
-
+  
   test("returns token pair", function() {
     expect(res.body.tokens.access_token).to.be.a("string");
     expect(res.body.tokens.refresh_token).to.be.a("string");

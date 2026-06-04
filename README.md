@@ -2,7 +2,13 @@
 
 A sci-fi/fantasy novel-writing platform: structured manuscripts (projects → acts → chapters → scenes), Git-backed narrative history, a world wiki, AI-assisted drafting, and collaborative editing — built for writers who think in worlds.
 
-![CI](https://github.com/helloWorld44-89/NexusTale/actions/workflows/dev.yml/badge.svg?branch=dev)
+[![CI](https://github.com/helloWorld44-89/NexusTale/actions/workflows/dev.yml/badge.svg?branch=dev)](https://github.com/helloWorld44-89/NexusTale/actions/workflows/dev.yml)
+[![Version](https://img.shields.io/badge/version-v0.2.1-6366f1?labelColor=1e1b4b)](https://github.com/helloWorld44-89/NexusTale/releases)
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Status](https://img.shields.io/badge/status-pre--alpha-orange)](https://github.com/helloWorld44-89/NexusTale)
 
 ---
 
@@ -36,7 +42,7 @@ A sci-fi/fantasy novel-writing platform: structured manuscripts (projects → ac
 
 | Tool | Version |
 |------|---------|
-| Go | 1.23+ |
+| Go | 1.25+ |
 | Node | 20+ |
 | Docker + Compose | v2 (the `docker compose` plugin) |
 
