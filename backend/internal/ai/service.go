@@ -714,6 +714,7 @@ type resolvedScene struct {
 	Content       string
 	Tense         string
 	Pov           string
+	Summary       string // writer's intended plan for the scene (from SceneMetadataPanel)
 	SceneRole     string
 	SceneGoal     string
 	SceneConflict string
@@ -944,6 +945,9 @@ func (s *Service) applyPromptPreset(ctx context.Context, promptID uuid.UUID, req
 // All fields are optional; the block is omitted entirely when nothing is set.
 func (s *Service) buildSceneDirective(ctx context.Context, projectID uuid.UUID, scene resolvedScene) string {
 	var lines []string
+	if scene.Summary != "" {
+		lines = append(lines, "Author's plan for this scene: "+scene.Summary)
+	}
 	if scene.SceneRole != "" {
 		lines = append(lines, "This is a "+scene.SceneRole+" scene.")
 	}
@@ -992,6 +996,7 @@ func (s *Service) resolveContext(ctx context.Context, projectID, sceneID uuid.UU
 			scene.Content = s.readSceneContent(ctx, sc.ChapterID, sc.ID)
 			scene.Tense = sc.Tense
 			scene.Pov = sc.Pov
+			scene.Summary = sc.Summary
 			attrs := ParseSceneContextAttrs(sc.Attributes)
 			scene.SceneRole = attrs.SceneRole
 			scene.SceneGoal = attrs.SceneGoal

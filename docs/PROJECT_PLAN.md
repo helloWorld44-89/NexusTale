@@ -127,12 +127,18 @@ flowchart TB
 
 ### 3.5 AI integration (backend)
 
-- **Unified internal API**: `Complete`, `Chat`, `Summarize`, `Embeddings`, `Image` (delegate to image provider or local).
-- **Adapters**: interface per provider; config selects default + per-project overrides.
-- **Local**: Ollama (and optional llama.cpp server) via HTTP.
-- **Cloud**: OpenAI, Anthropic, OpenRouter, etc.; API keys server-side only.
-- **Safety**: rate limits, token budgets, audit log of requests (hashed prompts optional), PII warnings in guide copy.
-- **RAG**: pgvector (or separate table) for wiki + scene chunk embeddings; query at prompt-build time.
+**Current state (as of 2026-06-04):** Full pipeline is live — adapters (Anthropic, OpenAI, OpenRouter, Gemini, Groq, DeepSeek, Ollama), SSE streaming, beat/continue/chat/workshop/summarize modes, agentic tool use (manuscript write), context window (`BuildContext` 8-section layout), writing styles, context pins, research notes, phase-aware workshop prompts, token/cost tracking.
+
+**Architectural direction (Phase C9 — see [ROADMAP.md §C9](../ROADMAP.md) and [AI_IMPROVEMENT_PLAN.md](./AI_IMPROVEMENT_PLAN.md)):**
+
+- **Behavioral prompting** — replace declarative craft hints with explicit DO-NOT constraints and failure conditions; add narrative phase enum to Continue mode (`escalation|reflection|confrontation|discovery|aftermath|transition`)
+- **Context budget enforcement** — `maxContextChars` per call type (24k beat/continue, 32k chat/workshop); priority drop policy: always keep scene tail + directive + in-scene entities; drop first: distant chapter summaries, off-scene threads, low-priority entity types
+- **Chapter summary capping** — inject first + last 5 + current chapter summaries only (not all); drop from 30 summaries → ~7 for a 30-chapter novel
+- **Summarization overhaul** — structured `EVENTS / CHANGES / PRESSURE` format; scene separators; chapter position injection; retry + validation loop
+- **Task-tier model routing** — `tierBackground` (haiku/flash for summarize), `tierAnalysis` (sonnet for chat/workshop), `tierCreative` (sonnet for beat/continue); writer override via explicit provider field
+- **Style fingerprinting** — background prose statistics extraction (`AvgSentenceLength`, `DialogueRatio`, `AdverbDensity`, etc.) stored as `projects.prose_fingerprint JSONB` (migration 036); injected as `## Author's prose style` in Beat/Continue
+- **Chat mode specialization** — `brainstorm | editorial | lore` modes on `ChatRequest`; each gets a tailored context profile and history strategy
+- **Semantic RAG** — pgvector (migration 037); embed chapter summaries, entity descriptions, research notes; replace brute-force injection with `embedding <=> query_vec LIMIT 5` retrieval; Ollama `nomic-embed-text` fallback
 
 ### 3.6 Exports (backend)
 
@@ -243,10 +249,18 @@ frontend/
 
 ### 5.4 AI integration (local + cloud)
 
-- **Modes**: inline completion, chat, “lint” voice, summarize scene, generate alternate lines.
-- **Model registry**: list models from Ollama + configured cloud; capability flags (vision, long context).
-- **Cost control**: per-project daily caps; show estimated cost only for cloud.
-- **Privacy**: local-first messaging in UI when using Ollama; data handling note in guide.
+**Current state:** Beat (story beat → prose), Continue (extend scene), Nexus Chat (SSE, full story context), Workshop (multi-session craft chat + agent tool use), BeatInput toolbar, context pins panel, writing style presets, phase-aware workshop system prompts, token/cost tracking. Adapters: Anthropic, OpenAI, OpenRouter, Gemini, Groq, DeepSeek, Ollama.
+
+**Planned improvements (C9 — detail in ROADMAP.md):**
+- Behavioral craft constraints on Beat/Continue output (no repetition, no meta-narration, emotion through sensation)
+- Narrative phase dropdown on Continue toolbar (escalation / reflection / confrontation / discovery / aftermath / transition)
+- Workshop prompt order fix + larger digest window for long sessions
+- PRIMARY / SECONDARY / FAILURE CONDITIONS structure for all Workshop phase directives
+- Agent planning-before-tools mandate in system prompt
+- Task-tier model routing (background vs. analysis vs. creative tiers)
+- Prose style fingerprinting — automatic extraction of sentence/paragraph rhythm, dialogue ratio, adverb density; injected into Beat/Continue
+- Chat modes: brainstorm / editorial / lore with tailored context profiles
+- Semantic RAG via pgvector (Phase C9-P7) replacing brute-force context injection
 
 ### 5.5 Export options (major platforms)
 

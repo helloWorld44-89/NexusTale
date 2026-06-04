@@ -11,7 +11,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | Area | Status |
 |------|--------|
 | **API shell** | Go 1.25 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens |
-| **Database** | PostgreSQL migrations **(028)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
+| **Database** | PostgreSQL migrations **(035)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
 | **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; act layer hidden in UI for single default act; full CRUD + integration tests + Bruno |
 | **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; 21 handler integration tests; fast-forward merge; Paradox detection |
 | **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints; relationship graph (d3 force) |
@@ -24,7 +24,7 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 | **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene); side effects populate wiki + manuscript; guide steps auto-fill AI Bible |
 | **Story structures** | 12 seeded templates + scoring matrix; freeform option; structure badge on ProjectHome; phase banners in WikiHub timeline |
 | **Collaboration** | C3.0–C3.5 all complete — roles, invite system, clone-per-collaborator; collaborator-scoped git ops, branch-prefix enforcement, reviewer read-only; notifications (migration 026) + `NotificationBell`; **merge requests** (migration 027) — `internal/merge` open/list/get/diff/resolve; `FetchBranchFromClone` + `EchoBranches` on `GitService`; per-scene `SceneDiff` parsing; fast-forward canonize + HasParadox detection; `mr_*` notifications; `MergeRequestsPanel` + **`ProseDiffViewer`** (word-level diff-match-patch, per-scene resolution, bulk accept); **reviewer annotations** (migration 028 `manuscript_annotations`, `internal/annotations`, `AnnotationSidebar`, floating popover in `ScribeEditor`, note/suggestion/question types, `jumpToAnnotation` imperative handle) |
-| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor, act/chapter/scene explorer, wiki hub (entities/timeline/graph/research notes), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats, context pins panel, multi-session Workshop panel, NotificationBell (60s polling, unread badge, dropdown)** |
+| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor (TipTap/ProseMirror), act/chapter/scene explorer, wiki hub (entities/timeline/graph/research notes), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats, context pins panel, multi-session Workshop panel, NotificationBell (60s polling, unread badge, dropdown)**; entity mention inline highlighting (type-colored dotted underlines) + hover card (portrait, summary, wiki link) |
 | **Navigation** | TopBar: left nav (logo → Dashboard, Home, Wiki, Guide) + breadcrumb + right area (panel toggles, username, Settings, logout); editor fully navigable |
 | **Settings** | AI provider keys (add/remove/test), Ollama URL + model selector, appearance (dark/light), account deletion |
 | **OpenAPI + types** | `docs/openapi.yaml` (45+ routes incl. acts); `frontend/src/services/api-types.ts` generated; inline types for AI/prompts/usage/guide/structures |
@@ -312,7 +312,7 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 |------|----------|----------|
 | Manuscript (write/outline/branch/export) | ✅ all | — |
 | Wiki (entities/relationships/timeline/magic/graph) | ✅ all | — |
-| AI (Nexus, Workshop, Beat, Context pins, Bible) | ✅ all | RAG/embeddings |
+| AI (Nexus, Workshop, Beat, Context pins, Bible) | ✅ all | C9-P1–P7 (prompt quality, context efficiency, model routing, style fingerprinting, RAG) |
 | Novel guide + story structure | ✅ all | — |
 | Collaboration (invite, clone, MR, annotations, notifications) | ✅ all | — |
 | Exports (Markdown, EPUB, DOCX) | ✅ all | Scrivener, Fountain, PDF |
@@ -367,6 +367,27 @@ A milestone, not a date. Graduate when all of the following are true:
 
 ---
 
+## Phase C6 — Craft depth (first pass)
+
+### C6.1 — Magic rule attributes ✅ (migration 031)
+- [x] **`[Light]`** Migration 031 — structured attribute columns on `wiki_magic_rules` (cost, activation, range, limitation, discovery_state); UI fields in magic rule editor
+
+### C6.3 — Scene attributes ✅ (migration 032)
+- [x] **`[Light]`** Migration 032 — `scene_attributes` table (role, goal, conflict, pov_character_id, tense as structured columns rather than free text); `SceneContextAttrs` + `ParseSceneContextAttrs` exported from `context.go`; resolved scene attrs injected as `## This scene` block in beat and continue system prompts via `buildSceneDirective`
+
+### C6.4 — Story threads ✅ (migration 033)
+- [x] **`[Medium]`** Migration 033 — `story_threads(id, project_id, title, description, status open/closed/resolved, created_at)`; `internal/storythreads` service + handler; CRUD routes under `/projects/:id/story-threads`; `ListOpenThreadsByProject` JOIN query; `buildOpenThreadsContext` injects open threads as `## Open story threads` section 8 in `BuildContext`; Story Threads tab in WikiHub
+
+### C6.5 — Revision pass system ✅ (migration 034)
+- [x] **`[Medium]`** Migration 034 — `projects.phase TEXT DEFAULT 'drafting'`; `GET/PUT /projects/:id/phase`; 5 phases: drafting / outlining / revision / language_pass / done; `workshopSystemForPhase()` in `workshop_handler.go` — 4 phase-specific system prompts injected before user messages; `phase` field in `ProjectResponse` + OpenAPI spec; `api.phase.get/set` in api.ts; TopBar phase badge (clickable modal with phase picker); `projectPhase` state in `Editor.tsx`; BeatInput "Focus: prose quality" hint in language_pass; WorkshopPanel "Start [Phase] Checklist" pre-fills a session prompt
+
+### C6.6 — BuildContext + prompt engineering audit ✅
+- [x] **`[Heavy]`** `context.go` rewritten with 8-section layout — `## Project` / `## Story structure` / `## Magic systems` (new sec 3, Limitations-first, hard cap 5) / `## Entities in this scene` / `## Chapter context` / `## Pinned context` / `## This scene` / `## Open story threads` (new sec 8)
+- [x] **`[Medium]`** `buildEntityContextLine` dispatches by entity type — character: motivation|arc|capability; location: description+history; `arcPositionHint` (early/mid/late based on chapter index in sequence)
+- [x] **`[Light]`** `contextBudgetWarnChars = 20_000` warn log; `truncateRunes` utility; `resolvedScene` extended with role/goal/conflict
+
+---
+
 ## Phase C7 — Craft depth (continued)
 
 ### C7.0 — Auto-detection backend + mentions panel ✅ (2026-05-05)
@@ -376,6 +397,14 @@ A milestone, not a date. Graduate when all of the following are true:
 - [x] **`[Light]`** Routes — `GET /projects/:id/scenes/:sid/mentions?branch=`, `DELETE .../mentions/:mid` (suppress), `DELETE .../mentions` (suppress all); `GET /wiki/entities/:eid/appearances?branch=`
 - [x] **`[Light]`** `BuildContext` section 5 reads from `scene_entity_mentions` (pre-computed, respects suppressed); falls back to `@[entity]` regex when no mentions indexed yet
 - [x] **`[Medium]`** Frontend — `MentionsBar.tsx` chip row below ScribeEditor; type-colored chips; click navigates to wiki entry; right-click → "Remove tag"; "Clear all" button; `auto_tag_enabled` in `ProjectResponse` + OpenAPI spec
+
+### C7.1 — Inline entity highlighting + hover popup ✅ (2026-05-05)
+
+- [x] **`[Heavy]`** ScribeEditor migrated from `<textarea>` to **TipTap v3** (StarterKit); `plainToHTML` + `editorGetText` round-trip (hardBreak → `\n`) preserve plain-text backend storage; `buildCharToPos` / `buildPosToChar` for offset-based annotation compat
+- [x] **`[Heavy]`** `EntityMentionExtension.ts` — ProseMirror Plugin; `DecorationSet` rebuilt on every transaction; type-colored dotted underlines (`character` cyan, `location` amber, `faction` violet, `item` green, `concept` slate, `lore` rose) via inline `Decoration.inline` with class attributes; updated via `tr.setMeta` when `MentionsBar` mention list changes
+- [x] **`[Medium]`** `EntityHoverCard.tsx` — 400 ms show delay, 150 ms hide delay; fetches entity on mount; portrait thumbnail + summary + "Open in Wiki →" deep link; dismisses on mouse-leave
+- [x] **`[Light]`** Right-click on decorated span → suppress context menu (same as MentionsBar chip); copy/cut/paste preserved in entity mention right-click menu
+- [x] **`[Light]`** `MentionsBar` updated to controlled mode — accepts `mentions` / `onSuppressOne` / `onSuppressAll` props; driven by parent state in `ScribeEditor`
 
 ---
 
@@ -407,6 +436,88 @@ Infrastructure already in place:
 - [ ] **`[Light]`** AI Usage table — top-N users by token spend (last 30 days); useful for spotting abuse before billing is wired
 - [ ] **`[Light]`** Waitlist table — email, joined_at, status; Approve / Reject buttons
 - [ ] **`[Light]`** Role surfaced in JWT — `role` is already in `Claims`; expose it from `GET /users/me` response so the frontend can gate the admin link in TopBar settings
+
+---
+
+## Phase C9 — AI Quality Improvements
+
+> Sourced from `docs/AI_IMPROVEMENT_PLAN.md` — three-model consensus review (o3, GPT-4o, Gemini 2.5 Pro) of the full AI pipeline. Overall system grade: **2.9 / 5**. Items are ordered by impact-to-effort within each phase.
+>
+> Top five root issues identified: brute-force RAG, declarative-not-behavioral craft prompting, broken summarization architecture, no task-specific model routing, agent has no planning phase.
+
+Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
+
+---
+
+### C9-P1 — Prompt Text Fixes *(no DB migrations, no new dependencies)*
+
+**Expected gain:** Immediate Beat/Continue output quality improvement; eliminates repetition artifacts and meta-narration.
+
+- [ ] **`[Light]`** **1.1 Beat — behavioral craft constraints + user-turn framing** — replace "Match the author's tone. Show, don't tell." with explicit DO-NOT rules (no repeating scene tail, no meta-narration, no forward summary, emotion through sensation not abstraction, avoid adverbs/suddenly/realized); change paragraph count to "approximately 2–3 — expand or compress as needed"; wrap user turn: `Expand the following story beat into prose, continuing directly from ## Scene ending: "<BEAT TEXT>"` — `service.go:beatSystemPrompt()` + user-turn assembly in `StreamComplete`
+- [ ] **`[Light]`** **1.2 Continue — narrative phase awareness + user-turn framing** — replace "Continue the story naturally from where it left off." with a constraint block (no repeat/rephrase of user turn, no forward summary, match sentence rhythm, stay in tense/POV, write the present moment); add optional `NarrativePhase` enum field to `CompleteRequest` (`escalation|reflection|confrontation|discovery|aftermath|transition`) injected as `## Narrative function` when set; add frontend phase dropdown to Continue toolbar; wrap user turn explicitly — `service.go:continueSystemPrompt()` + user-turn assembly
+- [ ] **`[Light]`** **1.3 Workshop — fix prompt order + increase digest limit** — `workshopSystemForPhase()` must return `base + "\n\n" + directive` (identity before specialization, not after); increase `workshopDigestMaxRunes` from 200 → 600 (200 runes truncates a single paragraph of craft feedback) — `workshop_handler.go`
+- [ ] **`[Light]`** **1.4 Workshop phases — PRIMARY / SECONDARY / FAILURE format** — rewrite all four phase directives (`story_pass`, `revision`, `language_pass`, `done`) to use structured `PRIMARY OBJECTIVE / SECONDARY OBJECTIVE / FAILURE CONDITIONS` format instead of numbered bullet lists; removes generic encouragement, pins the model to a specific editorial lens — `workshop_handler.go:workshopSystemForPhase()`
+- [ ] **`[Light]`** **1.5 Agent — planning phase + append-vs-replace guidance** — prepend explicit plan-before-tools instruction to agent system prompt: state plan in plain text → list target IDs → then call tools; add tool selection rules: `append_to_scene` for new content, `replace_scene_content` ONLY when writer explicitly requests rewrite, never shorten a scene when replacing — `service.go:StreamChatWithTools()`
+
+---
+
+### C9-P2 — Context Efficiency *(code changes, no DB migrations)*
+
+**Expected gain:** 40–60% reduction in context tokens for mid-to-large projects; faster calls; lower cost.
+
+- [ ] **`[Medium]`** **2.1 Hard context budget with priority drop policy** — enforce `maxContextChars` (Beat/Continue: 24,000; Chat/Workshop: 32,000) instead of warn-only; `BuildContext` returns `[]contextSection{priority, chars, text}`; `pruneTobudget()` drops from lowest priority: chapter summaries >5 chapters back → threads not linked to scene entities → low-priority entity types (items/concepts) → stale pins; always-keep: scene tail, scene directive, entities directly mentioned in current scene — `context.go`
+- [ ] **`[Light]`** **2.2 Cap and rank chapter summaries** — inject only first 1 summary (story anchor) + last 5 before current chapter + current chapter summary; a 30-chapter novel goes from 30 injected summaries to ~7; writers needing earlier context use the existing context pins system — `context.go:buildStorySoFarContext()`
+- [ ] **`[Light]`** **2.3 Cap and rank entity mentions** — type-priority cap: max 5 characters, 3 locations, 2 other (factions/items/concepts combined); rank within type by appearance frequency in `scene_entity_mentions` (peripheral one-off mentions rank below characters appearing in every paragraph) — `context.go:buildEntitiesInSceneContext()`
+- [ ] **`[Medium]`** **2.4 Chat/Workshop — inject scene summary instead of full scene text** — when `currentSceneID != uuid.Nil` in chat/workshop mode, inject the chapter AI summary as `## Current chapter` instead of the full scene text; keep full scene text only for beat/continue (where it is already handled via head/tail split and section 6 is suppressed); fall back to first 400 runes of scene when no summary exists yet — `context.go:buildCurrentSceneContext()` + `service.go`
+- [ ] **`[Light]`** **2.5 Regular Chat — add digest compression** — apply `applyWorkshopHistoryWindow` (same 600-rune digest limit) to `StreamChat` history assembly; currently uses silent truncation which drops context without compression — `service.go:StreamChat()`
+- [ ] **`[Medium]`** **2.6 Agent — pass only relevant tools per intent** — keyword-classify the user message (`hasWikiIntent` / `hasWriteIntent`); send wiki-only tools (4 tools) or write-only tools (6 tools) when intent is unambiguous; fall back to full set when mixed; saves ~400–500 tokens per round × up to 25 rounds — `service.go:StreamChatWithTools()`
+
+---
+
+### C9-P3 — Summarization Architecture Overhaul
+
+**Expected gain:** Better `## Story so far` quality → better Beat/Continue output; structured output feeds directly into story threads system.
+
+- [ ] **`[Medium]`** **3.1 Multi-layer summary format** — replace prose summary prompt with structured `EVENTS / CHANGES / PRESSURE` format; token cap dynamic: `min(sceneCount × 120, 350)` (up from hardcoded 200); PRESSURE section points forward and feeds open story threads — `service.go:summarizeSystemPrompt()` + `Summarize()` MaxTokens
+- [ ] **`[Light]`** **3.2 Chapter title and position in summarize call** — prepend `Chapter N of TOTAL: "Title"\n\n` to summarize user turn; requires `GetChapterWithPosition` query using `ROW_NUMBER()` window — `context.go:regenerateSummary()`
+- [ ] **`[Light]`** **3.3 Scene separators in summarize input** — change scene concatenation from `"\n\n"` to `"\n\n---\n\n"` with scene title as a label (`## Scene: <title>`) so the model knows where scene boundaries are — `context.go` or `service.go:Summarize()`
+- [ ] **`[Light]`** **3.4 Basic retry + validation on summarize output** — `isValidSummary()` rejects strings under 30 chars, or starting with "In this chapter" / "This chapter"; retry up to 2 attempts before storing; eliminates the most common over-narration artifact — `context.go:regenerateSummary()`
+
+---
+
+### C9-P4 — Task-Specific Model Routing
+
+**Expected gain:** 40–70% cost reduction on background tasks; better prose on generation tasks without writer having to manually select a model.
+
+- [ ] **`[Medium]`** **4.1 Task-tier model selection** — add `taskTier` enum (`tierBackground | tierAnalysis | tierCreative`); `getAdapterForTier()` routes: summarize → haiku/flash/mini (background), chat/workshop/agent-planning → sonnet/gpt-4o (analysis), beat/continue → sonnet/gpt-4o (creative); writer's explicit `Provider` field always overrides; routing table documented in `AI_IMPROVEMENT_PLAN.md` — `service.go`
+
+---
+
+### C9-P5 — Style Fingerprinting *(migration 036)*
+
+**Expected gain:** Beat/Continue output that matches the writer's prose DNA without manual style preset configuration.
+
+- [ ] **`[Heavy]`** **5.1 Prose fingerprint extraction** — migration 036 `projects.prose_fingerprint JSONB`; new `internal/ai/fingerprint.go` extracts: avg sentence length, avg paragraph length, dialogue ratio, interiority frequency, adverb density, sentence variance (std dev); recomputed after every 3 scene saves (not every save); inject as `## Author's prose style` block in Beat/Continue system prompts — `fingerprint.go` + `context.go`
+- [ ] **`[Light]`** **5.2 Fingerprint-aware paragraph count** — use `AvgParagraphLength` from fingerprint to set dynamic paragraph count hint in Beat: short paragraphs (<2 avg) → "3–5 short paragraphs", long paragraphs (>4 avg) → "1–2 longer paragraphs" — `service.go:beatSystemPrompt()`
+
+---
+
+### C9-P6 — Regular Chat Mode Specialization
+
+**Expected gain:** Nexus chat gives sharper answers when the writer's intent is known; reduces generic responses.
+
+- [ ] **`[Medium]`** **6.1 Chat modes** — extend `ChatRequest` with optional `Mode string`; routing: `brainstorm` (creative partner, suggest 2–3 alternatives, summaries+threads context only), `editorial` (structural editor lens, full BuildContext), `lore` (wiki oracle, entities+summaries only, sliding window history), empty/default (current Nexus identity, full BuildContext, digest compression) — `handler.go` + `service.go:StreamChat()`
+
+---
+
+### C9-P7 — Semantic Retrieval / Embedding-Based RAG *(migrations 037+)*
+
+**Expected gain:** 60–80% reduction in context tokens; project-size-independent context quality; eliminates attention dilution from large brute-force injection.
+
+- [ ] **`[Heavy]`** **7.1 Embedding targets** — embed: chapter summaries (after Phase 3 summarize), entity descriptions (on create/update), research notes (on create/update); do NOT embed scene full text, magic rules, story structure, scene tail
+- [ ] **`[Heavy]`** **7.2 pgvector storage** — migration 037: `CREATE EXTENSION vector`; `ALTER TABLE chapter_summaries ADD COLUMN embedding vector(1536)`; same for `wiki_entities` and `research_notes`; provider: `text-embedding-3-small` (OpenAI), `voyage-lite-02-instruct` (Anthropic), `nomic-embed-text` (Ollama fallback)
+- [ ] **`[Heavier]`** **7.3 Retrieval at call time** — replace brute-force summary injection with `SELECT ... ORDER BY embedding <=> $query_vec LIMIT 5`; always also inject chapter 1 (anchor) and current chapter; same pattern for entity context: top-5 by semantic similarity to beat text instead of all indexed mentions — `context.go:buildStorySoFarContext()` + `buildEntitiesInSceneContext()`
+- [ ] **`[Heavy]`** **7.4 Embedding pipeline** — async recompute after summarize completes (same debounce pattern as `ScheduleSummarize`); store `embedding_updated_at`; fall back to brute-force injection when no embeddings exist yet — new `backend/pkg/embedding/` package + `context.go` + `cmd/api/main.go`
 
 ---
 
@@ -455,4 +566,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-05-05: C7.0 scene entity mentions complete (migration 035, `IndexSceneMentions`, appearances endpoint, WikiHub "Appears In" panel). Phase C8 admin section planned. Phase C+ environment checklist and UX/onboarding items remain before first alpha invite.*
+*Last updated 2026-06-04: C6 craft-depth pass, C7.1 TipTap + inline entity highlighting, and full Phase C9 AI quality improvement plan (7 phases, 21 items from `docs/AI_IMPROVEMENT_PLAN.md`) added. C8 admin section planned. Phase C+ environment checklist and UX/onboarding items remain before first alpha invite.*
