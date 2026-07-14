@@ -21,8 +21,6 @@ export default function Admin() {
   const [userOffset, setUserOffset] = useState(0)
   const PAGE = 50
 
-  if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />
-
   useEffect(() => {
     if (!accessToken) return
     setLoading(true)
@@ -48,6 +46,8 @@ export default function Admin() {
       setSaving(null)
     }
   }
+
+  if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text">

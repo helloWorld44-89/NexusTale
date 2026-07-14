@@ -239,7 +239,7 @@ export default function ImportManuscript() {
 // ── Chapter card ──────────────────────────────────────────────────────────────
 
 function ChapterCard({
-  chapter, chapterIndex, onTitleChange, onSceneTitleChange, onMergeDown, onRemoveScene,
+  chapter, chapterIndex: _chapterIndex, onTitleChange, onSceneTitleChange, onMergeDown, onRemoveScene,
 }: {
   chapter: ImportPreviewChapter
   chapterIndex: number
