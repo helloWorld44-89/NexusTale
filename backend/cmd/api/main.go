@@ -28,6 +28,7 @@ import (
 	"github.com/jconder44/nexustale/internal/wiki"
 	"github.com/jconder44/nexustale/pkg/db"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
+	"github.com/jconder44/nexustale/pkg/embedding"
 	"github.com/jconder44/nexustale/pkg/ratelimit"
 	"github.com/jconder44/nexustale/pkg/storage"
 )
@@ -125,6 +126,22 @@ func main() {
 	// Wire git scene file writer into AI service so agent tool writes
 	// also dual-write to the working tree (Step 1 — guide wired below after creation).
 	aiService.WithSceneWriter(gitService)
+
+	// Wire semantic RAG embedding store (C9-P7).
+	// Prefers the server-level OpenAI key for embeddings; falls back to Ollama.
+	// When neither is available, BuildContext silently uses brute-force injection.
+	var embedProvider embedding.Embedder
+	if cfg.AI.EmbedOpenAIKey != "" {
+		embedProvider = embedding.NewOpenAIEmbedder(cfg.AI.EmbedOpenAIKey)
+		slog.Info("ai: embedding provider = openai (text-embedding-3-small, 768 dims)")
+	} else if cfg.AI.OllamaURL != "" {
+		embedProvider = embedding.NewOllamaEmbedder(cfg.AI.OllamaURL, "nomic-embed-text")
+		slog.Info("ai: embedding provider = ollama (nomic-embed-text, 768 dims)")
+	}
+	if embedProvider != nil {
+		aiService.WithEmbedding(pool, embedProvider)
+		go aiService.EmbedStore().BackgroundReembed(ctx, 10*time.Minute)
+	}
 
 	// MinIO storage client (used by export service for EPUB uploads).
 	storageClient, err := storage.New(storage.Config{

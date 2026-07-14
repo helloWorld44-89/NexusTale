@@ -285,6 +285,12 @@ func (s *Service) regenerateSummary(userID, chapterID, projectID uuid.UUID, bran
 		AiSummary:  summary,
 	}); err != nil {
 		slog.Warn("ai: regenerate summary — upsert failed", "chapter_id", chapterID, "error", err)
+		return
+	}
+
+	// Embed the new summary immediately so semantic search has it on the next AI call.
+	if s.embedStore != nil {
+		go s.embedStore.UpsertChapterEmbedding(context.Background(), chapterID, branchName, summary)
 	}
 }
 
@@ -414,12 +420,52 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 		}
 	}
 
-	if chapErr == nil && len(chapters) > 0 {
+	// ── 4a. Semantic story-so-far (when pgvector embeddings are available) ───
+	// Uses the scene content + beat text as a query to find the most
+	// contextually relevant chapter summaries across the whole manuscript.
+	// Falls back to the brute-force window below when embeddings are absent.
+	semanticSoFar := ""
+	if s.embedStore != nil && s.embedStore.HasEmbeddings(ctx, projectID) {
+		// Build query from current scene content (most signal-rich text available).
+		queryText := sceneContent
+		if queryText == "" {
+			queryText = "story so far"
+		}
+
+		// Collect the first chapter's summary as an always-inject anchor.
+		firstChapterSummary, firstChapterTitle := "", ""
+		currentChapterSummary, currentChapterTitle := "", ""
+		if chapErr == nil && len(chapters) > 0 {
+			firstChapterTitle = chapters[0].Title
+			if s, ok := summaryByChapter[chapters[0].ID]; ok {
+				firstChapterSummary = s
+			}
+		}
+		if currentChapterID != uuid.Nil {
+			if ch, err := s.queries.GetChapter(ctx, currentChapterID); err == nil {
+				currentChapterTitle = ch.Title
+				currentChapterSummary = summaryByChapter[currentChapterID]
+			}
+		}
+
+		semanticSoFar = s.embedStore.buildSemanticStorySoFar(
+			ctx, projectID, branchName, queryText,
+			currentChapterID,
+			firstChapterSummary, currentChapterSummary,
+			firstChapterTitle, currentChapterTitle,
+		)
+		if semanticSoFar != "" {
+			appendSection(&always, semanticSoFar)
+		}
+	}
+
+	// ── 4b. Brute-force story-so-far (when embeddings unavailable) ───────────
+	// Keeps the first chapter (anchor) + last 5 before current (recent window).
+	// Distant middle chapters go into the `distant` block (budget-gated).
+	if semanticSoFar == "" && chapErr == nil && len(chapters) > 0 {
 		total := len(chapters)
 
 		// Identify which chapter indices are "essential" (always kept).
-		// Anchor: first storySoFarAnchorCount chapters.
-		// Recent: last storySoFarRecentWindow chapters before current (or before end).
 		recentEnd := total
 		if currentChapterIdx >= 0 {
 			recentEnd = currentChapterIdx

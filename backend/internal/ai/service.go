@@ -12,10 +12,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jconder44/nexustale/internal/ai/adapters"
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/pkg/apperror"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
+	"github.com/jconder44/nexustale/pkg/embedding"
 )
 
 // AIConfig holds AI-specific configuration loaded from the environment.
@@ -42,6 +44,7 @@ type Service struct {
 	cfg         AIConfig
 	debounce    *debouncer
 	sceneWriter SceneFileWriter
+	embedStore  *EmbedStore // nil when pgvector is not configured
 
 	// fingerprintSaveCount tracks scene-save events per project so we can
 	// trigger a fingerprint refresh every 3 saves without a DB round-trip.
@@ -64,6 +67,16 @@ func NewService(authSvc *auth.Service, queries *sqlcgen.Queries, cfg AIConfig) *
 func (s *Service) WithSceneWriter(w SceneFileWriter) {
 	s.sceneWriter = w
 }
+
+// WithEmbedding wires the pgvector embedding store. When called, semantic RAG
+// is enabled for BuildContext; otherwise brute-force injection is used.
+// pool must be the same pool passed to sqlcgen.New so connection limits are shared.
+func (s *Service) WithEmbedding(pool *pgxpool.Pool, e embedding.Embedder) {
+	s.embedStore = NewEmbedStore(pool, e)
+}
+
+// EmbedStore returns the configured EmbedStore (may be nil).
+func (s *Service) EmbedStore() *EmbedStore { return s.embedStore }
 
 // NotifySceneSaved is called after every scene save. Every 3 saves it triggers
 // a background prose fingerprint recompute for the project so Beat/Continue

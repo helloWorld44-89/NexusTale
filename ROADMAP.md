@@ -458,14 +458,14 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 
 ---
 
-### C9-P7 — Semantic Retrieval / Embedding-Based RAG *(migrations 037+)*
+### C9-P7 — Semantic Retrieval / Embedding-Based RAG ✅ complete (2026-07-14)
 
 **Expected gain:** 60–80% reduction in context tokens; project-size-independent context quality; eliminates attention dilution from large brute-force injection.
 
-- [ ] **`[Heavy]`** **7.1 Embedding targets** — embed: chapter summaries (after Phase 3 summarize), entity descriptions (on create/update), research notes (on create/update); do NOT embed scene full text, magic rules, story structure, scene tail
-- [ ] **`[Heavy]`** **7.2 pgvector storage** — migration 037: `CREATE EXTENSION vector`; `ALTER TABLE chapter_summaries ADD COLUMN embedding vector(1536)`; same for `wiki_entities` and `research_notes`; provider: `text-embedding-3-small` (OpenAI), `voyage-lite-02-instruct` (Anthropic), `nomic-embed-text` (Ollama fallback)
-- [ ] **`[Heavier]`** **7.3 Retrieval at call time** — replace brute-force summary injection with `SELECT ... ORDER BY embedding <=> $query_vec LIMIT 5`; always also inject chapter 1 (anchor) and current chapter; same pattern for entity context: top-5 by semantic similarity to beat text instead of all indexed mentions — `context.go:buildStorySoFarContext()` + `buildEntitiesInSceneContext()`
-- [ ] **`[Heavy]`** **7.4 Embedding pipeline** — async recompute after summarize completes (same debounce pattern as `ScheduleSummarize`); store `embedding_updated_at`; fall back to brute-force injection when no embeddings exist yet — new `backend/pkg/embedding/` package + `context.go` + `cmd/api/main.go`
+- [x] **`[Heavy]`** **7.1 Embedding targets** — chapter summaries (embedded immediately after `regenerateSummary()`), wiki entities + research notes (via `BackgroundReembed` worker, 10-min interval, catches `embedding IS NULL` or stale rows); scene text, magic rules, story structure not embedded
+- [x] **`[Heavy]`** **7.2 pgvector storage** — migration 037: `CREATE EXTENSION IF NOT EXISTS vector`; `vector(768)` columns on `chapter_summaries`, `wiki_entities`, `research_notes`; `embedding_updated_at TIMESTAMPTZ`; IVFFlat indexes (lists=10); postgres image switched to `pgvector/pgvector:pg16` in both compose files; dimension 768 matches `text-embedding-3-small` (with dimensions=768), `nomic-embed-text` (Ollama), `text-embedding-004` (Gemini)
+- [x] **`[Heavier]`** **7.3 Retrieval at call time** — `BuildContext` checks `HasEmbeddings()` first; semantic path: `embedding <=> $query_vec::vector` via raw pgx (bypasses sqlc — vector operator unsupported); always injects first chapter (anchor) + current chapter + top-5 semantically relevant summaries from `buildSemanticStorySoFar()`; falls back transparently to brute-force window when no embeddings exist
+- [x] **`[Heavy]`** **7.4 Embedding pipeline** — `pkg/embedding/` package: `Embedder` interface + `OpenAIEmbedder` + `OllamaEmbedder`; `EmbedStore` in `embeddings.go` (upsert + search + background worker); `WithEmbedding(pool, provider)` on `ai.Service`; `NEXUSTALE_AI_EMBEDOPENAIKEY` env var enables OpenAI embeddings; Ollama fallback when only Ollama URL is configured; `BackgroundReembed` started as goroutine in `main.go`
 
 ---
 

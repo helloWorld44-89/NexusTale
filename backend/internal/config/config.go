@@ -48,6 +48,9 @@ type AIConfig struct {
 	OllamaModel   string
 	MaxTokens     int
 	BeatMaxTokens int
+	// EmbedOpenAIKey overrides the per-user OpenAI key for embedding generation.
+	// When empty, the server falls back to Ollama (nomic-embed-text) for embeddings.
+	EmbedOpenAIKey string
 }
 
 type ServerConfig struct {
@@ -170,10 +173,11 @@ func Load() (*Config, error) {
 			ReposPath: v.GetString("git.repospath"),
 		},
 		AI: AIConfig{
-			OllamaURL:     v.GetString("ai.ollamaurl"),
-			OllamaModel:   v.GetString("ai.ollamamodel"),
-			MaxTokens:     v.GetInt("ai.maxtokens"),
-			BeatMaxTokens: v.GetInt("ai.beatmaxtokens"),
+			OllamaURL:      v.GetString("ai.ollamaurl"),
+			OllamaModel:    v.GetString("ai.ollamamodel"),
+			MaxTokens:      v.GetInt("ai.maxtokens"),
+			BeatMaxTokens:  v.GetInt("ai.beatmaxtokens"),
+			EmbedOpenAIKey: v.GetString("ai.embedopenaikey"),
 		},
 	}
 
