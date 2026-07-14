@@ -73,7 +73,7 @@ jobs:
       - name: Check sqlc output is up to date
         working-directory: backend
         run: |
-          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
           sqlc generate
           git diff --exit-code pkg/db/sqlcgen/
 
