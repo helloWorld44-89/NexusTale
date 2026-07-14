@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createResearchNote = `-- name: CreateResearchNote :one
@@ -26,7 +27,19 @@ type CreateResearchNoteParams struct {
 	Tags      []string  `json:"tags"`
 }
 
-func (q *Queries) CreateResearchNote(ctx context.Context, arg CreateResearchNoteParams) (ResearchNote, error) {
+type CreateResearchNoteRow struct {
+	ID        uuid.UUID          `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Title     string             `json:"title"`
+	Body      string             `json:"body"`
+	SourceUrl string             `json:"source_url"`
+	Tags      []string           `json:"tags"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) CreateResearchNote(ctx context.Context, arg CreateResearchNoteParams) (CreateResearchNoteRow, error) {
 	row := q.db.QueryRow(ctx, createResearchNote,
 		arg.ProjectID,
 		arg.UserID,
@@ -35,7 +48,7 @@ func (q *Queries) CreateResearchNote(ctx context.Context, arg CreateResearchNote
 		arg.SourceUrl,
 		arg.Tags,
 	)
-	var i ResearchNote
+	var i CreateResearchNoteRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -78,10 +91,22 @@ type GetResearchNoteParams struct {
 	ProjectID uuid.UUID `json:"project_id"`
 }
 
+type GetResearchNoteRow struct {
+	ID        uuid.UUID          `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Title     string             `json:"title"`
+	Body      string             `json:"body"`
+	SourceUrl string             `json:"source_url"`
+	Tags      []string           `json:"tags"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Project-scoped fetch; used by CRUD handlers.
-func (q *Queries) GetResearchNote(ctx context.Context, arg GetResearchNoteParams) (ResearchNote, error) {
+func (q *Queries) GetResearchNote(ctx context.Context, arg GetResearchNoteParams) (GetResearchNoteRow, error) {
 	row := q.db.QueryRow(ctx, getResearchNote, arg.ID, arg.ProjectID)
-	var i ResearchNote
+	var i GetResearchNoteRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -102,10 +127,22 @@ FROM   research_notes
 WHERE  id = $1
 `
 
+type GetResearchNoteByIDRow struct {
+	ID        uuid.UUID          `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Title     string             `json:"title"`
+	Body      string             `json:"body"`
+	SourceUrl string             `json:"source_url"`
+	Tags      []string           `json:"tags"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 // ID-only fetch; used by the AI context builder (no project_id needed — UUIDs are unguessable).
-func (q *Queries) GetResearchNoteByID(ctx context.Context, id uuid.UUID) (ResearchNote, error) {
+func (q *Queries) GetResearchNoteByID(ctx context.Context, id uuid.UUID) (GetResearchNoteByIDRow, error) {
 	row := q.db.QueryRow(ctx, getResearchNoteByID, id)
-	var i ResearchNote
+	var i GetResearchNoteByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -128,21 +165,33 @@ WHERE  project_id = $1
 ORDER  BY updated_at DESC
 `
 
+type ListResearchNotesRow struct {
+	ID        uuid.UUID          `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Title     string             `json:"title"`
+	Body      string             `json:"body"`
+	SourceUrl string             `json:"source_url"`
+	Tags      []string           `json:"tags"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 // ============================
 // Research Notes (C2)
 // ============================
 // Per-project scratchpad entries for web quotes, worldbuilding facts,
 // craft references, etc.  Notes are project-wide (not per-user) so all
 // collaborators on a project share the same pool.
-func (q *Queries) ListResearchNotes(ctx context.Context, projectID uuid.UUID) ([]ResearchNote, error) {
+func (q *Queries) ListResearchNotes(ctx context.Context, projectID uuid.UUID) ([]ListResearchNotesRow, error) {
 	rows, err := q.db.Query(ctx, listResearchNotes, projectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ResearchNote{}
+	items := []ListResearchNotesRow{}
 	for rows.Next() {
-		var i ResearchNote
+		var i ListResearchNotesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
@@ -185,7 +234,19 @@ type UpdateResearchNoteParams struct {
 	Tags      []string  `json:"tags"`
 }
 
-func (q *Queries) UpdateResearchNote(ctx context.Context, arg UpdateResearchNoteParams) (ResearchNote, error) {
+type UpdateResearchNoteRow struct {
+	ID        uuid.UUID          `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Title     string             `json:"title"`
+	Body      string             `json:"body"`
+	SourceUrl string             `json:"source_url"`
+	Tags      []string           `json:"tags"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) UpdateResearchNote(ctx context.Context, arg UpdateResearchNoteParams) (UpdateResearchNoteRow, error) {
 	row := q.db.QueryRow(ctx, updateResearchNote,
 		arg.ID,
 		arg.ProjectID,
@@ -194,7 +255,7 @@ func (q *Queries) UpdateResearchNote(ctx context.Context, arg UpdateResearchNote
 		arg.SourceUrl,
 		arg.Tags,
 	)
-	var i ResearchNote
+	var i UpdateResearchNoteRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,

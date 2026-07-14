@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
 
 type UserRole string
@@ -103,11 +104,13 @@ type Chapter struct {
 }
 
 type ChapterSummary struct {
-	ChapterID  uuid.UUID          `json:"chapter_id"`
-	BranchName string             `json:"branch_name"`
-	AiSummary  string             `json:"ai_summary"`
-	Stale      bool               `json:"stale"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	ChapterID          uuid.UUID          `json:"chapter_id"`
+	BranchName         string             `json:"branch_name"`
+	AiSummary          string             `json:"ai_summary"`
+	Stale              bool               `json:"stale"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	Embedding          pgvector.Vector    `json:"embedding"`
+	EmbeddingUpdatedAt pgtype.Timestamptz `json:"embedding_updated_at"`
 }
 
 type ExportJob struct {
@@ -257,15 +260,17 @@ type RefreshToken struct {
 }
 
 type ResearchNote struct {
-	ID        uuid.UUID          `json:"id"`
-	ProjectID uuid.UUID          `json:"project_id"`
-	UserID    uuid.UUID          `json:"user_id"`
-	Title     string             `json:"title"`
-	Body      string             `json:"body"`
-	SourceUrl string             `json:"source_url"`
-	Tags      []string           `json:"tags"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID                 uuid.UUID          `json:"id"`
+	ProjectID          uuid.UUID          `json:"project_id"`
+	UserID             uuid.UUID          `json:"user_id"`
+	Title              string             `json:"title"`
+	Body               string             `json:"body"`
+	SourceUrl          string             `json:"source_url"`
+	Tags               []string           `json:"tags"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	Embedding          pgvector.Vector    `json:"embedding"`
+	EmbeddingUpdatedAt pgtype.Timestamptz `json:"embedding_updated_at"`
 }
 
 type Scene struct {
@@ -337,16 +342,18 @@ type WaitlistSignup struct {
 }
 
 type WikiEntity struct {
-	ID             uuid.UUID          `json:"id"`
-	ProjectID      uuid.UUID          `json:"project_id"`
-	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
-	Type           string             `json:"type"`
-	Name           string             `json:"name"`
-	Summary        string             `json:"summary"`
-	Attributes     json.RawMessage    `json:"attributes"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-	ImageKey       pgtype.Text        `json:"image_key"`
+	ID                 uuid.UUID          `json:"id"`
+	ProjectID          uuid.UUID          `json:"project_id"`
+	ParentEntityID     pgtype.UUID        `json:"parent_entity_id"`
+	Type               string             `json:"type"`
+	Name               string             `json:"name"`
+	Summary            string             `json:"summary"`
+	Attributes         json.RawMessage    `json:"attributes"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	ImageKey           pgtype.Text        `json:"image_key"`
+	Embedding          pgvector.Vector    `json:"embedding"`
+	EmbeddingUpdatedAt pgtype.Timestamptz `json:"embedding_updated_at"`
 }
 
 type WikiMagicRule struct {

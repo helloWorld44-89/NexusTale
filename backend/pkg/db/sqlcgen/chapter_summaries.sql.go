@@ -58,9 +58,17 @@ type GetChapterSummaryParams struct {
 	BranchName string    `json:"branch_name"`
 }
 
-func (q *Queries) GetChapterSummary(ctx context.Context, arg GetChapterSummaryParams) (ChapterSummary, error) {
+type GetChapterSummaryRow struct {
+	ChapterID  uuid.UUID          `json:"chapter_id"`
+	BranchName string             `json:"branch_name"`
+	AiSummary  string             `json:"ai_summary"`
+	Stale      bool               `json:"stale"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetChapterSummary(ctx context.Context, arg GetChapterSummaryParams) (GetChapterSummaryRow, error) {
 	row := q.db.QueryRow(ctx, getChapterSummary, arg.ChapterID, arg.BranchName)
-	var i ChapterSummary
+	var i GetChapterSummaryRow
 	err := row.Scan(
 		&i.ChapterID,
 		&i.BranchName,

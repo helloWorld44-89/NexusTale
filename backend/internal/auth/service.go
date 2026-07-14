@@ -83,6 +83,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*AuthRespo
 			Email:       user.Email,
 			DisplayName: user.DisplayName,
 			Role:        Role(user.Role),
+			Plan:        user.Plan,
 			CreatedAt:   user.CreatedAt.Time,
 		},
 		Tokens: *tokens,
@@ -113,6 +114,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (*AuthResponse, e
 			Email:       user.Email,
 			DisplayName: user.DisplayName,
 			Role:        Role(user.Role),
+			Plan:        user.Plan,
 			CreatedAt:   user.CreatedAt.Time,
 		},
 		Tokens: *tokens,
@@ -159,6 +161,7 @@ func toUserResponse(u sqlcgen.User) *UserResponse {
 		Email:       u.Email,
 		DisplayName: u.DisplayName,
 		Role:        Role(u.Role),
+		Plan:        u.Plan,
 		CreatedAt:   u.CreatedAt.Time,
 	}
 }
@@ -176,6 +179,7 @@ func (s *Service) GetMe(ctx context.Context, userID uuid.UUID) (*UserResponse, e
 		Email:       u.Email,
 		DisplayName: u.DisplayName,
 		Role:        Role(u.Role),
+		Plan:        u.Plan,
 		CreatedAt:   u.CreatedAt.Time,
 	}, nil
 }

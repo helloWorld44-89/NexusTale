@@ -56,6 +56,7 @@ type UserResponse struct {
 	Email       string    `json:"email"`
 	DisplayName string    `json:"display_name"`
 	Role        Role      `json:"role"`
+	Plan        string    `json:"plan"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 

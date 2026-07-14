@@ -54,6 +54,34 @@ export type ProjectStats           = components['schemas']['ProjectStats']
 
 // ── Inline types (not yet in OpenAPI spec) ────────────────────────────────────
 
+export interface AdminStats {
+  total_users:    number
+  total_projects: number
+  total_scenes:   number
+  total_ai_calls: number
+  total_tokens:   number
+  total_cost_usd: number
+}
+
+export interface AdminUser {
+  id:            string
+  email:         string
+  display_name:  string
+  role:          string
+  plan:          string
+  created_at:    string
+  project_count: number
+}
+
+export interface AdminAIUsageRow {
+  user_id:      string
+  email:        string
+  display_name: string
+  call_count:   number
+  total_tokens: number
+  total_cost_usd: number
+}
+
 export interface AIUsageSummary {
   total_tokens:     number
   total_cost_usd:   number
@@ -1096,5 +1124,19 @@ export const api = {
         '/waitlist',
         { email, what_they_write: whatTheyWrite },
       ),
+  },
+
+  admin: {
+    stats: (token: string) =>
+      request<AdminStats>('GET', '/admin/stats', undefined, token),
+
+    listUsers: (token: string, limit = 50, offset = 0) =>
+      request<AdminUser[]>('GET', `/admin/users?limit=${limit}&offset=${offset}`, undefined, token),
+
+    updateUser: (token: string, userId: string, body: { role?: string; plan?: string }) =>
+      request<void>('PATCH', `/admin/users/${userId}`, body, token),
+
+    aiUsage: (token: string) =>
+      request<AdminAIUsageRow[]>('GET', '/admin/ai-usage', undefined, token),
   },
 }

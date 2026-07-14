@@ -330,6 +330,14 @@ export default function Settings() {
         <span className="text-brand-cyan font-semibold">NexusTale</span>
         <span className="text-brand-muted/40">/</span>
         <span className="text-sm text-brand-text-muted">Settings</span>
+        {user?.role === 'admin' && (
+          <Link
+            to="/admin"
+            className="ml-auto text-xs text-brand-purple border border-brand-purple/30 hover:border-brand-purple/60 px-2.5 py-1 rounded transition-colors"
+          >
+            Admin Panel
+          </Link>
+        )}
       </header>
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-10">

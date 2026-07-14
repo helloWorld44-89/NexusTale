@@ -1646,7 +1646,9 @@ export interface components {
             email: string;
             display_name: string;
             /** @enum {string} */
-            role: "reader" | "writer" | "editor" | "admin";
+            role: "viewer" | "author" | "admin";
+            /** @enum {string} */
+            plan: "free" | "scribe" | "chronicler" | "studio";
             /** Format: date-time */
             created_at: string;
         };

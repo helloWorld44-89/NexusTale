@@ -29,21 +29,25 @@ type NoteResponse struct {
 	UpdatedAt string   `json:"updated_at"`
 }
 
-func toResponse(row sqlcgen.ResearchNote) NoteResponse {
-	tags := row.Tags
+func toResponse(r sqlcgen.ListResearchNotesRow) NoteResponse  { return rowToResponse(r.ID.String(), r.ProjectID.String(), r.UserID.String(), r.Title, r.Body, r.SourceUrl, r.Tags, r.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"), r.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00")) }
+func toResponseC(r sqlcgen.CreateResearchNoteRow) NoteResponse { return rowToResponse(r.ID.String(), r.ProjectID.String(), r.UserID.String(), r.Title, r.Body, r.SourceUrl, r.Tags, r.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"), r.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00")) }
+func toResponseG(r sqlcgen.GetResearchNoteRow) NoteResponse   { return rowToResponse(r.ID.String(), r.ProjectID.String(), r.UserID.String(), r.Title, r.Body, r.SourceUrl, r.Tags, r.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"), r.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00")) }
+func toResponseU(r sqlcgen.UpdateResearchNoteRow) NoteResponse { return rowToResponse(r.ID.String(), r.ProjectID.String(), r.UserID.String(), r.Title, r.Body, r.SourceUrl, r.Tags, r.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"), r.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00")) }
+
+func rowToResponse(id, projectID, userID, title, body, sourceUrl string, tags []string, createdAt, updatedAt string) NoteResponse {
 	if tags == nil {
 		tags = []string{}
 	}
 	return NoteResponse{
-		ID:        row.ID.String(),
-		ProjectID: row.ProjectID.String(),
-		UserID:    row.UserID.String(),
-		Title:     row.Title,
-		Body:      row.Body,
-		SourceURL: row.SourceUrl,
+		ID:        id,
+		ProjectID: projectID,
+		UserID:    userID,
+		Title:     title,
+		Body:      body,
+		SourceURL: sourceUrl,
 		Tags:      tags,
-		CreatedAt: row.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt: row.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
 	}
 }
 
@@ -55,7 +59,7 @@ func (s *Service) List(ctx context.Context, projectID uuid.UUID) ([]NoteResponse
 	}
 	resp := make([]NoteResponse, 0, len(rows))
 	for _, r := range rows {
-		resp = append(resp, toResponse(r))
+		resp = append(resp, toResponse(r)) // ListResearchNotesRow
 	}
 	return resp, nil
 }
@@ -76,7 +80,7 @@ func (s *Service) Create(ctx context.Context, projectID, userID uuid.UUID, title
 	if err != nil {
 		return NoteResponse{}, err
 	}
-	return toResponse(row), nil
+	return toResponseC(row), nil
 }
 
 // Get returns a single research note by ID within the project.
@@ -88,7 +92,7 @@ func (s *Service) Get(ctx context.Context, projectID, noteID uuid.UUID) (NoteRes
 	if err != nil {
 		return NoteResponse{}, err
 	}
-	return toResponse(row), nil
+	return toResponseG(row), nil
 }
 
 // Update replaces the mutable fields of a research note.
@@ -107,7 +111,7 @@ func (s *Service) Update(ctx context.Context, projectID, noteID uuid.UUID, title
 	if err != nil {
 		return NoteResponse{}, err
 	}
-	return toResponse(row), nil
+	return toResponseU(row), nil
 }
 
 // Delete removes a research note.

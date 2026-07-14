@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/jconder44/nexustale/internal/admin"
 	"github.com/jconder44/nexustale/internal/ai"
 	"github.com/jconder44/nexustale/internal/annotations"
 	"github.com/jconder44/nexustale/internal/auth"
@@ -203,6 +204,8 @@ func main() {
 	waitlistService := waitlist.NewService(queries)
 	waitlistHandler := waitlist.NewHandler(waitlistService)
 
+	adminHandler := admin.NewHandler(queries)
+
 	// Router
 	gin.SetMode(cfg.Server.Mode)
 	router := gin.Default()
@@ -287,8 +290,10 @@ func main() {
 
 		// Waitlist — public submit, admin-only list.
 		waitlistHandler.RegisterRoutes(v1)
-		adminGroup := v1.Group("/admin", auth.RequireAuth(authService), auth.RequireRole(auth.RoleAdmin))
-		waitlistHandler.RegisterAdminRoutes(adminGroup)
+
+		// Admin routes — RequireRole(RoleAdmin) enforced by the group middleware.
+		adminGroup := v1.Group("", auth.RequireAuth(authService), auth.RequireRole(auth.RoleAdmin))
+		adminHandler.RegisterRoutes(adminGroup)
 	}
 
 	// Server with graceful shutdown

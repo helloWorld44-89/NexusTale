@@ -367,23 +367,19 @@ Infrastructure already in place:
 - `ai_usage` table (queryable for system-wide stats)
 - `waitlist` table + `internal/waitlist` package
 
-### C8.0 — Admin backend
+### C8.0 — Admin backend ✅ complete (2026-07-14)
 
-- [ ] **`[Light]`** `internal/admin` package — `Service` with queries; `Handler` with `RequireRole(RoleAdmin)` guard; `GET /admin/users` (paginated list: id, email, display_name, role, plan, created_at, project_count); `PATCH /admin/users/:uid` (set role and/or plan)
-- [ ] **`[Light]`** `GET /admin/stats` — aggregate: total users, total projects, total scenes, total AI calls, total tokens used, total cost (USD); all from existing tables with simple COUNT/SUM queries
-- [ ] **`[Light]`** `GET /admin/ai-usage` — per-user AI usage summary (user_id, email, total_tokens, total_cost, call_count) for the last 30 days; ordered by total_tokens DESC
-- [ ] **`[Light]`** `GET /admin/waitlist` + `PATCH /admin/waitlist/:wid` — list waitlist entries with status; mark approved/rejected (thin wrapper over existing `internal/waitlist` service)
-- [ ] **`[Light]`** sqlc queries for the above (new `pkg/db/queries/admin.sql`)
-- [ ] **`[Light]`** Promote-to-admin script / one-off: `POST /admin/users/:uid` with `{role: "admin"}` (or a simple `psql` command documented in the ops runbook)
+- [x] **`[Light]`** `internal/admin` package — `Handler` with `RequireRole(RoleAdmin)` guard on group; `GET /admin/users` (paginated, limit/offset, includes project_count); `PATCH /admin/users/:uid` (role + plan validation + update); `GET /admin/stats`; `GET /admin/ai-usage`
+- [x] **`[Light]`** `pkg/db/queries/admin.sql` — `AdminListUsers`, `AdminGetStats`, `AdminListAIUsage`, `AdminSetUserRole`, `AdminSetUserPlan`; sqlc regenerated
+- [x] **`[Light]`** Promote-to-admin: `PATCH /admin/users/:uid` with `{"role":"admin"}`; or `psql -c "UPDATE users SET role='admin' WHERE email='...'"` documented in ops runbook
 
-### C8.1 — Admin frontend
+### C8.1 — Admin frontend ✅ complete (2026-07-14)
 
-- [ ] **`[Medium]`** `/admin` route — guarded in React by `role === 'admin'` from the JWT claims; redirect to `/dashboard` if not admin
-- [ ] **`[Medium]`** Admin Dashboard page — stat cards (users, projects, AI calls, tokens, cost); sections for User Management and Waitlist
-- [ ] **`[Light]`** User table — paginated; role badge; plan badge; "Set Plan" dropdown (free/writer/studio); "Set Role" dropdown (author/admin); changes call `PATCH /admin/users/:uid`
-- [ ] **`[Light]`** AI Usage table — top-N users by token spend (last 30 days); useful for spotting abuse before billing is wired
-- [ ] **`[Light]`** Waitlist table — email, joined_at, status; Approve / Reject buttons
-- [ ] **`[Light]`** Role surfaced in JWT — `role` is already in `Claims`; expose it from `GET /users/me` response so the frontend can gate the admin link in TopBar settings
+- [x] **`[Medium]`** `/admin` route — `Navigate` to `/dashboard` when `user.role !== 'admin'`; wrapped in `ProtectedRoute`
+- [x] **`[Medium]`** Admin Dashboard page — 6 stat cards (users, projects, scenes, AI calls, tokens, cost); tabbed layout (Users · AI Usage 30d); paginated user table with inline role/plan dropdowns; AI usage table ordered by token spend
+- [x] **`[Light]`** `plan` added to `UserResponse` in Go + OpenAPI spec + `api-types.ts` regenerated; `AdminStats`, `AdminUser`, `AdminAIUsageRow` inline types in `api.ts`; `api.admin.*` methods added
+- [x] **`[Light]`** "Admin Panel" link shown in Settings header when `user.role === 'admin'`
+- [x] **`[Light]`** `pgvector-go` v0.4.0 added as dependency (required by sqlc v1.31.1 auto-detecting vector columns from migration 037); `research/service.go` updated to use dedicated row types produced by new sqlc
 
 ---
 

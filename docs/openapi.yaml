@@ -95,12 +95,13 @@ components:
 
     UserResponse:
       type: object
-      required: [id, email, display_name, role, created_at]
+      required: [id, email, display_name, role, plan, created_at]
       properties:
         id:           { type: string, format: uuid }
         email:        { type: string, format: email }
         display_name: { type: string }
-        role:         { type: string, enum: [reader, writer, editor, admin] }
+        role:         { type: string, enum: [viewer, author, admin] }
+        plan:         { type: string, enum: [free, scribe, chronicler, studio] }
         created_at:   { type: string, format: date-time }
 
     AuthResponse:

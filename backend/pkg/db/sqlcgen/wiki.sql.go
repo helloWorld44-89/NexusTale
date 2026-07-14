@@ -18,7 +18,7 @@ UPDATE wiki_entities
 SET image_key  = NULL,
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
 `
 
 func (q *Queries) ClearEntityImage(ctx context.Context, id uuid.UUID) (WikiEntity, error) {
@@ -35,6 +35,8 @@ func (q *Queries) ClearEntityImage(ctx context.Context, id uuid.UUID) (WikiEntit
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
+		&i.Embedding,
+		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -43,7 +45,7 @@ const createEntity = `-- name: CreateEntity :one
 
 INSERT INTO wiki_entities (project_id, parent_entity_id, type, name, summary, attributes)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
 `
 
 type CreateEntityParams struct {
@@ -79,6 +81,8 @@ func (q *Queries) CreateEntity(ctx context.Context, arg CreateEntityParams) (Wik
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
+		&i.Embedding,
+		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -279,7 +283,7 @@ func (q *Queries) DeleteTimelineEvent(ctx context.Context, id uuid.UUID) error {
 }
 
 const getEntitiesByNames = `-- name: GetEntitiesByNames :many
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at FROM wiki_entities
 WHERE project_id = $1
   AND LOWER(name) = ANY($2::text[])
 ORDER BY name ASC
@@ -310,6 +314,8 @@ func (q *Queries) GetEntitiesByNames(ctx context.Context, arg GetEntitiesByNames
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ImageKey,
+			&i.Embedding,
+			&i.EmbeddingUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -322,7 +328,7 @@ func (q *Queries) GetEntitiesByNames(ctx context.Context, arg GetEntitiesByNames
 }
 
 const getEntity = `-- name: GetEntity :one
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key FROM wiki_entities WHERE id = $1
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at FROM wiki_entities WHERE id = $1
 `
 
 func (q *Queries) GetEntity(ctx context.Context, id uuid.UUID) (WikiEntity, error) {
@@ -339,6 +345,8 @@ func (q *Queries) GetEntity(ctx context.Context, id uuid.UUID) (WikiEntity, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
+		&i.Embedding,
+		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -409,7 +417,7 @@ func (q *Queries) GetTimelineEvent(ctx context.Context, id uuid.UUID) (WikiTimel
 }
 
 const listEntitiesByParent = `-- name: ListEntitiesByParent :many
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at FROM wiki_entities
 WHERE parent_entity_id = $1
 ORDER BY name ASC
 `
@@ -434,6 +442,8 @@ func (q *Queries) ListEntitiesByParent(ctx context.Context, parentEntityID pgtyp
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ImageKey,
+			&i.Embedding,
+			&i.EmbeddingUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -446,7 +456,7 @@ func (q *Queries) ListEntitiesByParent(ctx context.Context, parentEntityID pgtyp
 }
 
 const listEntitiesByProject = `-- name: ListEntitiesByProject :many
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at FROM wiki_entities
 WHERE project_id = $1
   AND ($2::text IS NULL OR type = $2::text)
 ORDER BY name ASC
@@ -477,6 +487,8 @@ func (q *Queries) ListEntitiesByProject(ctx context.Context, arg ListEntitiesByP
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ImageKey,
+			&i.Embedding,
+			&i.EmbeddingUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -568,7 +580,7 @@ func (q *Queries) ListMagicRulesForContext(ctx context.Context, projectID uuid.U
 }
 
 const listMentionedEntitiesByScene = `-- name: ListMentionedEntitiesByScene :many
-SELECT we.id, we.project_id, we.parent_entity_id, we.type, we.name, we.summary, we.attributes, we.created_at, we.updated_at, we.image_key
+SELECT we.id, we.project_id, we.parent_entity_id, we.type, we.name, we.summary, we.attributes, we.created_at, we.updated_at, we.image_key, we.embedding, we.embedding_updated_at
 FROM wiki_entities we
 JOIN scene_entity_mentions sem ON sem.entity_id = we.id
 WHERE sem.scene_id = $1::uuid
@@ -602,6 +614,8 @@ func (q *Queries) ListMentionedEntitiesByScene(ctx context.Context, arg ListMent
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ImageKey,
+			&i.Embedding,
+			&i.EmbeddingUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -837,7 +851,7 @@ SET name       = COALESCE($2, name),
     summary    = COALESCE($3, summary),
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
 `
 
 type UpdateEntityParams struct {
@@ -860,6 +874,8 @@ func (q *Queries) UpdateEntity(ctx context.Context, arg UpdateEntityParams) (Wik
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
+		&i.Embedding,
+		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -869,7 +885,7 @@ UPDATE wiki_entities
 SET attributes = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
 `
 
 type UpdateEntityAttributesParams struct {
@@ -891,6 +907,8 @@ func (q *Queries) UpdateEntityAttributes(ctx context.Context, arg UpdateEntityAt
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
+		&i.Embedding,
+		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -900,7 +918,7 @@ UPDATE wiki_entities
 SET image_key  = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
 `
 
 type UpdateEntityImageParams struct {
@@ -922,6 +940,8 @@ func (q *Queries) UpdateEntityImage(ctx context.Context, arg UpdateEntityImagePa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
+		&i.Embedding,
+		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
