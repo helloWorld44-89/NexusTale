@@ -148,8 +148,17 @@ const (
 )
 
 // tierModel returns the model ID override for the given provider and tier.
-// Returns "" to use the provider's built-in default (background tier, or
-// providers where we defer to the user's stored preference).
+// Returns "" to use the provider's built-in default or stored user preference.
+//
+// Coverage by provider:
+//   - anthropic/openai: fully tiered (haiku/mini for background, sonnet/gpt-4o for creative)
+//   - groq: tiered (8b-instant for background, 70b-versatile for creative)
+//   - gemini: no override — gemini-2.0-flash default is already cheap; user's stored
+//     model handles creative (they may have set gemini-2.5-pro in Settings)
+//   - deepseek: no override — deepseek-chat is the general model; deepseek-reasoner is
+//     a thinking model with different latency/format, not suitable for auto-routing
+//   - openrouter: no override here — background model handled separately via
+//     openrouterBackgroundModelForUser() in getAdapterForTier
 func tierModel(provider string, tier taskTier) string {
 	switch tier {
 	case tierCreative, tierAnalysis:
@@ -158,9 +167,17 @@ func tierModel(provider string, tier taskTier) string {
 			return "claude-sonnet-4-6"
 		case "openai":
 			return "gpt-4o"
+		case "groq":
+			return "llama-3.3-70b-versatile"
+		}
+	case tierBackground:
+		switch provider {
+		case "groq":
+			// 8b-instant is Groq's cheapest/fastest model — ideal for background summarize.
+			return "llama-3.1-8b-instant"
 		}
 	}
-	return "" // background: adapter default (haiku/gpt-4o-mini); other providers: stored preference
+	return ""
 }
 
 // getAdapter resolves the adapter for the requesting user at the background tier.
@@ -176,10 +193,20 @@ func (s *Service) getAdapter(ctx context.Context, userID uuid.UUID, provider str
 // When provider is empty, keys are tried in providerPreference order and the
 // tier-appropriate model is injected for providers that support it.
 func (s *Service) getAdapterForTier(ctx context.Context, userID uuid.UUID, provider string, tier taskTier) (adapters.Adapter, error) {
+	// For OpenRouter, switch to the background model when available and tier is background.
+	// This lets writers route cheap calls (summarize) through a low-cost model (e.g.
+	// meta-llama/llama-3.1-8b-instruct) while keeping their quality model for prose.
+	orModel := s.openRouterModelForUser(ctx, userID)
+	if tier == tierBackground {
+		if bgModel := s.openrouterBackgroundModelForUser(ctx, userID); bgModel != "" {
+			orModel = bgModel
+		}
+	}
+
 	adapterCfg := adapters.AdapterConfig{
 		OllamaURL:       s.ollamaURLForUser(ctx, userID),
 		OllamaModel:     s.ollamaModelForUser(ctx, userID),
-		OpenRouterModel: s.openRouterModelForUser(ctx, userID),
+		OpenRouterModel: orModel,
 		GeminiModel:     s.geminiModelForUser(ctx, userID),
 		GroqModel:       s.groqModelForUser(ctx, userID),
 		DeepSeekModel:   s.deepSeekModelForUser(ctx, userID),
@@ -234,9 +261,20 @@ func (s *Service) ollamaModelForUser(ctx context.Context, userID uuid.UUID) stri
 }
 
 // openRouterModelForUser returns the preferred OpenRouter model for the user.
-// Stored as provider="openrouter_model" in user_api_keys (e.g. "anthropic/claude-3-5-haiku").
+// Stored as provider="openrouter_model" in user_api_keys (e.g. "anthropic/claude-3-5-sonnet").
+// This is the quality model used for Beat, Continue, and Chat.
 func (s *Service) openRouterModelForUser(ctx context.Context, userID uuid.UUID) string {
 	if model, err := s.authSvc.DecryptAPIKey(ctx, userID, "openrouter_model"); err == nil && model != "" {
+		return model
+	}
+	return ""
+}
+
+// openrouterBackgroundModelForUser returns the user's optional cheaper OpenRouter model
+// for background tasks (summarize). Stored as provider="openrouter_background_model".
+// When unset, the quality model (openrouter_model) is used for all tiers.
+func (s *Service) openrouterBackgroundModelForUser(ctx context.Context, userID uuid.UUID) string {
+	if model, err := s.authSvc.DecryptAPIKey(ctx, userID, "openrouter_background_model"); err == nil && model != "" {
 		return model
 	}
 	return ""

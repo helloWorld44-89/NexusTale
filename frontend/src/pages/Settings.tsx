@@ -86,9 +86,12 @@ export default function Settings() {
   const [ollamaModelErr,     setOllamaModelErr]     = useState<string | null>(null)
 
   // OpenRouter model selection state
-  const [orModelSaving, setOrModelSaving] = useState(false)
-  const [orModelOk,     setOrModelOk]     = useState(false)
-  const [orModelErr,    setOrModelErr]    = useState<string | null>(null)
+  const [orModelSaving,   setOrModelSaving]   = useState(false)
+  const [orModelOk,       setOrModelOk]       = useState(false)
+  const [orModelErr,      setOrModelErr]      = useState<string | null>(null)
+  const [orBgModelSaving, setOrBgModelSaving] = useState(false)
+  const [orBgModelOk,     setOrBgModelOk]     = useState(false)
+  const [orBgModelErr,    setOrBgModelErr]    = useState<string | null>(null)
 
   // Gemini model selection state
   const [geminiModelSaving, setGeminiModelSaving] = useState(false)
@@ -241,6 +244,26 @@ export default function Settings() {
     }
   }
 
+  const handleSetOpenRouterBackgroundModel = async (model: string) => {
+    if (!accessToken) return
+    setOrBgModelSaving(true)
+    setOrBgModelOk(false)
+    setOrBgModelErr(null)
+    try {
+      const saved = await api.apiKeys.upsert(accessToken, 'openrouter_background_model', model)
+      setKeys((prev) => {
+        const filtered = prev.filter((k) => k.provider !== 'openrouter_background_model')
+        return [...filtered, saved].sort((a, b) => a.provider.localeCompare(b.provider))
+      })
+      setOrBgModelOk(true)
+      setTimeout(() => setOrBgModelOk(false), 2500)
+    } catch (e: unknown) {
+      setOrBgModelErr(e instanceof Error ? e.message : 'Failed to save background model')
+    } finally {
+      setOrBgModelSaving(false)
+    }
+  }
+
   const handleSetGeminiModel = async (model: string) => {
     if (!accessToken) return
     setGeminiModelSaving(true)
@@ -326,7 +349,7 @@ export default function Settings() {
             <p className="text-sm text-red-400">{error}</p>
           ) : keys.length > 0 ? (
             <div className="mb-6 space-y-3">
-              {keys.filter((k) => !['ollama', 'ollama_model', 'openrouter_model', 'gemini_model', 'groq_model', 'deepseek_model'].includes(k.provider)).map((k) => {
+              {keys.filter((k) => !['ollama', 'ollama_model', 'openrouter_model', 'openrouter_background_model', 'gemini_model', 'groq_model', 'deepseek_model'].includes(k.provider)).map((k) => {
                 const ts = testStates[k.provider]
                 return (
                   <div key={k.id} className="rounded-lg border border-brand-border bg-brand-bg-card overflow-hidden">
@@ -423,6 +446,7 @@ export default function Settings() {
         {keys.find((k) => k.provider === 'openrouter') && (() => {
           const orKey      = keys.find((k) => k.provider === 'openrouter')!
           const orModelKey = keys.find((k) => k.provider === 'openrouter_model')
+          const orBgKey    = keys.find((k) => k.provider === 'openrouter_background_model')
           const ts         = testStates['openrouter']
           const modelList  = ts?.result?.ok ? (ts.result.models ?? []) : []
           return (
@@ -440,8 +464,13 @@ export default function Settings() {
                       ••••{orKey.key_hint}
                     </span>
                     {orModelKey && (
-                      <span className="ml-3 text-xs text-brand-purple font-mono" title="Active model">
-                        model: ••••{orModelKey.key_hint}
+                      <span className="ml-3 text-xs text-brand-purple font-mono" title="Quality model (Beat, Continue, Chat)">
+                        quality: ••••{orModelKey.key_hint}
+                      </span>
+                    )}
+                    {orBgKey && (
+                      <span className="ml-2 text-xs text-brand-cyan/70 font-mono" title="Background model (Summarize)">
+                        bg: ••••{orBgKey.key_hint}
                       </span>
                     )}
                   </div>
@@ -465,21 +494,57 @@ export default function Settings() {
                 {ts?.result && (
                   <div className={`px-4 py-3 border-t text-xs ${ts.result.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
                     {ts.result.ok ? (
-                      <div className="space-y-2">
-                        <p className="text-emerald-400 font-medium">Connected — click a model to activate it:</p>
-                        {orModelErr && <p className="text-red-400">{orModelErr}</p>}
-                        {orModelOk  && <p className="text-emerald-400">Model saved.</p>}
-                        <div className="space-y-1">
-                          {modelList.map((m) => (
-                            <button
-                              key={m}
-                              onClick={() => handleSetOpenRouterModel(m)}
-                              disabled={orModelSaving}
-                              className="block w-full text-left font-mono text-brand-text hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50"
-                            >
-                              {m}
-                            </button>
-                          ))}
+                      <div className="space-y-4">
+                        {/* Quality model — Beat, Continue, Chat */}
+                        <div>
+                          <p className="text-emerald-400 font-medium mb-1">
+                            Quality model <span className="text-brand-text-muted font-normal">(Beat · Continue · Chat)</span>
+                          </p>
+                          {orModelErr && <p className="text-red-400 mb-1">{orModelErr}</p>}
+                          {orModelOk  && <p className="text-emerald-400 mb-1">Quality model saved.</p>}
+                          <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                            {modelList.map((m) => (
+                              <button
+                                key={m}
+                                onClick={() => handleSetOpenRouterModel(m)}
+                                disabled={orModelSaving}
+                                className={`block w-full text-left font-mono hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50 ${orModelKey?.key_hint && m.endsWith(orModelKey.key_hint) ? 'text-brand-purple' : 'text-brand-text'}`}
+                              >
+                                {m}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Background model — Summarize (optional, cheaper) */}
+                        <div className="border-t border-brand-border/40 pt-3">
+                          <p className="text-brand-muted font-medium mb-1">
+                            Background model <span className="font-normal">(Summarize — optional cheaper model)</span>
+                          </p>
+                          <p className="text-brand-muted/70 mb-2">
+                            When set, chapter summarization uses this model instead of the quality model above.
+                            Good options: <span className="font-mono">meta-llama/llama-3.1-8b-instruct</span>,{' '}
+                            <span className="font-mono">google/gemini-flash-1.5</span>.
+                            {orBgKey && (
+                              <> Currently: <span className="font-mono text-brand-cyan/70">••••{orBgKey.key_hint}</span>
+                                {' '}<button onClick={() => handleDelete('openrouter_background_model')} className="text-red-400 hover:text-red-300 transition-colors">(remove)</button>
+                              </>
+                            )}
+                          </p>
+                          {orBgModelErr && <p className="text-red-400 mb-1">{orBgModelErr}</p>}
+                          {orBgModelOk  && <p className="text-emerald-400 mb-1">Background model saved.</p>}
+                          <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                            {modelList.map((m) => (
+                              <button
+                                key={m}
+                                onClick={() => handleSetOpenRouterBackgroundModel(m)}
+                                disabled={orBgModelSaving}
+                                className={`block w-full text-left font-mono hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50 ${orBgKey?.key_hint && m.endsWith(orBgKey.key_hint) ? 'text-brand-cyan/70' : 'text-brand-muted'}`}
+                              >
+                                {m}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     ) : (
