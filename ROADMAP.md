@@ -259,15 +259,15 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 - [x] **P1** File uploads (wiki images): magic-byte sniffing via `http.DetectContentType` added to `UploadEntityImage`; extension pre-check + magic check both required; SVG absent from both allowlists; `router.MaxMultipartMemory = 5 MiB` set in `main.go`
 - [x] **P1** DOCX/EPUB export: `xmlEscape` applied to all user strings in `buildDocumentXML` (title, chapter title, scene title, body paragraphs); style-name args are constants; EPUB chapter title/project title auto-escaped by go-epub's `encoding/xml` marshaler; audited clean
 - [x] **P1** AI prompt: `BuildContext` output appended via `+` string concat into system prompt; no template engine; no injection vector; audited clean
-- [ ] **P2** Timeline anchor DFS cycle detection: add depth limit (currently unbounded recursion on malformed data)
+- [x] **P2** Timeline anchor DFS cycle detection: `maxAnchorDepth = 50` added to `ResolveEvents` — depth counter passed through recursive `resolve(id, depth+1)` call; returns error when exceeded
 
 **Access control**
 - [x] **P0** Non-owner cannot approve, reject, or merge MRs — `ResolveMergeRequest` in `merge/service.go` checks `p.OwnerID != callerID` → 403 (verified correct)
 - [x] **P0** Non-owner cannot resolve annotations — `Resolve` in `annotations/service.go` now checks `p.OwnerID != resolverID` → 403
 - [x] **P1** Collaborator can only read/write their own clone path — all `repoPathForUser` callers pass `auth.GetUserID(c)` / `claims.UserID` from verified JWT; no user-supplied ID accepted; audited clean
 - [x] **P1** `DELETE /users/me` cascade: `ListUserWikiImageKeys`, `ListUserExportMinioKeys`, `ListUserCollaboratorClonePaths` sqlc queries added; `auth.Service.WithStorage` wired from `main.go`; MinIO objects + clone dirs cleaned best-effort after DB cascade
-- [ ] **P2** Rate limiting on `POST /auth/login` and `POST /auth/register` (brute-force and account enumeration risk)
-- [ ] **P2** Rate limiting on AI endpoints (`/ai/complete`, `/ai/chat`) — cost-abuse protection for users sharing server-side keys
+- [x] **P2** Rate limiting on `POST /auth/login` and `POST /auth/register` — `ratelimit.ByIP(10, time.Minute)` on `authGroup` in `main.go` (already wired, checkbox missed)
+- [x] **P2** Rate limiting on AI endpoints — `ratelimit.ByUser(30, time.Minute)` on `aiGroup` in `main.go` (already wired, checkbox missed)
 
 **Dependencies**
 - [x] **P1** `govulncheck ./...` in backend — fixed `GO-2026-4910` (go-git v5.12.0 → v5.17.1, malicious idx DoS) and `GO-2025-3553` (golang-jwt v5.2.1 → v5.2.2, header parsing DoS in `ValidateAccessToken`); clean

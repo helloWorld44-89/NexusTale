@@ -40,11 +40,20 @@ func ResolveEvents(rows []sqlcgen.WikiTimelineEvent) ([]TimelineEventResponse, e
 	}
 	cache := make(map[uuid.UUID]*resolved, len(rows))
 
+	// maxAnchorDepth caps the DFS chain length to prevent stack overflow from
+	// pathologically deep (but non-cyclic) anchor chains. 50 levels covers any
+	// realistic timeline ("The war ended 3 years after the treaty, which was 2
+	// years after…") while bounding recursion to a safe depth.
+	const maxAnchorDepth = 50
+
 	// visiting tracks the current DFS path for cycle detection.
 	visiting := make(map[uuid.UUID]bool, len(rows))
 
-	var resolve func(id uuid.UUID) (*resolved, error)
-	resolve = func(id uuid.UUID) (*resolved, error) {
+	var resolve func(id uuid.UUID, depth int) (*resolved, error)
+	resolve = func(id uuid.UUID, depth int) (*resolved, error) {
+		if depth > maxAnchorDepth {
+			return nil, fmt.Errorf("anchor chain exceeds maximum depth (%d) at event %s — check for an extremely long chain", maxAnchorDepth, id)
+		}
 		if r, ok := cache[id]; ok {
 			return r, nil
 		}
@@ -79,7 +88,7 @@ func ResolveEvents(rows []sqlcgen.WikiTimelineEvent) ([]TimelineEventResponse, e
 			r.era = e.Era
 		} else {
 			anchorID := uuid.UUID(e.AnchorEventID.Bytes)
-			anchor, err := resolve(anchorID)
+			anchor, err := resolve(anchorID, depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -138,7 +147,7 @@ func ResolveEvents(rows []sqlcgen.WikiTimelineEvent) ([]TimelineEventResponse, e
 
 	result := make([]TimelineEventResponse, len(rows))
 	for i, e := range rows {
-		r, err := resolve(e.ID)
+		r, err := resolve(e.ID, 0)
 		if err != nil {
 			return nil, err
 		}
