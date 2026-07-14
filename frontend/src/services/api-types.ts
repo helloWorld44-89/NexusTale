@@ -1873,6 +1873,12 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /** @description Set when a name change has ≥1 scene mention. Triggers cascade banner in UI. */
+            rename_cascade_available?: boolean;
+            /** @description Total non-suppressed mentions of the old name. */
+            occurrence_count?: number;
+            /** @description Previous name before the update; only set when rename_cascade_available is true. */
+            old_name?: string;
         };
         CreateRelationshipRequest: {
             /** Format: uuid */

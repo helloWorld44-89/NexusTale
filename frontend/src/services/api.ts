@@ -54,6 +54,29 @@ export type ProjectStats           = components['schemas']['ProjectStats']
 
 // ── Inline types (not yet in OpenAPI spec) ────────────────────────────────────
 
+export interface ImportPreviewScene {
+  title:   string
+  content: string
+}
+
+export interface ImportPreviewChapter {
+  title:  string
+  scenes: ImportPreviewScene[]
+}
+
+export interface ImportPreviewTree {
+  project_title: string
+  chapters:      ImportPreviewChapter[]
+}
+
+export interface RenameCascadePreviewItem {
+  scene_id:      string
+  scene_title:   string
+  chapter_title: string
+  match_texts:   string[]
+  unified_diff:  string
+}
+
 export interface AdminStats {
   total_users:    number
   total_projects: number
@@ -594,6 +617,12 @@ export const api = {
     entityAppearances: (token: string, projectId: string, entityId: string, branch = 'canon') =>
       request<{ appearances: EntityAppearance[] }>('GET', `/projects/${projectId}/wiki/entities/${entityId}/appearances?branch=${encodeURIComponent(branch)}`, undefined, token),
 
+    renameCascadePreview: (token: string, projectId: string, entityId: string, oldName: string, newName: string) =>
+      request<RenameCascadePreviewItem[]>('POST', `/projects/${projectId}/wiki/entities/${entityId}/rename-cascade/preview`, { old_name: oldName, new_name: newName }, token),
+
+    renameCascadeConfirm: (token: string, projectId: string, entityId: string, oldName: string, newName: string, sceneIds: string[]) =>
+      request<{ patched_scenes: number }>('POST', `/projects/${projectId}/wiki/entities/${entityId}/rename-cascade/confirm`, { old_name: oldName, new_name: newName, scene_ids: sceneIds }, token),
+
     mentions: {
       list: (token: string, projectId: string, sceneId: string, branch = 'canon') =>
         request<{ mentions: MentionResponse[] }>('GET', `/projects/${projectId}/scenes/${sceneId}/mentions?branch=${encodeURIComponent(branch)}`, undefined, token),
@@ -1123,6 +1152,28 @@ export const api = {
         'POST',
         '/waitlist',
         { email, what_they_write: whatTheyWrite },
+      ),
+  },
+
+  import: {
+    preview: async (token: string, file: File): Promise<{ tree: ImportPreviewTree; format: string }> => {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`${BASE}/projects/import`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error((d as { message?: string }).message ?? `Import error ${res.status}`)
+      }
+      return res.json()
+    },
+
+    confirm: (token: string, tree: ImportPreviewTree) =>
+      request<{ project_id: string; title: string; chapters: number }>(
+        'POST', '/projects/import/confirm', { tree }, token,
       ),
   },
 

@@ -39,6 +39,34 @@ type EntityResponse struct {
 	ImageURL  *string   `json:"image_url,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Rename cascade metadata — only populated when UpdateEntity detects a name change
+	// and the entity has ≥ 1 non-suppressed scene mention.
+	RenameCascadeAvailable bool   `json:"rename_cascade_available,omitempty"`
+	OccurrenceCount        int    `json:"occurrence_count,omitempty"`
+	OldName                string `json:"old_name,omitempty"`
+}
+
+// RenameCascadePreviewItem is one scene's preview for the rename cascade.
+type RenameCascadePreviewItem struct {
+	SceneID      string   `json:"scene_id"`
+	SceneTitle   string   `json:"scene_title"`
+	ChapterTitle string   `json:"chapter_title"`
+	MatchTexts   []string `json:"match_texts"` // all distinct match_text values (e.g. "John", "Commander John")
+	UnifiedDiff  string   `json:"unified_diff"` // before→after diff for display
+}
+
+// RenameCascadePreviewRequest is the body for POST /rename-cascade/preview.
+type RenameCascadePreviewRequest struct {
+	OldName string `json:"old_name" binding:"required"`
+	NewName string `json:"new_name" binding:"required"`
+}
+
+// RenameCascadeConfirmRequest is the body for POST /rename-cascade/confirm.
+type RenameCascadeConfirmRequest struct {
+	OldName  string   `json:"old_name" binding:"required"`
+	NewName  string   `json:"new_name" binding:"required"`
+	SceneIDs []string `json:"scene_ids" binding:"required"` // only approved scenes
 }
 
 // ========================

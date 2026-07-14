@@ -52,13 +52,22 @@ export default function Dashboard() {
               {projects.length === 0 && !loading ? 'No stories yet — create your first.' : `${projects.length} project${projects.length === 1 ? '' : 's'}`}
             </p>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-gradient text-brand-bg text-sm font-semibold hover:opacity-90 hover:shadow-cyan-glow transition-all"
-          >
-            <PlusIcon />
-            New Story
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/import"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-brand-border text-brand-muted text-sm hover:text-brand-text hover:border-brand-purple/60 transition-colors"
+            >
+              <ImportIcon />
+              Import
+            </Link>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-gradient text-brand-bg text-sm font-semibold hover:opacity-90 hover:shadow-cyan-glow transition-all"
+            >
+              <PlusIcon />
+              New Story
+            </button>
+          </div>
         </div>
 
         {/* Error */}
@@ -259,6 +268,15 @@ function PlusIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M8 3v10M3 8h10" />
+    </svg>
+  )
+}
+
+function ImportIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 10V3M5 7l3 3 3-3" />
+      <path d="M2 12v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" />
     </svg>
   )
 }

@@ -41,6 +41,19 @@ func (q *Queries) ClearEntityImage(ctx context.Context, id uuid.UUID) (WikiEntit
 	return i, err
 }
 
+const countUnsuppressedMentionsByEntity = `-- name: CountUnsuppressedMentionsByEntity :one
+SELECT COUNT(*)::INT AS mention_count
+FROM scene_entity_mentions
+WHERE entity_id = $1 AND suppressed = FALSE
+`
+
+func (q *Queries) CountUnsuppressedMentionsByEntity(ctx context.Context, entityID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countUnsuppressedMentionsByEntity, entityID)
+	var mention_count int32
+	err := row.Scan(&mention_count)
+	return mention_count, err
+}
+
 const createEntity = `-- name: CreateEntity :one
 
 INSERT INTO wiki_entities (project_id, parent_entity_id, type, name, summary, attributes)
@@ -779,6 +792,71 @@ func (q *Queries) ListScenesByEntity(ctx context.Context, arg ListScenesByEntity
 	return items, nil
 }
 
+const listScenesByEntityForProject = `-- name: ListScenesByEntityForProject :many
+SELECT
+    s.id            AS scene_id,
+    s.title         AS scene_title,
+    s.sort_order    AS scene_order,
+    c.id            AS chapter_id,
+    c.title         AS chapter_title,
+    c.sort_order    AS chapter_order,
+    p.git_repo_path,
+    sem.match_text,
+    sem.branch_name
+FROM scenes s
+JOIN scene_entity_mentions sem ON sem.scene_id = s.id
+JOIN chapters c ON c.id = s.chapter_id
+JOIN acts a ON a.id = c.act_id
+JOIN projects p ON p.id = a.project_id
+WHERE sem.entity_id = $1
+  AND sem.suppressed = FALSE
+ORDER BY c.sort_order, s.sort_order
+`
+
+type ListScenesByEntityForProjectRow struct {
+	SceneID      uuid.UUID `json:"scene_id"`
+	SceneTitle   string    `json:"scene_title"`
+	SceneOrder   int32     `json:"scene_order"`
+	ChapterID    uuid.UUID `json:"chapter_id"`
+	ChapterTitle string    `json:"chapter_title"`
+	ChapterOrder int32     `json:"chapter_order"`
+	GitRepoPath  string    `json:"git_repo_path"`
+	MatchText    string    `json:"match_text"`
+	BranchName   string    `json:"branch_name"`
+}
+
+// All non-suppressed scenes that mention an entity, with chapter/project context.
+// Used by rename-cascade preview to know which scenes to patch.
+func (q *Queries) ListScenesByEntityForProject(ctx context.Context, entityID uuid.UUID) ([]ListScenesByEntityForProjectRow, error) {
+	rows, err := q.db.Query(ctx, listScenesByEntityForProject, entityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListScenesByEntityForProjectRow{}
+	for rows.Next() {
+		var i ListScenesByEntityForProjectRow
+		if err := rows.Scan(
+			&i.SceneID,
+			&i.SceneTitle,
+			&i.SceneOrder,
+			&i.ChapterID,
+			&i.ChapterTitle,
+			&i.ChapterOrder,
+			&i.GitRepoPath,
+			&i.MatchText,
+			&i.BranchName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTimelineEventsByProject = `-- name: ListTimelineEventsByProject :many
 SELECT id, project_id, entity_id, name, description, era, year, month, day, created_at, updated_at, anchor_event_id, anchor_offset_year, anchor_offset_month, anchor_offset_day FROM wiki_timeline_events
 WHERE project_id = $1
@@ -981,6 +1059,23 @@ func (q *Queries) UpdateMagicRule(ctx context.Context, arg UpdateMagicRuleParams
 		&i.Attributes,
 	)
 	return i, err
+}
+
+const updateMentionMatchText = `-- name: UpdateMentionMatchText :exec
+UPDATE scene_entity_mentions
+SET match_text = $2
+WHERE scene_id = $3 AND entity_id = $1
+`
+
+type UpdateMentionMatchTextParams struct {
+	EntityID  uuid.UUID `json:"entity_id"`
+	MatchText string    `json:"match_text"`
+	SceneID   uuid.UUID `json:"scene_id"`
+}
+
+func (q *Queries) UpdateMentionMatchText(ctx context.Context, arg UpdateMentionMatchTextParams) error {
+	_, err := q.db.Exec(ctx, updateMentionMatchText, arg.EntityID, arg.MatchText, arg.SceneID)
+	return err
 }
 
 const updateTimelineEvent = `-- name: UpdateTimelineEvent :one

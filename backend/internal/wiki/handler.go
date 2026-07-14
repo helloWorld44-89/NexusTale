@@ -58,6 +58,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/entities/:eid/image", h.UploadEntityImage)
 	rg.DELETE("/entities/:eid/image", h.DeleteEntityImage)
 	rg.GET("/entities/:eid/appearances", h.ListEntityAppearances)
+	rg.POST("/entities/:eid/rename-cascade/preview", h.RenameCascadePreview)
+	rg.POST("/entities/:eid/rename-cascade/confirm", h.RenameCascadeConfirm)
 
 	rg.GET("/relationships", h.ListRelationships)
 	rg.POST("/relationships", h.CreateRelationship)
@@ -575,6 +577,47 @@ func (h *Handler) ListEntityAppearances(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"appearances": appearances})
+}
+
+// RenameCascadePreview returns a per-scene unified diff showing how the rename
+// would look. Does NOT write anything; safe to call multiple times.
+// POST /wiki/entities/:eid/rename-cascade/preview
+func (h *Handler) RenameCascadePreview(c *gin.Context) {
+	entityID, err := parseUUID(c, "eid")
+	if err != nil {
+		return
+	}
+	var req RenameCascadePreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "detail": err.Error()})
+		return
+	}
+	items, err := h.svc.RenameCascadePreview(c.Request.Context(), entityID, req.OldName, req.NewName)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, items)
+}
+
+// RenameCascadeConfirm applies the rename to approved scenes and chronicles.
+// POST /wiki/entities/:eid/rename-cascade/confirm
+func (h *Handler) RenameCascadeConfirm(c *gin.Context) {
+	entityID, err := parseUUID(c, "eid")
+	if err != nil {
+		return
+	}
+	var req RenameCascadeConfirmRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "detail": err.Error()})
+		return
+	}
+	count, err := h.svc.RenameCascadeConfirm(c.Request.Context(), entityID, req.OldName, req.NewName, req.SceneIDs)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"patched_scenes": count})
 }
 
 // ========================

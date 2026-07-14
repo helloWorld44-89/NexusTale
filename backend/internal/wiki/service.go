@@ -26,6 +26,7 @@ type Service struct {
 	queries *sqlcgen.Queries
 	store   *storage.Client
 	tagger  *tagger
+	sceneRW SceneReadWriter // wired via WithSceneReadWriter for rename cascade (C9.5)
 }
 
 func NewService(queries *sqlcgen.Queries, store *storage.Client) *Service {
@@ -107,6 +108,14 @@ func (s *Service) ListChildEntities(ctx context.Context, parentID uuid.UUID) ([]
 }
 
 func (s *Service) UpdateEntity(ctx context.Context, id uuid.UUID, req UpdateEntityRequest) (*EntityResponse, error) {
+	// Capture old name before update so we can detect a rename.
+	var oldName string
+	if req.Name != nil {
+		if current, err := s.queries.GetEntity(ctx, id); err == nil {
+			oldName = current.Name
+		}
+	}
+
 	params := sqlcgen.UpdateEntityParams{ID: id}
 	if req.Name != nil {
 		params.Name = pgtype.Text{String: *req.Name, Valid: true}
@@ -123,7 +132,6 @@ func (s *Service) UpdateEntity(ctx context.Context, id uuid.UUID, req UpdateEnti
 		return nil, apperror.Internal(fmt.Sprintf("update entity: %v", err))
 	}
 
-	// Attributes are a full replace, handled separately to avoid COALESCE on JSONB.
 	if len(req.Attributes) > 0 {
 		e, err = s.queries.UpdateEntityAttributes(ctx, sqlcgen.UpdateEntityAttributesParams{
 			ID:         id,
@@ -134,7 +142,21 @@ func (s *Service) UpdateEntity(ctx context.Context, id uuid.UUID, req UpdateEnti
 		}
 	}
 
-	return s.entityWithURL(ctx, e)
+	resp, err := s.entityWithURL(ctx, e)
+	if err != nil {
+		return nil, err
+	}
+
+	// If the name changed, check for scene mentions and advertise the cascade.
+	if req.Name != nil && oldName != "" && oldName != e.Name {
+		if count, countErr := s.queries.CountUnsuppressedMentionsByEntity(ctx, id); countErr == nil && count > 0 {
+			resp.RenameCascadeAvailable = true
+			resp.OccurrenceCount = int(count)
+			resp.OldName = oldName
+		}
+	}
+
+	return resp, nil
 }
 
 func (s *Service) DeleteEntity(ctx context.Context, id uuid.UUID) error {

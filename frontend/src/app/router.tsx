@@ -12,6 +12,7 @@ import InviteAccept from '@/pages/InviteAccept'
 import About from '@/pages/About'
 import Landing from '@/pages/Landing'
 import Admin from '@/pages/Admin'
+import ImportManuscript from '@/pages/ImportManuscript'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -80,6 +81,15 @@ export function AppRouter() {
       />
 
       <Route path="/about" element={<About />} />
+
+      <Route
+        path="/import"
+        element={
+          <ProtectedRoute>
+            <ImportManuscript />
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         path="/admin"

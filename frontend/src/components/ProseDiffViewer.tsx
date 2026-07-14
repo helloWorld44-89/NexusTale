@@ -1,8 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
-import DiffMatchPatch from 'diff-match-patch'
 import { api, type MergeRequest, type MRDiffResponse, type SceneDiff } from '@/services/api'
-
-const dmp = new DiffMatchPatch()
+import { WordDiffView, ResBtn, extractTexts } from '@/components/shared/ProseDiff'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,37 +18,7 @@ interface Props {
   onMerged: (updated: MergeRequest) => void
 }
 
-// ── Diff parsing ──────────────────────────────────────────────────────────────
-
-// Reconstructs before (canon) and after (coauthor) text from a unified diff.
-function extractTexts(unifiedDiff: string): { canon: string; coauthor: string } {
-  const canonLines: string[] = []
-  const coauthorLines: string[] = []
-
-  for (const line of unifiedDiff.split('\n')) {
-    if (
-      line.startsWith('--- ') || line.startsWith('+++ ') ||
-      line.startsWith('@@ ') || line.startsWith('diff ') ||
-      line.startsWith('index ') || line.startsWith('new file') ||
-      line.startsWith('deleted file') || line.startsWith('\\ No newline')
-    ) continue
-
-    if (line.startsWith('-')) {
-      canonLines.push(line.slice(1))
-    } else if (line.startsWith('+')) {
-      coauthorLines.push(line.slice(1))
-    } else {
-      const content = line.startsWith(' ') ? line.slice(1) : line
-      canonLines.push(content)
-      coauthorLines.push(content)
-    }
-  }
-
-  return {
-    canon: canonLines.join('\n').trim(),
-    coauthor: coauthorLines.join('\n').trim(),
-  }
-}
+// extractTexts, WordDiffView, and ResBtn are imported from @/components/shared/ProseDiff
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -356,25 +324,7 @@ function SceneDiffCard({
   )
 }
 
-// ── Word-level diff renderer ───────────────────────────────────────────────────
-
-function WordDiffView({ canon, coauthor }: { canon: string; coauthor: string }) {
-  const diffs = useMemo(() => {
-    const d = dmp.diff_main(canon, coauthor)
-    dmp.diff_cleanupSemantic(d)
-    return d
-  }, [canon, coauthor])
-
-  return (
-    <div className="text-sm text-brand-text leading-relaxed font-serif whitespace-pre-wrap">
-      {diffs.map(([op, text], i) => {
-        if (op === 0)  return <span key={i}>{text}</span>
-        if (op === -1) return <span key={i} className="bg-red-500/15 text-red-300 line-through decoration-red-400/50">{text}</span>
-        return              <span key={i} className="bg-green-500/15 text-green-300">{text}</span>
-      })}
-    </div>
-  )
-}
+// WordDiffView is re-exported from @/components/shared/ProseDiff
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -382,30 +332,7 @@ function sdKey(sd: SceneDiff) {
   return sd.scene_id || sd.git_path
 }
 
-function ResBtn({
-  children, active, color, onClick,
-}: {
-  children: React.ReactNode
-  active: boolean
-  color: 'green' | 'red' | 'muted' | 'cyan' | 'purple'
-  onClick: () => void
-}) {
-  const cls: Record<string, string> = {
-    green:  active ? 'bg-green-500/20  text-green-400  ring-1 ring-green-400/40' : 'bg-green-500/8  text-green-400/70  hover:bg-green-500/15',
-    red:    active ? 'bg-red-500/20    text-red-400    ring-1 ring-red-400/40'   : 'bg-red-500/8    text-red-400/70    hover:bg-red-500/15',
-    muted:  active ? 'bg-brand-border/60 text-brand-text ring-1 ring-brand-border' : 'bg-brand-border/30 text-brand-muted hover:bg-brand-border/50',
-    cyan:   active ? 'bg-brand-cyan/20 text-brand-cyan  ring-1 ring-brand-cyan/40' : 'bg-brand-cyan/8  text-brand-cyan/70  hover:bg-brand-cyan/15',
-    purple: active ? 'bg-brand-purple/20 text-brand-purple ring-1 ring-brand-purple/40' : 'bg-brand-purple/8 text-brand-purple/70 hover:bg-brand-purple/15',
-  }
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 rounded text-[10px] font-medium transition-colors ${cls[color]}`}
-    >
-      {children}
-    </button>
-  )
-}
+// ResBtn is re-exported from @/components/shared/ProseDiff
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 

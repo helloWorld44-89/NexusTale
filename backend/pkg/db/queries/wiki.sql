@@ -209,3 +209,35 @@ WHERE sem.scene_id = sqlc.arg('scene_id')::uuid
   AND sem.branch_name = sqlc.arg('branch_name')
   AND sem.suppressed = FALSE
 ORDER BY we.name ASC;
+
+-- name: ListScenesByEntityForProject :many
+-- All non-suppressed scenes that mention an entity, with chapter/project context.
+-- Used by rename-cascade preview to know which scenes to patch.
+SELECT
+    s.id            AS scene_id,
+    s.title         AS scene_title,
+    s.sort_order    AS scene_order,
+    c.id            AS chapter_id,
+    c.title         AS chapter_title,
+    c.sort_order    AS chapter_order,
+    p.git_repo_path,
+    sem.match_text,
+    sem.branch_name
+FROM scenes s
+JOIN scene_entity_mentions sem ON sem.scene_id = s.id
+JOIN chapters c ON c.id = s.chapter_id
+JOIN acts a ON a.id = c.act_id
+JOIN projects p ON p.id = a.project_id
+WHERE sem.entity_id = $1
+  AND sem.suppressed = FALSE
+ORDER BY c.sort_order, s.sort_order;
+
+-- name: CountUnsuppressedMentionsByEntity :one
+SELECT COUNT(*)::INT AS mention_count
+FROM scene_entity_mentions
+WHERE entity_id = $1 AND suppressed = FALSE;
+
+-- name: UpdateMentionMatchText :exec
+UPDATE scene_entity_mentions
+SET match_text = $2
+WHERE scene_id = $3 AND entity_id = $1;

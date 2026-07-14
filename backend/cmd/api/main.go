@@ -13,6 +13,7 @@ import (
 
 	"github.com/jconder44/nexustale/internal/admin"
 	"github.com/jconder44/nexustale/internal/ai"
+	"github.com/jconder44/nexustale/internal/importer"
 	"github.com/jconder44/nexustale/internal/annotations"
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/internal/collaboration"
@@ -165,6 +166,9 @@ func main() {
 	// async entity-mention indexing (C7.0).
 	projectService.WithMentionNotifier(wikiService)
 
+	// Wire git service into wiki for rename cascade scene reads/writes (C9.5).
+	wikiService.WithSceneReadWriter(gitService)
+
 	exportService := export.NewService(queries, storageClient)
 	exportService.StartWorkers(2)
 
@@ -204,7 +208,8 @@ func main() {
 	waitlistService := waitlist.NewService(queries)
 	waitlistHandler := waitlist.NewHandler(waitlistService)
 
-	adminHandler := admin.NewHandler(queries)
+	adminHandler   := admin.NewHandler(queries)
+	importHandler  := importer.NewHandler(projectService)
 
 	// Router
 	gin.SetMode(cfg.Server.Mode)
@@ -290,6 +295,10 @@ func main() {
 
 		// Waitlist — public submit, admin-only list.
 		waitlistHandler.RegisterRoutes(v1)
+
+		// Manuscript import routes (C9) — authenticated, project creation.
+		importGroup := v1.Group("", auth.RequireAuth(authService))
+		importHandler.RegisterRoutes(importGroup)
 
 		// Admin routes — RequireRole(RoleAdmin) enforced by the group middleware.
 		adminGroup := v1.Group("", auth.RequireAuth(authService), auth.RequireRole(auth.RoleAdmin))

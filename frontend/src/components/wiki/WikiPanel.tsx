@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react
 import { Link } from 'react-router-dom'
 import { api } from '@/services/api'
 import type { WikiEntity, EntityType, AutolinkMatch } from '@/services/api'
+import RenameCascadeModal from './RenameCascadeModal'
 
 interface WikiPanelProps {
   token: string
@@ -283,13 +284,29 @@ function EntityDetail({
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
+  // Rename cascade state
+  const [cascadeOldName,   setCascadeOldName]   = useState<string | null>(null)
+  const [cascadeNewName,   setCascadeNewName]   = useState<string | null>(null)
+  const [cascadeCount,     setCascadeCount]     = useState(0)
+  const [showCascadeModal, setShowCascadeModal] = useState(false)
+  const [cascadeDoneMsg,   setCascadeDoneMsg]   = useState<string | null>(null)
+
   const handleSave = async () => {
     setSaving(true)
     setError(null)
+    // Reset any previous cascade state on a new save
+    setCascadeOldName(null)
+    setCascadeDoneMsg(null)
     try {
       const updated = await api.wiki.updateEntity(token, projectId, entity.id, { name: name.trim(), summary: summary.trim() })
       onUpdated(updated)
       setEditing(false)
+      // If the backend detected a rename with scene mentions, show the cascade banner.
+      if (updated.rename_cascade_available && updated.old_name && updated.occurrence_count) {
+        setCascadeOldName(updated.old_name)
+        setCascadeNewName(updated.name)
+        setCascadeCount(updated.occurrence_count)
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Save failed')
     } finally {
@@ -312,6 +329,7 @@ function EntityDetail({
   const attrEntries = Object.entries(entity.attributes ?? {})
 
   return (
+    <>
     <div className="w-72 flex flex-col border-r border-brand-border bg-brand-bg shrink-0 overflow-hidden">
       {/* Header */}
       <div className="px-4 pt-4 pb-3 border-b border-brand-border shrink-0">
@@ -384,6 +402,35 @@ function EntityDetail({
 
         {error && <p className="text-xs text-red-400">{error}</p>}
 
+        {/* Rename cascade banner */}
+        {cascadeDoneMsg && (
+          <div className="rounded-lg border border-green-500/30 bg-green-500/8 px-3 py-2 text-xs text-green-400">
+            {cascadeDoneMsg}
+          </div>
+        )}
+        {cascadeOldName && !cascadeDoneMsg && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-xs text-brand-text space-y-2">
+            <p>
+              <span className="font-mono text-red-300">{cascadeOldName}</span> appears in {cascadeCount} place{cascadeCount !== 1 ? 's' : ''} across the manuscript.{' '}
+              Update the prose?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCascadeModal(true)}
+                className="px-2.5 py-1 rounded text-[10px] font-medium bg-brand-purple/20 text-brand-purple hover:bg-brand-purple/30 transition-colors"
+              >
+                Review & Update →
+              </button>
+              <button
+                onClick={() => setCascadeOldName(null)}
+                className="px-2.5 py-1 rounded text-[10px] text-brand-muted hover:text-brand-text transition-colors"
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         {editing && (
           <button
@@ -420,6 +467,24 @@ function EntityDetail({
         )}
       </div>
     </div>
+
+    {/* Rename cascade modal */}
+    {showCascadeModal && cascadeOldName && cascadeNewName && (
+      <RenameCascadeModal
+        token={token}
+        projectId={projectId}
+        entityId={entity.id}
+        oldName={cascadeOldName}
+        newName={cascadeNewName}
+        onDone={(count) => {
+          setShowCascadeModal(false)
+          setCascadeOldName(null)
+          setCascadeDoneMsg(`Done — renamed in ${count} scene${count !== 1 ? 's' : ''}. A Chronicle entry was created.`)
+        }}
+        onClose={() => setShowCascadeModal(false)}
+      />
+    )}
+    </>
   )
 }
 

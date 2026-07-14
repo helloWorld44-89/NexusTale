@@ -372,6 +372,9 @@ components:
         image_url:        { type: string, nullable: true, description: "Presigned MinIO URL valid for ~4 hours; absent when no image is stored." }
         created_at:       { type: string, format: date-time }
         updated_at:       { type: string, format: date-time }
+        rename_cascade_available: { type: boolean, description: "Set when a name change has ≥1 scene mention. Triggers cascade banner in UI." }
+        occurrence_count:         { type: integer, description: "Total non-suppressed mentions of the old name." }
+        old_name:                 { type: string, description: "Previous name before the update; only set when rename_cascade_available is true." }
 
     # ── Wiki — Relationships ──────────────────────────────────────────────────
     CreateRelationshipRequest:
