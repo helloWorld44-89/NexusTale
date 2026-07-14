@@ -38,6 +38,9 @@ type SummaryNotifier interface {
 	// CleanupBranch deletes summary rows and active-branch pointers for a
 	// merged Timeline (called by Canonize).
 	CleanupBranch(ctx context.Context, projectID uuid.UUID, branchName string)
+	// NotifySceneSaved increments the per-project save counter; triggers a
+	// prose fingerprint refresh every 3 saves (C9-P5).
+	NotifySceneSaved(projectID uuid.UUID)
 }
 
 type Service struct {
@@ -484,6 +487,7 @@ func (s *Service) UpdateScene(ctx context.Context, id uuid.UUID, req UpdateScene
 			branch = CanonBranch
 		}
 		s.notifier.ScheduleSummarize(req.NotifyUserID, sc.ChapterID, req.ProjectID, branch)
+		s.notifier.NotifySceneSaved(req.ProjectID)
 	}
 
 	// Index entity mentions for the updated scene.

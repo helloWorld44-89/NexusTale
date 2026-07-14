@@ -33,9 +33,19 @@ const NO_CONNECTION_MSG: Message = {
   text: "No AI connection configured. Add a provider key or Ollama URL in Settings to activate Nexus.",
 }
 
+type ChatMode = '' | 'brainstorm' | 'editorial' | 'lore'
+
+const CHAT_MODES: { value: ChatMode; label: string; title: string }[] = [
+  { value: '',           label: 'Nexus',      title: 'General-purpose co-author assistant' },
+  { value: 'brainstorm', label: 'Brainstorm', title: 'Suggest 2–3 directions for any story problem' },
+  { value: 'editorial',  label: 'Editorial',  title: 'Structural editor — cause/effect, pacing, promises' },
+  { value: 'lore',       label: 'Lore',       title: 'Wiki oracle — answer questions from the project wiki' },
+]
+
 export default function ChatBar({ token, projectId, sceneId, branch, promptId, onInsertToScene }: ChatBarProps) {
   const [messages, setMessages]     = useState<Message[]>([])
   const [input, setInput]           = useState('')
+  const [chatMode, setChatMode]     = useState<ChatMode>('')
   const [streaming, setStreaming]   = useState(false)
   const [connected, setConnected]   = useState<boolean | null>(null) // null = checking
   const bottomRef  = useRef<HTMLDivElement>(null)
@@ -107,6 +117,7 @@ export default function ChatBar({ token, projectId, sceneId, branch, promptId, o
         abortRef.current.signal,
         branch,
         promptId,
+        chatMode || undefined,
       )
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
@@ -233,13 +244,30 @@ export default function ChatBar({ token, projectId, sceneId, branch, promptId, o
 
       {/* Input */}
       <div className="px-3 py-3 border-t border-brand-border">
+        {/* Mode pills — compact selector above the input */}
+        <div className="flex gap-1 mb-2 flex-wrap">
+          {CHAT_MODES.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => setChatMode(m.value)}
+              title={m.title}
+              className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
+                chatMode === m.value
+                  ? 'border-brand-purple text-brand-purple bg-brand-purple/10'
+                  : 'border-brand-border text-brand-muted hover:text-brand-text hover:border-brand-border/80'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
         <div className="flex items-end gap-2 bg-brand-bg-input rounded-lg border border-brand-border px-3 py-2">
           <textarea
             rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Ask Nexus…"
+            placeholder={chatMode === 'brainstorm' ? 'What story problem to brainstorm?' : chatMode === 'lore' ? 'Ask about characters, places, or lore…' : 'Ask Nexus…'}
             disabled={streaming || connected === false}
             className="flex-1 resize-none bg-transparent text-brand-text text-sm placeholder:text-brand-muted focus:outline-none max-h-28 leading-relaxed disabled:opacity-50"
           />

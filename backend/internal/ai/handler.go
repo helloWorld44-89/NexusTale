@@ -64,13 +64,14 @@ func (h *Handler) RegisterUserRoutes(rg *gin.RouterGroup) {
 // ── request types ─────────────────────────────────────────────────────────────
 
 type completeRequest struct {
-	SceneID     string `json:"scene_id"`
-	Mode        string `json:"mode"`        // "continue" | "beat" (default: "continue")
-	Beat        string `json:"beat"`        // required when mode=beat
-	Instruction string `json:"instruction"` // optional hint for continue
-	Provider    string `json:"provider"`    // optional
-	MaxTokens   int    `json:"max_tokens"`  // optional
-	PromptID    string `json:"prompt_id"`   // optional writing style preset
+	SceneID         string `json:"scene_id"`
+	Mode            string `json:"mode"`             // "continue" | "beat" (default: "continue")
+	Beat            string `json:"beat"`             // required when mode=beat
+	Instruction     string `json:"instruction"`      // optional hint for continue
+	NarrativePhase  string `json:"narrative_phase"`  // optional for continue: escalation|reflection|confrontation|discovery|aftermath|transition
+	Provider        string `json:"provider"`         // optional
+	MaxTokens       int    `json:"max_tokens"`       // optional
+	PromptID        string `json:"prompt_id"`        // optional writing style preset
 }
 
 type chatRequest struct {
@@ -79,6 +80,7 @@ type chatRequest struct {
 	Provider  string             `json:"provider"`
 	MaxTokens int                `json:"max_tokens"`
 	PromptID  string             `json:"prompt_id"` // optional writing style preset
+	Mode      string             `json:"mode"`       // "" | "brainstorm" | "editorial" | "lore"
 }
 
 type summarizeRequest struct {
@@ -136,15 +138,16 @@ func (h *Handler) Complete(c *gin.Context) {
 	branch := h.svc.ResolveBranch(c.Request.Context(), c.GetHeader("X-NexusTale-Branch"), userID, projectID)
 
 	svcReq := CompleteRequest{
-		ProjectID:   projectID,
-		SceneID:     sceneID,
-		BranchName:  branch,
-		Mode:        mode,
-		Beat:        req.Beat,
-		Instruction: req.Instruction,
-		Provider:    req.Provider,
-		MaxTokens:   req.MaxTokens,
-		PromptID:    promptID,
+		ProjectID:      projectID,
+		SceneID:        sceneID,
+		BranchName:     branch,
+		Mode:           mode,
+		Beat:           req.Beat,
+		Instruction:    req.Instruction,
+		NarrativePhase: req.NarrativePhase,
+		Provider:       req.Provider,
+		MaxTokens:      req.MaxTokens,
+		PromptID:       promptID,
 	}
 
 	setSSeHeaders(c)
@@ -218,6 +221,7 @@ func (h *Handler) Chat(c *gin.Context) {
 		Provider:   req.Provider,
 		MaxTokens:  req.MaxTokens,
 		PromptID:   promptID,
+		ChatMode:   req.Mode,
 	}
 
 	setSSeHeaders(c)

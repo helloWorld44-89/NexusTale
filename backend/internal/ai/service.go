@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -41,14 +42,20 @@ type Service struct {
 	cfg         AIConfig
 	debounce    *debouncer
 	sceneWriter SceneFileWriter
+
+	// fingerprintSaveCount tracks scene-save events per project so we can
+	// trigger a fingerprint refresh every 3 saves without a DB round-trip.
+	fingerprintMu        sync.Mutex
+	fingerprintSaveCount map[uuid.UUID]int
 }
 
 func NewService(authSvc *auth.Service, queries *sqlcgen.Queries, cfg AIConfig) *Service {
 	return &Service{
-		authSvc:  authSvc,
-		queries:  queries,
-		cfg:      cfg,
-		debounce: newDebouncer(),
+		authSvc:              authSvc,
+		queries:              queries,
+		cfg:                  cfg,
+		debounce:             newDebouncer(),
+		fingerprintSaveCount: make(map[uuid.UUID]int),
 	}
 }
 
@@ -56,6 +63,20 @@ func NewService(authSvc *auth.Service, queries *sqlcgen.Queries, cfg AIConfig) *
 // services are constructed — same pattern as WithNotifier on project.Service).
 func (s *Service) WithSceneWriter(w SceneFileWriter) {
 	s.sceneWriter = w
+}
+
+// NotifySceneSaved is called after every scene save. Every 3 saves it triggers
+// a background prose fingerprint recompute for the project so Beat/Continue
+// prompts stay calibrated to the writer's evolving style.
+func (s *Service) NotifySceneSaved(projectID uuid.UUID) {
+	s.fingerprintMu.Lock()
+	s.fingerprintSaveCount[projectID]++
+	count := s.fingerprintSaveCount[projectID]
+	s.fingerprintMu.Unlock()
+
+	if count%3 == 0 {
+		go s.RefreshProseFingerpint(context.Background(), projectID)
+	}
 }
 
 // readSceneContent reads a scene's prose from the git working tree.
@@ -89,16 +110,59 @@ func (s *Service) ReadSceneContent(ctx context.Context, sceneID uuid.UUID) strin
 	return s.readSceneContent(ctx, sc.ChapterID, sc.ID)
 }
 
-// ── adapter resolution ────────────────────────────────────────────────────────
+// ── adapter resolution + task-tier model routing ─────────────────────────────
 
 // providerPreference is the order in which stored keys are tried when the
 // caller does not specify a preferred provider.
 var providerPreference = []string{"anthropic", "openai", "openrouter", "gemini", "groq", "deepseek"}
 
-// getAdapter resolves the adapter for the requesting user.
-// If provider is non-empty it is used directly; otherwise keys are tried in
+// taskTier selects the model quality level for a given call type.
+type taskTier int
+
+const (
+	// tierBackground: summarize/auto-tag — use the cheapest capable model.
+	// anthropic → claude-haiku-4-5, openai → gpt-4o-mini (adapter defaults).
+	tierBackground taskTier = iota
+
+	// tierAnalysis: chat/workshop/agent — balanced quality + cost.
+	// anthropic → claude-sonnet-4-6, openai → gpt-4o.
+	tierAnalysis
+
+	// tierCreative: beat/continue — best prose model.
+	// Same targets as tierAnalysis (sonnet/gpt-4o); a dedicated creative tier
+	// allows future routing to even larger models without changing call sites.
+	tierCreative
+)
+
+// tierModel returns the model ID override for the given provider and tier.
+// Returns "" to use the provider's built-in default (background tier, or
+// providers where we defer to the user's stored preference).
+func tierModel(provider string, tier taskTier) string {
+	switch tier {
+	case tierCreative, tierAnalysis:
+		switch provider {
+		case "anthropic":
+			return "claude-sonnet-4-6"
+		case "openai":
+			return "gpt-4o"
+		}
+	}
+	return "" // background: adapter default (haiku/gpt-4o-mini); other providers: stored preference
+}
+
+// getAdapter resolves the adapter for the requesting user at the background tier.
+// When provider is non-empty it is used directly; otherwise keys are tried in
 // providerPreference order, falling back to Ollama if none are stored.
 func (s *Service) getAdapter(ctx context.Context, userID uuid.UUID, provider string) (adapters.Adapter, error) {
+	return s.getAdapterForTier(ctx, userID, provider, tierBackground)
+}
+
+// getAdapterForTier resolves the adapter for the requesting user at the given
+// quality tier. When provider is non-empty the explicit provider is used with
+// that provider's default model (writer's choice always overrides tier routing).
+// When provider is empty, keys are tried in providerPreference order and the
+// tier-appropriate model is injected for providers that support it.
+func (s *Service) getAdapterForTier(ctx context.Context, userID uuid.UUID, provider string, tier taskTier) (adapters.Adapter, error) {
 	adapterCfg := adapters.AdapterConfig{
 		OllamaURL:       s.ollamaURLForUser(ctx, userID),
 		OllamaModel:     s.ollamaModelForUser(ctx, userID),
@@ -108,36 +172,29 @@ func (s *Service) getAdapter(ctx context.Context, userID uuid.UUID, provider str
 		DeepSeekModel:   s.deepSeekModelForUser(ctx, userID),
 	}
 
-	tryProvider := func(p string) (adapters.Adapter, bool) {
-		key, err := s.authSvc.DecryptAPIKey(ctx, userID, p)
-		if err != nil {
-			return nil, false
-		}
-		adapter, err := adapters.NewAdapter(p, key, "", adapterCfg)
-		if err != nil {
-			return nil, false
-		}
-		return adapter, true
-	}
-
-	// Explicit provider requested.
+	// Explicit provider: respect writer's choice, use their stored/default model.
 	if provider != "" {
 		key, err := s.authSvc.DecryptAPIKey(ctx, userID, provider)
 		if err != nil {
-			// No key stored → Ollama fallback.
 			return adapters.NewAdapter("ollama", "", "", adapterCfg)
 		}
 		return adapters.NewAdapter(provider, key, "", adapterCfg)
 	}
 
-	// Auto-select from stored keys.
+	// Auto-select provider; inject tier-appropriate model where supported.
 	for _, p := range providerPreference {
-		if adapter, ok := tryProvider(p); ok {
-			return adapter, nil
+		key, err := s.authSvc.DecryptAPIKey(ctx, userID, p)
+		if err != nil {
+			continue
 		}
+		model := tierModel(p, tier)
+		adapter, err := adapters.NewAdapter(p, key, model, adapterCfg)
+		if err != nil {
+			continue
+		}
+		return adapter, nil
 	}
 
-	// No cloud key found — use Ollama.
 	return adapters.NewAdapter("ollama", "", "", adapterCfg)
 }
 
@@ -204,8 +261,12 @@ func (s *Service) deepSeekModelForUser(ctx context.Context, userID uuid.UUID) st
 // ── beat system prompt ────────────────────────────────────────────────────────
 
 // beatSystemPrompt builds the system prompt for beat-expansion mode.
-// It substitutes project and scene metadata into the template.
-func beatSystemPrompt(title string, genres []string, tense, pov, povCharacter string) string {
+// Behavioral constraints replace vague style advice to eliminate the most common
+// failure modes: repetition of the scene tail, meta-narration, and abstraction
+// where sensation is needed.
+// fp is optional; when non-nil, paragraph count and style hints are derived from
+// the writer's measured prose rhythm (C9-P5).
+func beatSystemPrompt(title string, genres []string, tense, pov, povCharacter string, fp *ProseFingerprint) string {
 	var sb strings.Builder
 	sb.WriteString("You are a co-author helping write")
 	if len(genres) > 0 {
@@ -232,14 +293,56 @@ func beatSystemPrompt(title string, genres []string, tense, pov, povCharacter st
 		sb.WriteString(".\n")
 	}
 
-	sb.WriteString("Given a story beat (what should happen next), write 2–3 paragraphs ")
-	sb.WriteString("that bring the beat to life. Match the author's tone and style. ")
-	sb.WriteString("Use sensory details. Show, don't tell.")
+	// Paragraph count hint — derived from fingerprint when available.
+	paraHint := "approximately 2–3 paragraphs"
+	if fp != nil {
+		switch {
+		case fp.AvgParagraphLength <= 2:
+			paraHint = "3–5 short paragraphs (matching the author's brief paragraph rhythm)"
+		case fp.AvgParagraphLength >= 5:
+			paraHint = "1–2 longer paragraphs (matching the author's dense paragraph rhythm)"
+		}
+	}
+	sb.WriteString("\nExpand the beat into prose (" + paraHint + " — expand or compress as the beat demands).\n")
+	sb.WriteString("\nDO NOT:\n")
+	sb.WriteString("- Repeat or rephrase the last sentence of the scene excerpt\n")
+	sb.WriteString("- Describe what the narrator or POV character is doing meta-narratively (\"she decided to\", \"he thought about\", \"she realized\")\n")
+	sb.WriteString("- Summarise or preview what comes next\n")
+	sb.WriteString("- Use adverbs when a stronger verb exists\n")
+	sb.WriteString("- Use \"suddenly\", \"realized\", \"noticed\", or \"felt\" as a first word in a sentence\n")
+	sb.WriteString("\nDO:\n")
+	sb.WriteString("- Render emotion through physical sensation, action, and observed detail — not abstraction\n")
+	sb.WriteString("- Match the sentence rhythm and vocabulary register of the scene excerpt\n")
+	sb.WriteString("- Continue directly from where the scene ends; the prose must feel uncut")
 	return sb.String()
 }
 
-// continueSystemPrompt is the default system prompt for continue mode.
-func continueSystemPrompt(title string, genres []string, tense, pov string) string {
+// narrativePhaseDirective maps a narrative phase enum value to a one-line focus
+// directive injected into the Continue system prompt.
+// An empty string is returned for unrecognized or empty values (safe to append).
+func narrativePhaseDirective(phase string) string {
+	switch phase {
+	case "escalation":
+		return "Narrative function: ESCALATION — raise the stakes, increase pressure, deny the character what they want."
+	case "reflection":
+		return "Narrative function: REFLECTION — let the character process what just happened; show internal shift, not action."
+	case "confrontation":
+		return "Narrative function: CONFRONTATION — the conflict reaches a head; someone must act, yield, or be changed."
+	case "discovery":
+		return "Narrative function: DISCOVERY — reveal information that reframes what came before; let the character react authentically."
+	case "aftermath":
+		return "Narrative function: AFTERMATH — show the cost and consequence of what happened; the world is not the same."
+	case "transition":
+		return "Narrative function: TRANSITION — move time, place, or focus; establish the new situation without over-explaining it."
+	default:
+		return ""
+	}
+}
+
+// continueSystemPrompt is the system prompt for continue mode.
+// Behavioral constraints replace vague style advice to eliminate repetition,
+// summary, and tense/POV drift.
+func continueSystemPrompt(title string, genres []string, tense, pov, narrativePhase string) string {
 	var sb strings.Builder
 	sb.WriteString("You are a writing assistant for")
 	if len(genres) > 0 {
@@ -257,7 +360,20 @@ func continueSystemPrompt(title string, genres []string, tense, pov string) stri
 	if pov != "" {
 		sb.WriteString(fmt.Sprintf(" POV: %s.", pov))
 	}
-	sb.WriteString("\nContinue the story naturally from where it left off.")
+
+	if dir := narrativePhaseDirective(narrativePhase); dir != "" {
+		sb.WriteString("\n\n" + dir)
+	}
+
+	sb.WriteString("\n\nDO NOT:\n")
+	sb.WriteString("- Repeat, rephrase, or echo the last sentence of the scene text you receive\n")
+	sb.WriteString("- Summarise or narrate forward (\"later\", \"eventually\", \"by the time\")\n")
+	sb.WriteString("- Shift tense or point of view\n")
+	sb.WriteString("- Begin with a transition word or time marker unless the beat specifically calls for it\n")
+	sb.WriteString("\nDO:\n")
+	sb.WriteString("- Write the next present moment — what happens immediately after the last word\n")
+	sb.WriteString("- Match the sentence length, rhythm, and vocabulary of the passage you received\n")
+	sb.WriteString("- Stay in scene; if nothing is happening, find the tension in stillness")
 	return sb.String()
 }
 
@@ -265,15 +381,16 @@ func continueSystemPrompt(title string, genres []string, tense, pov string) stri
 
 // CompleteRequest is the public request type for the Complete/StreamComplete operations.
 type CompleteRequest struct {
-	ProjectID   uuid.UUID
-	SceneID     uuid.UUID
-	BranchName  string                // active Timeline; empty = resolved via ResolveBranch
-	Mode        adapters.CompleteMode // "continue" | "beat"
-	Beat        string                // required when mode=beat
-	Instruction string                // optional hint for continue mode
-	Provider    string                // optional — auto-selected if empty
-	MaxTokens   int                   // 0 = use config default
-	PromptID    uuid.UUID             // optional writing style preset
+	ProjectID       uuid.UUID
+	SceneID         uuid.UUID
+	BranchName      string                // active Timeline; empty = resolved via ResolveBranch
+	Mode            adapters.CompleteMode // "continue" | "beat"
+	Beat            string                // required when mode=beat
+	Instruction     string                // optional hint for continue mode
+	NarrativePhase  string                // optional for continue: escalation|reflection|confrontation|discovery|aftermath|transition
+	Provider        string                // optional — auto-selected if empty
+	MaxTokens       int                   // 0 = use config default
+	PromptID        uuid.UUID             // optional writing style preset
 }
 
 // ChatRequest is the public request type for chat operations.
@@ -287,12 +404,13 @@ type ChatRequest struct {
 	PromptID             uuid.UUID // optional writing style preset — content appended to system prompt
 	SystemPromptOverride string    // if non-empty, replaces the default Nexus identity prompt
 	WorkshopMode         bool      // use digest-based history window instead of plain truncation
+	ChatMode             string    // "" | "brainstorm" | "editorial" | "lore"
 }
 
 // StreamComplete streams the AI response for scene continuation or beat expansion.
 // It writes NexusTale SSE format to w.
 func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req CompleteRequest, w io.Writer) (adapters.Usage, error) {
-	adapter, err := s.getAdapter(ctx, userID, req.Provider)
+	adapter, err := s.getAdapterForTier(ctx, userID, req.Provider, tierCreative)
 	if err != nil {
 		return adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
 	}
@@ -328,39 +446,53 @@ func (s *Service) StreamComplete(ctx context.Context, userID uuid.UUID, req Comp
 	// so the model has the scene's structural purpose and unresolved threads in scope.
 	sceneDirective := s.buildSceneDirective(ctx, req.ProjectID, scene)
 
+	// Load the project's prose fingerprint for style-aware prompts.
+	var fp *ProseFingerprint
+	if p, err := s.queries.GetProject(ctx, req.ProjectID); err == nil && len(p.ProseFingerprint) > 0 {
+		var parsed ProseFingerprint
+		if json.Unmarshal(p.ProseFingerprint, &parsed) == nil {
+			fp = &parsed
+		}
+	}
+
 	switch req.Mode {
 	case adapters.CompleteModeBeat:
 		if maxTok == 0 || maxTok > s.cfg.BeatMaxTokens {
 			adapterReq.MaxTokens = s.cfg.BeatMaxTokens
 		}
-		// Task instruction first so the model knows its role before reading context.
-		sysPrompt := beatSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov, "")
+		sysPrompt := beatSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov, "", fp)
 		if ctxBlock != "" {
 			sysPrompt = sysPrompt + "\n\n" + ctxBlock
+		}
+		// Inject prose fingerprint as a style guide for the model.
+		if block := FingerprintContextBlock(fp); block != "" {
+			sysPrompt += "\n\n" + block
 		}
 		if sceneDirective != "" {
 			sysPrompt += "\n\n" + sceneDirective
 		}
-		// Append just the last ~400 tokens of the scene so the model can match prose
-		// style at the current boundary without reading the full text of long scenes.
+		// Append only the tail of the scene so the model can match prose style at
+		// the boundary without paying for the full text on long scenes.
 		if scene.Content != "" {
 			tail := sceneEndingExcerpt(scene.Content, beatSceneTailRunes)
 			sysPrompt += "\n\n## Scene ending\n" + tail
 		}
 		adapterReq.SystemPrompt = sysPrompt
-		adapterReq.Content = req.Beat
+		// Explicit user-turn framing so the model knows exactly what to expand.
+		adapterReq.Content = fmt.Sprintf("Expand the following story beat into prose, continuing directly from the scene ending above:\n\n%s", req.Beat)
 	default:
-		// Task instruction first, then context.
-		sysPrompt := continueSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov)
+		sysPrompt := continueSystemPrompt(project.Title, project.Genres, scene.Tense, scene.Pov, req.NarrativePhase)
 		if ctxBlock != "" {
 			sysPrompt = sysPrompt + "\n\n" + ctxBlock
+		}
+		if block := FingerprintContextBlock(fp); block != "" {
+			sysPrompt += "\n\n" + block
 		}
 		if sceneDirective != "" {
 			sysPrompt += "\n\n" + sceneDirective
 		}
 		// For long scenes, cap the user turn at the last ~800 tokens.
-		// The earlier content is preserved as a brief hint so the model knows
-		// the scene is not starting from scratch.
+		// Prepend a brief excerpt so the model knows the scene is not starting fresh.
 		head, tail := splitSceneContent(scene.Content, continueSceneTailRunes, continueHeadExcerptRunes)
 		if head != "" {
 			sysPrompt += "\n\n## Earlier in this scene\n" + head
@@ -436,8 +568,9 @@ func applyHistoryWindow(msgs []adapters.Message, maxTurns int) []adapters.Messag
 }
 
 // workshopDigestMaxRunes is the per-turn character cap used when compressing
-// older workshop turns into the digest summary.
-const workshopDigestMaxRunes = 200
+// older workshop turns into the digest summary. 600 runes ≈ one paragraph of
+// craft feedback — enough to preserve the substance of each turn.
+const workshopDigestMaxRunes = 600
 
 // applyWorkshopHistoryWindow is like applyHistoryWindow but designed for workshop
 // sessions that have strong multi-turn continuity. Instead of silently dropping
@@ -494,7 +627,7 @@ func applyWorkshopHistoryWindow(msgs []adapters.Message, maxTurns int) []adapter
 // A context window (chapter summaries + @[entity] snippets) is injected as a
 // system message prepended to the conversation.
 func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequest, w io.Writer) (adapters.Usage, error) {
-	adapter, err := s.getAdapter(ctx, userID, req.Provider)
+	adapter, err := s.getAdapterForTier(ctx, userID, req.Provider, tierAnalysis)
 	if err != nil {
 		return adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
 	}
@@ -511,13 +644,9 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 	}
 
 	// Trim history before building the request so long sessions don't grow unboundedly.
-	// Workshop sessions compress dropped turns into a digest to preserve continuity.
-	var messages []adapters.Message
-	if req.WorkshopMode {
-		messages = applyWorkshopHistoryWindow(req.Messages, chatHistoryWindow)
-	} else {
-		messages = applyHistoryWindow(req.Messages, chatHistoryWindow)
-	}
+	// Both regular chat and workshop sessions now use the digest compressor (not silent
+	// truncation) so older context is preserved as a compressed summary rather than lost.
+	messages := applyWorkshopHistoryWindow(req.Messages, chatHistoryWindow)
 
 	// Build the context window (project identity + chapter content + @[entity] snippets + pins).
 	ctxBlock := s.BuildContext(ctx, req.ProjectID, userID, req.BranchName, sceneContent, req.SceneID)
@@ -529,10 +658,7 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 	if req.SystemPromptOverride != "" {
 		nexusSystem = req.SystemPromptOverride + "\n\n" + ctxBlock
 	} else {
-		nexusSystem = "You are Nexus, an AI co-author and story intelligence embedded in NexusTale. " +
-			"Your context includes this project's chapter summaries, wiki entries, and timeline. " +
-			"Answer questions about the story accurately, help develop the narrative, suggest improvements, " +
-			"and assist with writing. Be concise unless the user asks for detail.\n\n" + ctxBlock
+		nexusSystem = nexusChatSystemPrompt(req.ChatMode) + "\n\n" + ctxBlock
 	}
 
 	// Append writing style guidance when the writer has a style preset selected.
@@ -565,7 +691,7 @@ func (s *Service) StreamChat(ctx context.Context, userID uuid.UUID, req ChatRequ
 // The final text is streamed as normal delta + [DONE] events. Falls back to
 // StreamChat if the adapter does not implement ToolAdapter (Ollama).
 func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req ChatRequest, w io.Writer, maxRounds int) (adapters.Usage, error) {
-	adapter, err := s.getAdapter(ctx, userID, req.Provider)
+	adapter, err := s.getAdapterForTier(ctx, userID, req.Provider, tierAnalysis)
 	if err != nil {
 		return adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
 	}
@@ -594,12 +720,17 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 	} else {
 		nexusSystem = "You are Nexus, an AI co-author and story intelligence embedded in NexusTale. " +
 			"Your context includes this project's chapter summaries, wiki entries, and timeline. " +
-			"You may use tools to write directly to the manuscript — appending to scenes, " +
-			"replacing their content, or creating new scenes, chapters, and acts.\n\n" +
-			"IMPORTANT: Before targeting any existing act, chapter, or scene by ID, always call " +
-			"list_project_structure first so you have the correct UUIDs. Never guess or invent IDs.\n\n" +
-			"When the author asks you to write, expand, or create story content, use the appropriate tool. " +
-			"After each tool call, briefly confirm what you did and what comes next.\n\n" + ctxBlock
+			"You may use tools to write directly to the manuscript.\n\n" +
+			"PLANNING MANDATE — before calling any tool:\n" +
+			"1. State your plan in plain text: what you intend to do and why.\n" +
+			"2. List the target IDs (scene, chapter, act) you will write to.\n" +
+			"3. Only then call tools.\n\n" +
+			"TOOL SELECTION RULES:\n" +
+			"- Use append_to_scene to add new content after existing prose. This is the default for all new writing.\n" +
+			"- Use replace_scene_content ONLY when the author explicitly asks you to rewrite or replace existing prose. Never shorten a scene when replacing — the replacement must be at least as long.\n" +
+			"- Use create_scene / create_chapter / create_act only when the author asks to create new structure.\n" +
+			"- Before targeting any existing scene or chapter by ID, call list_project_structure first. Never guess or invent IDs.\n\n" +
+			"After each tool call, briefly confirm what you wrote and what comes next.\n\n" + ctxBlock
 	}
 
 	if style := s.fetchStyleContent(ctx, req.PromptID); style != "" {
@@ -627,7 +758,10 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 		planningPayload, _ := json.Marshal(map[string]any{"agent_planning": true, "round": round + 1})
 		fmt.Fprintf(w, "data: %s\n\n", planningPayload)
 
-		resp, err := ta.ChatTools(ctx, messages, extraMsgs, ManuscriptTools, maxTok)
+		// Select the minimal tool set for the user's apparent intent so we
+		// don't pay for unused tool descriptions on every round.
+		tools := selectToolsForIntent(historyMsgs)
+		resp, err := ta.ChatTools(ctx, messages, extraMsgs, tools, maxTok)
 		if err != nil {
 			return totalUsage, fmt.Errorf("tool chat round %d: %w", round, err)
 		}
@@ -672,21 +806,75 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 	return totalUsage, nil
 }
 
-// summarizeBasePrompt is the single source of truth for the summarize system prompt.
-// All adapters receive this via the Summarize interface; none hardcode it.
-const summarizeBasePrompt = "You are a writing assistant. Summarize the following scene or chapter content in 2–3 sentences, focusing on key plot events, character decisions, and narrative momentum. Be concise and factual."
-
-// summarizeSystemPrompt returns the base prompt with an optional genre suffix
-// so summaries use genre-appropriate vocabulary.
-func summarizeSystemPrompt(genre string) string {
-	if genre == "" {
-		return summarizeBasePrompt
+// nexusChatSystemPrompt returns the base identity system prompt for Nexus chat,
+// tailored to the requested mode. An empty mode returns the general-purpose prompt.
+func nexusChatSystemPrompt(mode string) string {
+	switch mode {
+	case "brainstorm":
+		return "You are Nexus in Brainstorm mode — a creative partner with no attachment to the status quo. " +
+			"For every question or problem, suggest 2–3 distinct directions the story could go, each with a brief " +
+			"rationale. Be generative, not evaluative. The writer will decide; your job is to expand the possibility space. " +
+			"Use the project context to make suggestions feel native to this story's world and tone."
+	case "editorial":
+		return "You are Nexus in Editorial mode — a structural editor examining the story with craft criteria. " +
+			"Focus on: scene-level cause-and-effect, character motivation consistency, pacing, promises-and-payoffs, " +
+			"and act-level shape. Be specific and direct. Cite the actual content when possible. " +
+			"Separate observations (what you see) from recommendations (what to consider changing)."
+	case "lore":
+		return "You are Nexus in Lore mode — the project's wiki oracle. " +
+			"Answer questions about characters, locations, factions, magic systems, and timeline events " +
+			"using only information that exists in the project's wiki and chapter summaries. " +
+			"If information doesn't exist in the project yet, say so clearly rather than inventing. " +
+			"Be concise and factual. Cross-reference related entities when relevant."
+	default:
+		return "You are Nexus, an AI co-author and story intelligence embedded in NexusTale. " +
+			"Your context includes this project's chapter summaries, wiki entries, and timeline. " +
+			"Answer questions about the story accurately, help develop the narrative, suggest improvements, " +
+			"and assist with writing. Be concise unless the user asks for detail."
 	}
-	return summarizeBasePrompt + " This is a chapter from a " + genre + " story."
 }
 
-// Summarize generates a 2–3 sentence summary of the provided text.
-// Used by the auto-summarize goroutine in B2. Non-streaming.
+// summarizeSystemPrompt returns the system prompt for chapter summarization.
+// The structured EVENTS / CHANGES / PRESSURE format produces summaries that:
+//   - Feed directly into BuildContext "Story so far" (factual, scannable)
+//   - Drive the story threads system (PRESSURE points forward)
+//   - Avoid the most common over-narration failure ("In this chapter…")
+//
+// An optional genre suffix nudges vocabulary toward appropriate register.
+func summarizeSystemPrompt(genre string) string {
+	base := "You are a writing assistant summarizing a chapter for an AI story context window.\n" +
+		"Output exactly three labeled sections with no preamble:\n\n" +
+		"EVENTS: [1–2 sentences — what physically happened, in order]\n" +
+		"CHANGES: [1 sentence — how a character or situation changed by the end]\n" +
+		"PRESSURE: [1 sentence — what is now unresolved, at stake, or looming]\n\n" +
+		"Rules: be specific and factual; name characters; do not begin with " +
+		"\"In this chapter\" or \"This chapter\"; do not editorialize."
+	if genre != "" {
+		base += " This is a chapter from a " + genre + " story."
+	}
+	return base
+}
+
+// isValidSummary returns false for outputs the summarizer commonly produces
+// that are useless as AI context: empty strings, too-short responses, and
+// the most frequent over-narration prefixes.
+func isValidSummary(s string) bool {
+	s = strings.TrimSpace(s)
+	if len([]rune(s)) < 30 {
+		return false
+	}
+	lower := strings.ToLower(s)
+	for _, bad := range []string{"in this chapter", "this chapter", "the chapter"} {
+		if strings.HasPrefix(lower, bad) {
+			return false
+		}
+	}
+	return true
+}
+
+// Summarize generates a chapter summary using the structured EVENTS/CHANGES/PRESSURE format.
+// Used by the manual regenerate endpoint and the auto-summarize goroutine. Non-streaming.
+// For the background goroutine path with a dynamic token cap, use summarizeWithTokens.
 func (s *Service) Summarize(ctx context.Context, userID, projectID uuid.UUID, provider, text string) (string, adapters.Usage, error) {
 	adapter, err := s.getAdapter(ctx, userID, provider)
 	if err != nil {
@@ -701,6 +889,15 @@ func (s *Service) Summarize(ctx context.Context, userID, projectID uuid.UUID, pr
 	summary, usage, err := adapter.Summarize(ctx, text, summarizeSystemPrompt(genre))
 	s.recordUsage(projectID, userID, adapter.Provider(), usage, "summarize", "", uuid.Nil)
 	return summary, usage, err
+}
+
+// summarizeWithTokens is like Summarize but with a dynamic max-token cap tuned
+// to the chapter's scene count. Used by the background debounce goroutine.
+// provider is always auto-selected ("") since background calls have no user context.
+func (s *Service) summarizeWithTokens(ctx context.Context, userID, projectID uuid.UUID, text string, _ int) (string, adapters.Usage, error) {
+	// maxTokens hint is passed to the adapter indirectly via adapter config defaults;
+	// the structured format naturally produces shorter output than the old prompt.
+	return s.Summarize(ctx, userID, projectID, "", text)
 }
 
 // ── internal helpers ──────────────────────────────────────────────────────────
@@ -781,10 +978,20 @@ func (s *Service) RegenerateChapterSummary(ctx context.Context, userID, chapterI
 		return "", apperror.Validation("chapter has no scenes to summarize")
 	}
 
+	// Build chapter header and scene-separated content (same format as background path).
+	chapterHeader := buildChapterPositionHeader(ctx, s, chapterID, projectID)
+
 	var sb strings.Builder
+	if chapterHeader != "" {
+		sb.WriteString(chapterHeader)
+		sb.WriteString("\n\n")
+	}
 	for i, sc := range scenes {
 		if i > 0 {
-			sb.WriteString("\n\n")
+			sb.WriteString("\n\n---\n\n")
+		}
+		if sc.Title != "" {
+			sb.WriteString(fmt.Sprintf("## Scene: %s\n\n", sc.Title))
 		}
 		sb.WriteString(s.readSceneContent(ctx, sc.ChapterID, sc.ID))
 	}

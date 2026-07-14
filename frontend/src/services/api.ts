@@ -616,6 +616,7 @@ export const api = {
         mode: 'continue' | 'beat'
         beat?: string
         instruction?: string
+        narrativePhase?: string
         promptId?: string
         branch?: string
       },
@@ -633,11 +634,12 @@ export const api = {
           ...branchHeaders,
         },
         body: JSON.stringify({
-          scene_id:    params.sceneId ?? '',
-          mode:        params.mode,
-          beat:        params.beat ?? '',
-          instruction: params.instruction ?? '',
-          prompt_id:   params.promptId ?? '',
+          scene_id:         params.sceneId ?? '',
+          mode:             params.mode,
+          beat:             params.beat ?? '',
+          instruction:      params.instruction ?? '',
+          narrative_phase:  params.narrativePhase ?? '',
+          prompt_id:        params.promptId ?? '',
         }),
         signal,
       })
@@ -689,6 +691,7 @@ export const api = {
       signal?: AbortSignal,
       branch?: string,
       promptId?: string | null,
+      chatMode?: string,
     ): Promise<void> => {
       const branchHeaders: Record<string, string> = branch
         ? { 'X-NexusTale-Branch': branch }
@@ -700,7 +703,7 @@ export const api = {
           Authorization: `Bearer ${token}`,
           ...branchHeaders,
         },
-        body: JSON.stringify({ messages, scene_id: sceneId ?? '', prompt_id: promptId ?? '' }),
+        body: JSON.stringify({ messages, scene_id: sceneId ?? '', prompt_id: promptId ?? '', mode: chatMode ?? '' }),
         signal,
       })
 

@@ -151,6 +151,57 @@ var ManuscriptTools = []adapters.ToolDefinition{
 	},
 }
 
+// manuscriptWriteTools is the subset of ManuscriptTools for pure manuscript-write
+// tasks (no wiki work). Saves ~400–500 tokens per round when wiki is not needed.
+var manuscriptWriteTools = ManuscriptTools[:6] // list_project_structure + 5 manuscript tools
+
+// wikiTools is the subset for pure wiki tasks (no prose write).
+var wikiTools = append([]adapters.ToolDefinition{ManuscriptTools[0]}, ManuscriptTools[6:]...) // list_project_structure + 4 wiki tools
+
+// selectToolsForIntent returns the smallest set of tools appropriate for the
+// final user message in the conversation. When intent is ambiguous both sets
+// are included (i.e. the full ManuscriptTools slice).
+func selectToolsForIntent(messages []adapters.Message) []adapters.ToolDefinition {
+	// Find the last user message.
+	lastUser := ""
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			lastUser = strings.ToLower(messages[i].Content)
+			break
+		}
+	}
+
+	wikiKeywords := []string{
+		"wiki", "entity", "entities", "character", "location", "faction",
+		"relationship", "character sheet", "add to wiki", "update wiki",
+	}
+	writeKeywords := []string{
+		"write", "append", "add prose", "scene", "continue writing",
+		"draft", "create chapter", "create act", "create scene", "expand",
+	}
+
+	hasWiki := containsAny(lastUser, wikiKeywords)
+	hasWrite := containsAny(lastUser, writeKeywords)
+
+	switch {
+	case hasWiki && !hasWrite:
+		return wikiTools
+	case hasWrite && !hasWiki:
+		return manuscriptWriteTools
+	default:
+		return ManuscriptTools
+	}
+}
+
+func containsAny(s string, keywords []string) bool {
+	for _, kw := range keywords {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // ToolEvent carries the result and undo metadata for a single tool execution.
 // Emitted as an SSE event so the frontend can display progress and offer Undo.
 type ToolEvent struct {

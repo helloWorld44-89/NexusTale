@@ -22,6 +22,38 @@ import (
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
+// ── Context budget constants ──────────────────────────────────────────────────
+
+// maxContextCharsGeneration is the hard char limit for Beat/Continue prompts.
+// At ~4 chars/token this ≈ 6,000 tokens. Beat/Continue already have the scene
+// tail + directive injected by the caller, so the context block must stay lean.
+const maxContextCharsGeneration = 24_000
+
+// maxContextCharsChat is the hard char limit for Nexus Chat / Workshop prompts.
+// Larger than generation because Workshop needs more story history for craft analysis.
+const maxContextCharsChat = 32_000
+
+// storySoFarAnchorCount is how many early-chapter summaries to always keep as
+// story anchors (establishes premise; dropped last when pruning).
+const storySoFarAnchorCount = 1
+
+// storySoFarRecentWindow is the number of chapter summaries immediately before
+// the current chapter to always keep (recent story context).
+const storySoFarRecentWindow = 5
+
+// currentSceneFallbackRunes is the max rune count injected as a scene excerpt
+// in chat/workshop mode when no AI summary exists for the current chapter.
+const currentSceneFallbackRunes = 1_600 // ~400 tokens
+
+// Entity type caps for the "Entities in this scene" section.
+// Large wikis can produce hundreds of entity matches; these caps keep the section
+// lean by injecting the most story-relevant types at higher counts.
+const (
+	entityCapCharacter = 5
+	entityCapLocation  = 3
+	entityCapOther     = 2 // shared cap for factions, items, concepts, lore
+)
+
 // canonBranch is the default Timeline name; mirrors project.CanonBranch.
 const canonBranch = "canon"
 
@@ -29,8 +61,8 @@ const canonBranch = "canon"
 // background goroutine actually calls the LLM to regenerate a summary.
 const summarizeDebounce = 30 * time.Second
 
-// contextBudgetWarnChars is the character threshold above which BuildContext
-// logs a warning (~5,000 tokens at 4 chars/token).
+// contextBudgetWarnChars is kept for backwards compatibility with any external
+// references but is no longer used for enforcement — hard caps are applied instead.
 const contextBudgetWarnChars = 20_000
 
 // debounceKey uniquely identifies a pending debounce timer.
@@ -179,8 +211,9 @@ func (s *Service) CleanupBranch(ctx context.Context, projectID uuid.UUID, branch
 	}
 }
 
-// regenerateSummary fetches all scene content for the chapter, calls Summarize,
-// then stores the result.  Called by the debounce timer.
+// regenerateSummary fetches all scene content for the chapter, calls Summarize
+// with the structured EVENTS/CHANGES/PRESSURE format, and stores the result.
+// Called by the debounce timer (background goroutine).
 func (s *Service) regenerateSummary(userID, chapterID, projectID uuid.UUID, branchName string) {
 	ctx := context.Background()
 
@@ -193,24 +226,56 @@ func (s *Service) regenerateSummary(userID, chapterID, projectID uuid.UUID, bran
 		return
 	}
 
+	// Build chapter position header (e.g. "Chapter 3 of 12: 'The Iron Gate'").
+	// Used to give the model context about where this chapter falls in the story.
+	chapterHeader := buildChapterPositionHeader(ctx, s, chapterID, projectID)
+
+	// Concatenate scenes with labeled separators so the model knows where scene
+	// boundaries are and can weigh each scene appropriately.
 	var sb strings.Builder
+	if chapterHeader != "" {
+		sb.WriteString(chapterHeader)
+		sb.WriteString("\n\n")
+	}
 	for i, sc := range scenes {
 		if i > 0 {
-			sb.WriteString("\n\n")
+			sb.WriteString("\n\n---\n\n")
+		}
+		if sc.Title != "" {
+			sb.WriteString(fmt.Sprintf("## Scene: %s\n\n", sc.Title))
 		}
 		sb.WriteString(s.readSceneContent(ctx, chapterID, sc.ID))
 	}
 
 	combined := strings.TrimSpace(sb.String())
 	if combined == "" {
-		// Git files not yet written or sceneWriter not wired — nothing to summarize.
 		slog.Warn("ai: regenerate summary — no scene content available", "chapter_id", chapterID)
 		return
 	}
 
-	summary, _, err := s.Summarize(ctx, userID, projectID, "", combined)
-	if err != nil {
-		slog.Warn("ai: regenerate summary — summarize failed", "chapter_id", chapterID, "error", err)
+	// Dynamic token cap: scale with scene count so single-scene chapters get
+	// tighter summaries than action-dense multi-scene chapters.
+	dynamicMaxTokens := min(len(scenes)*120, 350)
+
+	// Retry loop: up to 2 retries if the model produces invalid output.
+	// isValidSummary rejects empty, too-short, and over-narrated responses.
+	var summary string
+	for attempt := 0; attempt <= 2; attempt++ {
+		var sumErr error
+		summary, _, sumErr = s.summarizeWithTokens(ctx, userID, projectID, combined, dynamicMaxTokens)
+		if sumErr != nil {
+			slog.Warn("ai: regenerate summary — summarize failed", "chapter_id", chapterID, "attempt", attempt, "error", sumErr)
+			return
+		}
+		if isValidSummary(summary) {
+			break
+		}
+		slog.Warn("ai: regenerate summary — invalid output, retrying", "chapter_id", chapterID, "attempt", attempt, "summary_prefix", truncateRunes(summary, 60))
+		summary = "" // reset so we don't store a bad summary on last attempt
+	}
+
+	if summary == "" {
+		slog.Warn("ai: regenerate summary — all attempts produced invalid output", "chapter_id", chapterID)
 		return
 	}
 
@@ -223,6 +288,27 @@ func (s *Service) regenerateSummary(userID, chapterID, projectID uuid.UUID, bran
 	}
 }
 
+// buildChapterPositionHeader returns "Chapter N of TOTAL: \"Title\"\n" for use as
+// a preamble in the summarize input. Returns "" on any lookup error.
+func buildChapterPositionHeader(ctx context.Context, s *Service, chapterID, projectID uuid.UUID) string {
+	ch, err := s.queries.GetChapter(ctx, chapterID)
+	if err != nil {
+		return ""
+	}
+	chapters, err := s.queries.ListChaptersByProject(ctx, projectID)
+	if err != nil {
+		return ""
+	}
+	total := len(chapters)
+	for i, c := range chapters {
+		if c.ID == chapterID {
+			return fmt.Sprintf("Chapter %d of %d: %q", i+1, total, ch.Title)
+		}
+	}
+	return ""
+}
+
+
 // ── BuildContext ──────────────────────────────────────────────────────────────
 
 // entityRefRE matches @[Entity Name] inline references in scene content.
@@ -234,63 +320,67 @@ const contentFallbackLimit = 600
 
 // BuildContext assembles a context block to prepend to AI system prompts.
 //
-// Section order (C6.6 revised):
+// Section order (C6.6 revised + C9-P2 budget enforcement):
 //  1. Project identity + AI bible
 //  2. Story structure (named template or freeform rules)
 //  3. Magic systems (always injected when rules exist — world constraints first)
-//  4. Story so far (chapter summaries, branch-aware)
-//  5. @[Entity] inline references (reformatted by entity type)
-//  6. Current scene (full text; suppressed in Beat/Continue — caller passes uuid.Nil)
+//  4. Story so far (chapter summaries, branch-aware; capped to anchor + recent 5)
+//  5. @[Entity] inline references (type-capped: 5 chars, 3 locations, 2 other)
+//  6. Current scene context — suppressed in Beat/Continue (caller passes uuid.Nil);
+//     in Chat/Workshop injects AI chapter summary (not full text) to save tokens
 //  7. Pinned context (writer-curated via Context Pins panel)
 //  8. Open story threads (unresolved threads the story owes the reader)
 //
-// The returned string is never empty: the project identity block is always
-// present so the model always knows the project it is working on.
+// Budget: when currentSceneID is uuid.Nil → generation mode (24k chars);
+// when non-nil → chat/workshop mode (32k chars). Distant chapter summaries
+// (beyond anchor + recent 5) are injected only if the budget allows.
 func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID, branchName, sceneContent string, currentSceneID uuid.UUID) string {
-	var sb strings.Builder
+	chatMode := currentSceneID != uuid.Nil
+	maxChars := maxContextCharsGeneration
+	if chatMode {
+		maxChars = maxContextCharsChat
+	}
+
+	// always holds sections that are always kept (high-priority).
+	// distant holds chapter summaries beyond the anchor + recent window; these
+	// are appended only if the budget allows after all always-sections are in.
+	var always strings.Builder
+	var distant strings.Builder
+
+	appendSection := func(dst *strings.Builder, content string) {
+		if content == "" {
+			return
+		}
+		if dst.Len() > 0 {
+			dst.WriteString("\n")
+		}
+		dst.WriteString(content)
+	}
 
 	// ── 1. Project identity + AI bible ───────────────────────────────────
 	if projectID != uuid.Nil {
 		p, err := s.queries.GetProject(ctx, projectID)
 		if err == nil {
-			sb.WriteString("## Project\n")
-			sb.WriteString("**Title**: " + p.Title + "\n")
+			var identity strings.Builder
+			identity.WriteString("## Project\n")
+			identity.WriteString("**Title**: " + p.Title + "\n")
 			if len(p.Genres) > 0 {
-				sb.WriteString("**Genre**: " + strings.Join(p.Genres, ", ") + "\n")
+				identity.WriteString("**Genre**: " + strings.Join(p.Genres, ", ") + "\n")
 			}
-			// AI bible — user-editable text that overrides the bare project identity.
-			// Auto-populated from guide steps when first saved; always takes
-			// precedence over the bare title/genres block above.
-			if strings.TrimSpace(p.AiInstructions) != "" {
-				sb.WriteString("\n## Story bible\n")
-				sb.WriteString(p.AiInstructions + "\n")
+			appendSection(&always, identity.String())
+			if bible := strings.TrimSpace(p.AiInstructions); bible != "" {
+				appendSection(&always, "## Story bible\n"+bible+"\n")
 			}
 		}
 	}
 
 	// ── 2. Story structure ────────────────────────────────────────────────
-	// World rules before story history — the AI should understand the structural
-	// framework it's working within before reading chapter summaries.
-	if structureCtx := s.buildStructureContext(ctx, projectID); structureCtx != "" {
-		if sb.Len() > 0 {
-			sb.WriteString("\n")
-		}
-		sb.WriteString(structureCtx)
-	}
+	appendSection(&always, s.buildStructureContext(ctx, projectID))
 
 	// ── 3. Magic systems ─────────────────────────────────────────────────
-	// Always injected when the project has magic rules, regardless of @-references
-	// in the current scene. Magic systems are world-level constraints the AI must
-	// know even when the writer hasn't mentioned them in this scene.
-	if magicCtx := s.buildMagicSystemsContext(ctx, projectID); magicCtx != "" {
-		if sb.Len() > 0 {
-			sb.WriteString("\n")
-		}
-		sb.WriteString(magicCtx)
-	}
+	appendSection(&always, s.buildMagicSystemsContext(ctx, projectID))
 
 	// ── 4. Story so far ───────────────────────────────────────────────────
-	// Load AI chapter summaries for the active branch.
 	summaryRows, _ := s.queries.ListChapterSummariesByProject(ctx, sqlcgen.ListChapterSummariesByProjectParams{
 		ProjectID:  projectID,
 		BranchName: branchName,
@@ -301,22 +391,20 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 			BranchName: canonBranch,
 		})
 	}
-
-	// Build a lookup: chapterID → summary text (empty string = no summary yet).
 	summaryByChapter := make(map[uuid.UUID]string)
 	for _, r := range summaryRows {
 		summaryByChapter[r.ChapterID] = r.AiSummary
 	}
 
-	// Fetch the chapter list so we can produce a "story so far" block even
-	// when summaries don't exist yet (fallback to raw scene content).
-	chapters, err := s.queries.ListChaptersByProject(ctx, projectID)
+	chapters, chapErr := s.queries.ListChaptersByProject(ctx, projectID)
 
-	// Determine the current chapter's index for arc position hints on character entities.
+	// Determine current chapter index (needed for entity arc hints and summary window).
 	currentChapterIdx := -1
-	if currentSceneID != uuid.Nil && err == nil {
+	currentChapterID := uuid.Nil
+	if chatMode && chapErr == nil {
 		sc, scErr := s.queries.GetScene(ctx, currentSceneID)
 		if scErr == nil {
+			currentChapterID = sc.ChapterID
 			for i, ch := range chapters {
 				if ch.ID == sc.ChapterID {
 					currentChapterIdx = i
@@ -326,168 +414,257 @@ func (s *Service) BuildContext(ctx context.Context, projectID, userID uuid.UUID,
 		}
 	}
 
-	if err == nil && len(chapters) > 0 {
-		var storySoFar strings.Builder
-		for _, ch := range chapters {
+	if chapErr == nil && len(chapters) > 0 {
+		total := len(chapters)
+
+		// Identify which chapter indices are "essential" (always kept).
+		// Anchor: first storySoFarAnchorCount chapters.
+		// Recent: last storySoFarRecentWindow chapters before current (or before end).
+		recentEnd := total
+		if currentChapterIdx >= 0 {
+			recentEnd = currentChapterIdx
+		}
+		recentStart := recentEnd - storySoFarRecentWindow
+		if recentStart < storySoFarAnchorCount {
+			recentStart = storySoFarAnchorCount
+		}
+
+		isEssential := func(i int) bool {
+			if i < storySoFarAnchorCount {
+				return true
+			}
+			return i >= recentStart && i < recentEnd
+		}
+
+		var essentialSoFar strings.Builder
+		var distantSoFar strings.Builder
+
+		for i, ch := range chapters {
+			// Skip the current scene's chapter — section 6 handles it.
+			if ch.ID == currentChapterID {
+				continue
+			}
+
+			var line string
 			if summary, ok := summaryByChapter[ch.ID]; ok && summary != "" {
-				storySoFar.WriteString(fmt.Sprintf("**%s**: %s\n", ch.Title, summary))
-				continue
-			}
-			// No AI summary yet — fall back to a raw content snippet.
-			scenes, err := s.queries.ListScenesByChapter(ctx, ch.ID)
-			if err != nil || len(scenes) == 0 {
-				continue
-			}
-			// Skip the current scene's chapter in the fallback path — its full
-			// content is already included in section 6, so the excerpt would
-			// duplicate it at lower quality.
-			if currentSceneID != uuid.Nil {
-				isCurrentChapter := false
-				for _, sc := range scenes {
-					if sc.ID == currentSceneID {
-						isCurrentChapter = true
-						break
-					}
-				}
-				if isCurrentChapter {
+				line = fmt.Sprintf("**%s**: %s\n", ch.Title, summary)
+			} else {
+				// No AI summary — fall back to a raw snippet (only for essential chapters).
+				if !isEssential(i) {
 					continue
 				}
-			}
-			var rawSnippet strings.Builder
-			for i, sc := range scenes {
-				if i > 0 {
-					rawSnippet.WriteString(" ")
+				scenes, err := s.queries.ListScenesByChapter(ctx, ch.ID)
+				if err != nil || len(scenes) == 0 {
+					continue
 				}
-				rawSnippet.WriteString(strings.TrimSpace(s.readSceneContent(ctx, ch.ID, sc.ID)))
+				var rawSnippet strings.Builder
+				for j, sc := range scenes {
+					if j > 0 {
+						rawSnippet.WriteString(" ")
+					}
+					rawSnippet.WriteString(strings.TrimSpace(s.readSceneContent(ctx, ch.ID, sc.ID)))
+				}
+				snippet := []rune(rawSnippet.String())
+				if len(snippet) > contentFallbackLimit {
+					snippet = append(snippet[:contentFallbackLimit], []rune("…")...)
+				}
+				if len(snippet) > 0 {
+					line = fmt.Sprintf("**%s** *(excerpt)*: %s\n", ch.Title, string(snippet))
+				}
 			}
-			snippet := []rune(rawSnippet.String())
-			if len(snippet) > contentFallbackLimit {
-				snippet = append(snippet[:contentFallbackLimit], []rune("…")...)
+
+			if line == "" {
+				continue
 			}
-			if len(snippet) > 0 {
-				storySoFar.WriteString(fmt.Sprintf("**%s** *(excerpt)*: %s\n", ch.Title, string(snippet)))
+			if isEssential(i) {
+				essentialSoFar.WriteString(line)
+			} else {
+				distantSoFar.WriteString(line)
 			}
 		}
-		if storySoFar.Len() > 0 {
-			if sb.Len() > 0 {
-				sb.WriteString("\n")
+
+		if essentialSoFar.Len() > 0 || distantSoFar.Len() > 0 {
+			var storySoFarHeader strings.Builder
+			storySoFarHeader.WriteString("## Story so far\n")
+			storySoFarHeader.WriteString(essentialSoFar.String())
+			appendSection(&always, storySoFarHeader.String())
+			if distantSoFar.Len() > 0 {
+				appendSection(&distant, distantSoFar.String())
 			}
-			sb.WriteString("## Story so far\n")
-			sb.WriteString(storySoFar.String())
 		}
 	}
 
 	// ── 5. Entities detected in this scene ───────────────────────────────
-	// Read from pre-computed scene_entity_mentions (indexed by the wiki tagger
-	// on each save). Suppressed mentions are excluded so the author's removals
-	// are respected. Falls back to @[entity] regex when the scene has no indexed
-	// mentions yet (e.g. first open before the tagger fires).
+	// Type-capped: characters (max 5), locations (max 3), other (max 2 combined).
+	if entityCtx := s.buildEntityContext(ctx, projectID, currentSceneID, branchName, sceneContent, currentChapterIdx, len(chapters)); entityCtx != "" {
+		appendSection(&always, entityCtx)
+	}
+
+	// ── 6. Current scene context (chat/workshop only) ─────────────────────
+	// In chat/workshop mode, inject the chapter AI summary (not the full scene
+	// text) so long scenes don't dominate the context budget. Falls back to a
+	// short excerpt when no summary exists yet.
+	if chatMode {
+		if sceneCtx := s.buildCurrentSceneContext(ctx, currentSceneID, currentChapterID, branchName, sceneContent); sceneCtx != "" {
+			appendSection(&always, sceneCtx)
+		}
+	}
+
+	// ── 7. Pinned context (writer-curated) ────────────────────────────────
+	if userID != uuid.Nil {
+		appendSection(&always, s.buildPinnedContext(ctx, projectID, userID, branchName))
+	}
+
+	// ── 8. Open story threads ─────────────────────────────────────────────
+	appendSection(&always, s.buildOpenThreadsContext(ctx, projectID))
+
+	// ── Budget enforcement ────────────────────────────────────────────────
+	// Distant chapter summaries are added only when the always-block fits.
+	result := always.String()
+	if distant.Len() > 0 {
+		if len(result)+distant.Len()+1 <= maxChars {
+			// Distant summaries fit — append them within the story-so-far section.
+			// They come after the essential summaries (already in result).
+			result = result + distant.String()
+		}
+		// else: distant summaries are silently dropped to stay within budget.
+	}
+
+	if len(result) > maxChars {
+		slog.Warn("ai: context still over budget after distant-drop",
+			"project_id", projectID,
+			"chars", len(result),
+			"max_chars", maxChars,
+		)
+	}
+
+	return result
+}
+
+// buildCurrentSceneContext returns the section 6 block for chat/workshop mode.
+// It injects the AI chapter summary (lean, ~2–3 sentences) rather than the full
+// scene text. Falls back to a short excerpt when no summary exists.
+// Returns "" when no meaningful scene context can be assembled.
+func (s *Service) buildCurrentSceneContext(ctx context.Context, currentSceneID, currentChapterID uuid.UUID, branchName, sceneContent string) string {
+	if currentSceneID == uuid.Nil {
+		return ""
+	}
+
+	sc, scErr := s.queries.GetScene(ctx, currentSceneID)
+	sceneLabel := "Current scene"
+	if scErr == nil && sc.Title != "" {
+		sceneLabel = "Current scene — " + sc.Title
+	}
+
+	// Try the chapter AI summary first.
+	if currentChapterID != uuid.Nil {
+		row, err := s.queries.GetChapterSummary(ctx, sqlcgen.GetChapterSummaryParams{
+			ChapterID:  currentChapterID,
+			BranchName: branchName,
+		})
+		if err == nil && row.AiSummary != "" {
+			return fmt.Sprintf("## %s\n*(Chapter summary)*: %s\n", sceneLabel, row.AiSummary)
+		}
+	}
+
+	// No summary yet — fall back to a short excerpt.
+	if sceneContent == "" {
+		return ""
+	}
+	excerpt := []rune(sceneContent)
+	if len(excerpt) > currentSceneFallbackRunes {
+		excerpt = append(excerpt[:currentSceneFallbackRunes], []rune("…")...)
+	}
+	return fmt.Sprintf("## %s\n%s\n", sceneLabel, string(excerpt))
+}
+
+// buildEntityContext assembles the "## Entities in this scene" or "## Referenced entities"
+// section with per-type caps to keep the block lean on large wikis.
+func (s *Service) buildEntityContext(ctx context.Context, projectID, currentSceneID uuid.UUID, branchName, sceneContent string, currentChapterIdx, totalChapters int) string {
+	if currentSceneID == uuid.Nil && sceneContent == "" {
+		return ""
+	}
+
+	var entityLines []string
+	var sectionHeader string
+
 	if currentSceneID != uuid.Nil {
+		// Primary path: use pre-computed scene_entity_mentions.
 		mentionedEntities, mErr := s.queries.ListMentionedEntitiesByScene(ctx, sqlcgen.ListMentionedEntitiesBySceneParams{
 			SceneID:    currentSceneID,
 			BranchName: branchName,
 		})
 		if mErr == nil && len(mentionedEntities) > 0 {
-			var entitySnippets []string
-			for _, e := range mentionedEntities {
-				line := buildEntityContextLine(e, currentChapterIdx, len(chapters))
-				if line != "" {
-					entitySnippets = append(entitySnippets, line)
-				}
-			}
-			if len(entitySnippets) > 0 {
-				if sb.Len() > 0 {
-					sb.WriteString("\n")
-				}
-				sb.WriteString("## Entities in this scene\n")
-				for _, snippet := range entitySnippets {
-					sb.WriteString(snippet + "\n")
-				}
-			}
-		} else {
-			// Fallback: @[Entity Name] explicit references in scene content.
-			refMatches := entityRefRE.FindAllStringSubmatch(sceneContent, -1)
-			if len(refMatches) > 0 {
-				seen := make(map[string]bool)
-				var names []string
-				for _, m := range refMatches {
-					lower := strings.ToLower(m[1])
-					if !seen[lower] {
-						seen[lower] = true
-						names = append(names, lower)
-					}
-				}
-				entities, _ := s.queries.GetEntitiesByNames(ctx, sqlcgen.GetEntitiesByNamesParams{
-					ProjectID: projectID,
-					Names:     names,
-				})
-				var entitySnippets []string
-				for _, e := range entities {
-					line := buildEntityContextLine(e, currentChapterIdx, len(chapters))
-					if line != "" {
-						entitySnippets = append(entitySnippets, line)
-					}
-				}
-				if len(entitySnippets) > 0 {
-					if sb.Len() > 0 {
-						sb.WriteString("\n")
-					}
-					sb.WriteString("## Referenced entities\n")
-					for _, snippet := range entitySnippets {
-						sb.WriteString(snippet + "\n")
-					}
-				}
+			entityLines = capAndBuildEntityLines(mentionedEntities, currentChapterIdx, totalChapters)
+			sectionHeader = "## Entities in this scene\n"
+		}
+	}
+
+	if len(entityLines) == 0 && sceneContent != "" {
+		// Fallback: @[Entity Name] explicit references in scene content.
+		refMatches := entityRefRE.FindAllStringSubmatch(sceneContent, -1)
+		if len(refMatches) == 0 {
+			return ""
+		}
+		seen := make(map[string]bool)
+		var names []string
+		for _, m := range refMatches {
+			lower := strings.ToLower(m[1])
+			if !seen[lower] {
+				seen[lower] = true
+				names = append(names, lower)
 			}
 		}
+		entities, _ := s.queries.GetEntitiesByNames(ctx, sqlcgen.GetEntitiesByNamesParams{
+			ProjectID: projectID,
+			Names:     names,
+		})
+		entityLines = capAndBuildEntityLines(entities, currentChapterIdx, totalChapters)
+		sectionHeader = "## Referenced entities\n"
 	}
 
-	// ── 6. Current scene ─────────────────────────────────────────────────
-	// Include the full text of the scene currently open in the editor so the
-	// model can answer specific questions about it.
-	if currentSceneID != uuid.Nil && sceneContent != "" {
-		if sb.Len() > 0 {
-			sb.WriteString("\n")
-		}
-		sc, scErr := s.queries.GetScene(ctx, currentSceneID)
-		label := "Current scene"
-		if scErr == nil && sc.Title != "" {
-			label = fmt.Sprintf("Current scene — %s", sc.Title)
-		}
-		sb.WriteString(fmt.Sprintf("## %s\n%s\n", label, sceneContent))
+	if len(entityLines) == 0 {
+		return ""
 	}
 
-	// ── 7. Pinned context (writer-curated) ────────────────────────────────
-	// Only injected when both projectID and userID are known, so that
-	// background summarize goroutines (which have no userID) are unaffected.
-	if userID != uuid.Nil {
-		if pinnedCtx := s.buildPinnedContext(ctx, projectID, userID, branchName); pinnedCtx != "" {
-			if sb.Len() > 0 {
-				sb.WriteString("\n")
+	var out strings.Builder
+	out.WriteString(sectionHeader)
+	for _, line := range entityLines {
+		out.WriteString(line + "\n")
+	}
+	return out.String()
+}
+
+// capAndBuildEntityLines applies per-type caps and builds context lines.
+// entities must be WikiEntity rows from either ListMentionedEntitiesByScene
+// or GetEntitiesByNames (both return sqlcgen.WikiEntity).
+func capAndBuildEntityLines(entities []sqlcgen.WikiEntity, chapterIdx, totalChapters int) []string {
+	var (
+		chars     []string
+		locations []string
+		other     []string
+	)
+	for _, e := range entities {
+		line := buildEntityContextLine(e, chapterIdx, totalChapters)
+		if line == "" {
+			continue
+		}
+		switch e.Type {
+		case "character":
+			if len(chars) < entityCapCharacter {
+				chars = append(chars, line)
 			}
-			sb.WriteString(pinnedCtx)
+		case "location":
+			if len(locations) < entityCapLocation {
+				locations = append(locations, line)
+			}
+		default:
+			if len(other) < entityCapOther {
+				other = append(other, line)
+			}
 		}
 	}
-
-	// ── 8. Open story threads ─────────────────────────────────────────────
-	// Threads are the forward-looking context the AI can have — what the story
-	// still owes the reader. Listing them here nudges Beat/Continue to naturally
-	// advance open threads rather than drift.
-	if threadCtx := s.buildOpenThreadsContext(ctx, projectID); threadCtx != "" {
-		if sb.Len() > 0 {
-			sb.WriteString("\n")
-		}
-		sb.WriteString(threadCtx)
-	}
-
-	if sb.Len() > contextBudgetWarnChars {
-		slog.Warn("ai: context budget exceeded",
-			"project_id", projectID,
-			"chars", sb.Len(),
-			"approx_tokens", sb.Len()/4,
-		)
-	}
-
-	return sb.String()
+	return append(append(chars, locations...), other...)
 }
 
 // ── Entity context line formatter ─────────────────────────────────────────────

@@ -156,7 +156,8 @@ func TestApplyWorkshopHistoryWindow(t *testing.T) {
 	})
 
 	t.Run("digest truncates long turns", func(t *testing.T) {
-		long := strings.Repeat("x", 500)
+		// Use a message longer than workshopDigestMaxRunes (600) to trigger truncation.
+		long := strings.Repeat("x", 700)
 		input := []adapters.Message{
 			{Role: "user", Content: long},
 			{Role: "assistant", Content: "short"},

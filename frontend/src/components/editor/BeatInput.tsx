@@ -9,6 +9,18 @@ import NexusThinking from '@/components/ai/NexusThinking'
 
 type Mode = 'beat' | 'continue'
 
+type NarrativePhase = '' | 'escalation' | 'reflection' | 'confrontation' | 'discovery' | 'aftermath' | 'transition'
+
+const NARRATIVE_PHASES: { value: NarrativePhase; label: string }[] = [
+  { value: '',              label: 'Auto' },
+  { value: 'escalation',   label: 'Escalation' },
+  { value: 'reflection',   label: 'Reflection' },
+  { value: 'confrontation',label: 'Confrontation' },
+  { value: 'discovery',    label: 'Discovery' },
+  { value: 'aftermath',    label: 'Aftermath' },
+  { value: 'transition',   label: 'Transition' },
+]
+
 interface BeatInputProps {
   token:        string
   projectId:    string
@@ -23,6 +35,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
   const [open, setOpen]                   = useState(false)
   const [mode, setMode]                   = useState<Mode>('beat')
   const [beat, setBeat]                   = useState('')
+  const [narrativePhase, setNarrativePhase] = useState<NarrativePhase>('')
   const [generated, setGenerated]         = useState('')
   const [streaming, setStreaming]         = useState(false)
   const [streamAttempted, setStreamAttempted] = useState(false)
@@ -46,7 +59,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
 
   // ── core streaming ──────────────────────────────────────────────────────────
 
-  const stream = useCallback(async (genMode: Mode, beatText: string) => {
+  const stream = useCallback(async (genMode: Mode, beatText: string, phase: NarrativePhase = '') => {
     setGenerated('')
     setError(null)
     setStreaming(true)
@@ -59,9 +72,10 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
         projectId,
         {
           sceneId,
-          mode:     genMode,
-          beat:     genMode === 'beat' ? beatText : undefined,
-          promptId: promptId ?? undefined,
+          mode:            genMode,
+          beat:            genMode === 'beat' ? beatText : undefined,
+          narrativePhase:  genMode === 'continue' && phase ? phase : undefined,
+          promptId:        promptId ?? undefined,
           branch,
         },
         (delta) => setGenerated((prev) => prev + delta),
@@ -91,7 +105,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
     setGenerated('')
     setError(null)
     setOpen(true)
-    stream('continue', '')
+    stream('continue', '', narrativePhase)
   }
 
   // ── action handlers ─────────────────────────────────────────────────────────
@@ -127,7 +141,7 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
     if (mode === 'beat') {
       stream('beat', beat.trim())
     } else {
-      stream('continue', '')
+      stream('continue', '', narrativePhase)
     }
   }
 
@@ -211,6 +225,19 @@ export default function BeatInput({ token, projectId, sceneId, promptId, branch,
           <span className="flex-1 text-xs text-brand-muted italic">
             {streaming ? 'Writing from here…' : generated ? 'Continuation ready — accept or retry' : 'Starting continuation…'}
           </span>
+          {/* Narrative phase selector — only shown when not currently streaming */}
+          {!streaming && (
+            <select
+              value={narrativePhase}
+              onChange={(e) => setNarrativePhase(e.target.value as NarrativePhase)}
+              className="text-xs bg-brand-bg border border-brand-border rounded px-2 py-1 text-brand-muted focus:outline-none focus:border-brand-purple"
+              title="Narrative function for this continuation"
+            >
+              {NARRATIVE_PHASES.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+          )}
           {streaming && (
             <button
               onClick={() => abortRef.current?.abort()}

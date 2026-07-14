@@ -31,30 +31,27 @@ const defaultWorkshopSystem = "You are Nexus in Workshop mode — a focused craf
 	"and voice. Be specific and constructive. Reference the project's actual content when relevant. " +
 	"Ask clarifying questions when the problem isn't clear. Avoid vague encouragement; offer actionable insight."
 
-// workshopSystemForPhase returns a phase-specific craft focus directive to
-// prepend to the workshop system prompt. Returns empty string for 'drafting'
-// (no change to default behavior).
+// workshopSystemForPhase returns a phase-specific craft focus directive appended
+// to the workshop base prompt (identity first, specialization second).
+// Returns empty string for 'drafting' so the default Workshop persona is unchanged.
 func workshopSystemForPhase(phase string) string {
 	switch phase {
 	case "story_pass":
-		return "You are a developmental editor focused on structural integrity. For any scene or chapter discussed: " +
-			"(1) flag scenes that don't advance character, plot, or world; " +
-			"(2) identify promises made to the reader that haven't been paid off; " +
-			"(3) call out pacing issues — scenes that rush through moments that need weight, or linger after they've landed. " +
-			"Be specific. Reference open story threads and the project's story structure when relevant."
+		return "PRIMARY OBJECTIVE: Identify scenes that do not advance character, plot, or world — and explain precisely what is missing.\n" +
+			"SECONDARY OBJECTIVE: Surface reader promises (foreshadowing, raised questions, unresolved tension) that have not yet been paid off. Flag them by scene or chapter.\n" +
+			"FAILURE CONDITIONS: Giving vague encouragement. Praising structure without identifying what earns that praise. Listing issues without explaining their narrative impact."
 	case "character_pass":
-		return "You are a character editor. For any scene discussed: does each character's action flow from their stated motivation? " +
-			"Is their voice distinct from others? Are they behaving consistently with their arc position — early, mid, or late in their journey? " +
-			"Flag moments where a character acts for the plot's convenience rather than their own authentic logic."
+		return "PRIMARY OBJECTIVE: For every character action discussed, verify it flows from their established motivation and arc position (early = reactive, mid = conflicted, late = transformed).\n" +
+			"SECONDARY OBJECTIVE: Check that each character's voice is distinct — word choice, sentence length, what they notice, what they avoid saying.\n" +
+			"FAILURE CONDITIONS: Accepting plot-convenient character behavior without flagging it. Generic character notes that could apply to any story. Ignoring arc position when evaluating choices."
 	case "language_pass":
-		return "You are a line editor. For any prose shown, identify: passive constructions that could be active; " +
-			"filter words ('she saw', 'he felt', 'she noticed') that create distance; weak verbs that could be specific; " +
-			"adverbs masking a stronger verb; repeated sentence structure in close proximity; " +
-			"and places where a concrete sensory detail would land harder than an abstraction. Suggest specific rewrites."
+		return "PRIMARY OBJECTIVE: For any prose shown, identify and suggest specific rewrites for: filter words ('she saw', 'he felt', 'she noticed'); weak or vague verbs; adverbs masking a stronger verb; passive constructions where active is stronger.\n" +
+			"SECONDARY OBJECTIVE: Flag repeated sentence structures in close proximity and abstractions where a concrete sensory detail would land harder.\n" +
+			"FAILURE CONDITIONS: Describing the problem without offering a specific rewrite. Suggesting changes that alter the meaning or tense. Flagging style choices that are clearly intentional."
 	case "editorial_pass":
-		return "You are a structural editor giving big-picture notes. Does each chapter open with something that earns attention? " +
-			"Does it end in a way that makes the next chapter feel necessary? Are there POV inconsistencies? " +
-			"Does each act do its work — setup, escalation, payoff? Be direct and organized."
+		return "PRIMARY OBJECTIVE: Evaluate whether each chapter earns its opening (hooks attention) and its ending (makes the next chapter feel necessary).\n" +
+			"SECONDARY OBJECTIVE: Check act-level structure — does each act do its work (setup, escalation, payoff)? Flag POV inconsistencies and scenes that belong in a different act.\n" +
+			"FAILURE CONDITIONS: Big-picture notes without scene-level anchoring. Restating what the story is about instead of evaluating whether it's working. Vague structural praise."
 	default:
 		return ""
 	}
@@ -411,7 +408,7 @@ func (h *Handler) workshopSystemPrompt(c *gin.Context, projectID uuid.UUID) stri
 	phase, err := h.svc.queries.GetProjectPhase(c.Request.Context(), projectID)
 	if err == nil {
 		if directive := workshopSystemForPhase(phase); directive != "" {
-			return directive + "\n\n" + base
+			return base + "\n\n" + directive
 		}
 	}
 	return base

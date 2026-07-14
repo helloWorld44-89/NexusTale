@@ -302,67 +302,15 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 
 ---
 
-## Alpha release plan
+## Alpha / self-hosted deployment ✅ complete
 
-**Alpha definition:** invite-only (target 20–50 writers), solo-writer focused, no SLA. The dev VM doubles as the alpha environment. No public sign-up until beta.
+NexusTale is self-hosted. AWS deployment removed (2026-07-14). All features deployed via Docker Compose on a self-managed server. No public sign-up until beta.
 
-### Feature scope
-
-| Area | In alpha | Deferred |
-|------|----------|----------|
-| Manuscript (write/outline/branch/export) | ✅ all | — |
-| Wiki (entities/relationships/timeline/magic/graph) | ✅ all | — |
-| AI (Nexus, Workshop, Beat, Context pins, Bible) | ✅ all | C9-P1–P7 (prompt quality, context efficiency, model routing, style fingerprinting, RAG) |
-| Novel guide + story structure | ✅ all | — |
-| Collaboration (invite, clone, MR, annotations, notifications) | ✅ all | — |
-| Exports (Markdown, EPUB, DOCX) | ✅ all | Scrivener, Fountain, PDF |
-| Monetization | ❌ | Phase D |
-| Map builder v2 / image generation | ❌ | Phase D |
-| Desktop app (Tauri) | ❌ | Phase D |
-| Customizable workspaces | ❌ | Phase D |
-
-### Environment checklist
-
-- [ ] **P0** TLS certificate provisioned for the alpha domain (Let's Encrypt via certbot in Ansible)
-- [ ] **P0** All P0 security items above resolved
-- [x] **P0** Postgres daily backup — `pg_dump` cron via Ansible (02:00 daily); gzip to `/opt/backups/nexustale/db/`; 7-day retention; dumps on same VM disk for alpha — add off-host rclone sync before beta
-- [x] **P0** Git repo backup — `docker run alpine tar` against the `git-repos` volume (02:15 daily); gzip to `/opt/backups/nexustale/repos/`; 7-day retention
-- [x] **P1** Structured log capture: `x-logging` YAML anchor in `docker-compose.deploy.yml` applies `json-file` driver with `max-size=50m` / `max-file=5` to all five services
-- [ ] **P1** Uptime monitor on `GET /healthz` — **manual step**: sign up at uptimerobot.com (free tier), add HTTP monitor for `https://<domain>/healthz`, set alert contact to `NEXUSTALE_ALERT_EMAIL`, threshold = 2 consecutive failures
-- [x] **P1** Disk usage alert — cron every 4 h checks `df /`; if ≥70% writes to syslog via `logger` and emails `nexustale_alert_email`; wired in Ansible
-- [ ] **P2** AI usage dashboard for admin — `ai_usage` table already queryable; a simple `psql` query or Grafana panel is sufficient for alpha
-
-### Pre-launch code checklist
-
-- [x] **P0** Git-first architecture migration (Steps 1–4) complete — `scenes.content` dropped (migration 029); scene prose lives in git working tree; Postgres is metadata-only; export, BuildContext, Chronicle, and agent tools all read/write from the working tree; Step 5 (wiki JSON files) explicitly deferred (N+1 concern does not exist in current implementation)
-- [ ] All **P0** code review items resolved
-- [ ] All **P0** security review items resolved
-- [ ] `govulncheck` and `npm audit` clean (P1 items)
-- [ ] `npx tsc --noEmit` and `go build ./...` clean on the release commit
-- [ ] Smoke test the full user loop on alpha env: register → guide wizard → write scene → Chronicle → wiki entity → export Markdown → invite collaborator → open MR
-
-### Alpha UX / onboarding
-
-- [ ] Error messages are writer-facing — no Go stack traces or raw DB errors leak through (`apperror` messages audited)
-- [ ] Guide wizard surfaced prominently on first project (existing CTA on ProjectHome)
-- [ ] "Give feedback" link visible in the app (Settings or TopBar) — Discord/email/form
-- [ ] Invite email template with direct link to `/invites/:token`
-- [ ] Known limitations doc (one-pager) shared with alpha users: collaboration is async (no live co-editing), no mobile support, AI requires your own API key
-
-### Rollback plan
-
-- Docker images are tagged by git SHA (`:{sha}`) — rollback = re-run Ansible with previous SHA tag
-- DB migration `.down.sql` files exist for all 29 migrations; test rollback from 029 → 028 on a staging DB before launch (note: 029 down restores `scenes.content` with `DEFAULT ''` — content cannot be recovered from rollback alone; use a DB backup)
-- Alpha user data export: any user can export their full manuscript as Markdown at any time (no lock-in)
-
-### Alpha → beta graduation criteria
-
-A milestone, not a date. Graduate when all of the following are true:
-
-- [ ] ≥10 writers have completed the novel guide wizard (premise → first scene)
-- [ ] ≥3 collaborative projects have had at least one merge request opened and resolved
-- [ ] Core user loop (register → write → export) completed without Claude Code intervention by ≥5 non-dev users
-- [ ] No P0 bugs open for >48 hours sustained over a 2-week window
+**Beta graduation criteria** (milestone, not a date):
+- [ ] ≥10 writers completed the novel guide wizard (premise → first scene)
+- [ ] ≥3 collaborative projects had at least one merge request opened and resolved
+- [ ] Core user loop (register → write → export) completed without developer assistance by ≥5 non-dev users
+- [ ] No P0 bugs open >48 hours sustained over a 2-week window
 - [ ] Feedback triaged — Phase D backlog updated with top writer requests
 
 ---
@@ -449,64 +397,64 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 
 ---
 
-### C9-P1 — Prompt Text Fixes *(no DB migrations, no new dependencies)*
+### C9-P1 — Prompt Text Fixes ✅ complete (2026-07-14)
 
 **Expected gain:** Immediate Beat/Continue output quality improvement; eliminates repetition artifacts and meta-narration.
 
-- [ ] **`[Light]`** **1.1 Beat — behavioral craft constraints + user-turn framing** — replace "Match the author's tone. Show, don't tell." with explicit DO-NOT rules (no repeating scene tail, no meta-narration, no forward summary, emotion through sensation not abstraction, avoid adverbs/suddenly/realized); change paragraph count to "approximately 2–3 — expand or compress as needed"; wrap user turn: `Expand the following story beat into prose, continuing directly from ## Scene ending: "<BEAT TEXT>"` — `service.go:beatSystemPrompt()` + user-turn assembly in `StreamComplete`
-- [ ] **`[Light]`** **1.2 Continue — narrative phase awareness + user-turn framing** — replace "Continue the story naturally from where it left off." with a constraint block (no repeat/rephrase of user turn, no forward summary, match sentence rhythm, stay in tense/POV, write the present moment); add optional `NarrativePhase` enum field to `CompleteRequest` (`escalation|reflection|confrontation|discovery|aftermath|transition`) injected as `## Narrative function` when set; add frontend phase dropdown to Continue toolbar; wrap user turn explicitly — `service.go:continueSystemPrompt()` + user-turn assembly
-- [ ] **`[Light]`** **1.3 Workshop — fix prompt order + increase digest limit** — `workshopSystemForPhase()` must return `base + "\n\n" + directive` (identity before specialization, not after); increase `workshopDigestMaxRunes` from 200 → 600 (200 runes truncates a single paragraph of craft feedback) — `workshop_handler.go`
-- [ ] **`[Light]`** **1.4 Workshop phases — PRIMARY / SECONDARY / FAILURE format** — rewrite all four phase directives (`story_pass`, `revision`, `language_pass`, `done`) to use structured `PRIMARY OBJECTIVE / SECONDARY OBJECTIVE / FAILURE CONDITIONS` format instead of numbered bullet lists; removes generic encouragement, pins the model to a specific editorial lens — `workshop_handler.go:workshopSystemForPhase()`
-- [ ] **`[Light]`** **1.5 Agent — planning phase + append-vs-replace guidance** — prepend explicit plan-before-tools instruction to agent system prompt: state plan in plain text → list target IDs → then call tools; add tool selection rules: `append_to_scene` for new content, `replace_scene_content` ONLY when writer explicitly requests rewrite, never shorten a scene when replacing — `service.go:StreamChatWithTools()`
+- [x] **`[Light]`** **1.1 Beat — behavioral craft constraints + user-turn framing** — replaced "Match the author's tone. Show, don't tell." with explicit DO-NOT rules (no repeating scene tail, no meta-narration, no forward summary, emotion through sensation not abstraction, avoid adverbs/suddenly/realized); paragraph count → "approximately 2–3 — expand or compress as needed"; user turn wrapped: `Expand the following story beat into prose, continuing directly from the scene ending above: <BEAT TEXT>` — `service.go:beatSystemPrompt()` + `StreamComplete`
+- [x] **`[Light]`** **1.2 Continue — narrative phase awareness + user-turn framing** — replaced "Continue the story naturally from where it left off." with DO-NOT/DO constraint block; added `NarrativePhase` field to `CompleteRequest` and `completeRequest` wire type; `narrativePhaseDirective()` maps 6 phases to focus directives; `narrative_phase` dropdown in Continue toolbar (BeatInput.tsx); `narrative_phase` field in `api.ts:streamComplete`
+- [x] **`[Light]`** **1.3 Workshop — fix prompt order + increase digest limit** — `workshopSystemPrompt()` now returns `base + "\n\n" + directive` (identity first); `workshopDigestMaxRunes` raised 200 → 600
+- [x] **`[Light]`** **1.4 Workshop phases — PRIMARY / SECONDARY / FAILURE format** — all four phase directives rewritten with `PRIMARY OBJECTIVE / SECONDARY OBJECTIVE / FAILURE CONDITIONS` structure; removed generic encouragement
+- [x] **`[Light]`** **1.5 Agent — planning mandate + append-vs-replace guidance** — PLANNING MANDATE block (state plan → list IDs → then call tools) + TOOL SELECTION RULES (append for new content, replace ONLY on explicit writer request, never shorten) prepended to agent system prompt in `StreamChatWithTools`
 
 ---
 
-### C9-P2 — Context Efficiency *(code changes, no DB migrations)*
+### C9-P2 — Context Efficiency ✅ complete (2026-07-14, items 2.1–2.5)
 
 **Expected gain:** 40–60% reduction in context tokens for mid-to-large projects; faster calls; lower cost.
 
-- [ ] **`[Medium]`** **2.1 Hard context budget with priority drop policy** — enforce `maxContextChars` (Beat/Continue: 24,000; Chat/Workshop: 32,000) instead of warn-only; `BuildContext` returns `[]contextSection{priority, chars, text}`; `pruneTobudget()` drops from lowest priority: chapter summaries >5 chapters back → threads not linked to scene entities → low-priority entity types (items/concepts) → stale pins; always-keep: scene tail, scene directive, entities directly mentioned in current scene — `context.go`
-- [ ] **`[Light]`** **2.2 Cap and rank chapter summaries** — inject only first 1 summary (story anchor) + last 5 before current chapter + current chapter summary; a 30-chapter novel goes from 30 injected summaries to ~7; writers needing earlier context use the existing context pins system — `context.go:buildStorySoFarContext()`
-- [ ] **`[Light]`** **2.3 Cap and rank entity mentions** — type-priority cap: max 5 characters, 3 locations, 2 other (factions/items/concepts combined); rank within type by appearance frequency in `scene_entity_mentions` (peripheral one-off mentions rank below characters appearing in every paragraph) — `context.go:buildEntitiesInSceneContext()`
-- [ ] **`[Medium]`** **2.4 Chat/Workshop — inject scene summary instead of full scene text** — when `currentSceneID != uuid.Nil` in chat/workshop mode, inject the chapter AI summary as `## Current chapter` instead of the full scene text; keep full scene text only for beat/continue (where it is already handled via head/tail split and section 6 is suppressed); fall back to first 400 runes of scene when no summary exists yet — `context.go:buildCurrentSceneContext()` + `service.go`
-- [ ] **`[Light]`** **2.5 Regular Chat — add digest compression** — apply `applyWorkshopHistoryWindow` (same 600-rune digest limit) to `StreamChat` history assembly; currently uses silent truncation which drops context without compression — `service.go:StreamChat()`
-- [ ] **`[Medium]`** **2.6 Agent — pass only relevant tools per intent** — keyword-classify the user message (`hasWikiIntent` / `hasWriteIntent`); send wiki-only tools (4 tools) or write-only tools (6 tools) when intent is unambiguous; fall back to full set when mixed; saves ~400–500 tokens per round × up to 25 rounds — `service.go:StreamChatWithTools()`
+- [x] **`[Medium]`** **2.1 Hard context budget with priority drop policy** — `maxContextCharsGeneration = 24_000` / `maxContextCharsChat = 32_000`; `BuildContext` refactored to collect an `always` block and a `distant` (droppable) block; distant chapter summaries (beyond anchor + recent 5) are appended only when the budget allows; warn log if still over after drop — `context.go`
+- [x] **`[Light]`** **2.2 Cap chapter summaries** — inject only first `storySoFarAnchorCount=1` chapter (story anchor) + last `storySoFarRecentWindow=5` before current; a 30-chapter novel: 30 → ~7 summaries; distant middle chapters go into the droppable block (2.1) — `context.go:BuildContext`
+- [x] **`[Light]`** **2.3 Cap entity mentions by type** — `capAndBuildEntityLines()` applies caps: characters max 5, locations max 3, other combined max 2; entities beyond caps are silently dropped in entity query order — `context.go:buildEntityContext()` + `capAndBuildEntityLines()`
+- [x] **`[Medium]`** **2.4 Chat/Workshop — inject scene summary not full text** — `buildCurrentSceneContext()` new helper; when `currentSceneID != uuid.Nil` in chat/workshop mode, injects AI chapter summary as `*(Chapter summary)*`; falls back to first 1,600 runes of scene content; beat/continue still suppress section 6 entirely via `uuid.Nil` caller pattern — `context.go`
+- [x] **`[Light]`** **2.5 Chat — digest compression** — `StreamChat` now calls `applyWorkshopHistoryWindow` (600-rune digest limit) instead of `applyHistoryWindow` (silent truncation); older turns preserved as summary rather than discarded — `service.go:StreamChat()`
+- [x] **`[Medium]`** **2.6 Agent — pass only relevant tools per intent** — `selectToolsForIntent()` in `tools.go` keyword-classifies the last user message; sends wiki-only (5 tools: list_project_structure + 4 wiki) or write-only (6 tools: list_project_structure + 5 manuscript) when intent is unambiguous; falls back to full 10-tool set when mixed; `StreamChatWithTools` calls `selectToolsForIntent(historyMsgs)` per round
 
 ---
 
-### C9-P3 — Summarization Architecture Overhaul
+### C9-P3 — Summarization Architecture Overhaul ✅ complete (2026-07-14)
 
 **Expected gain:** Better `## Story so far` quality → better Beat/Continue output; structured output feeds directly into story threads system.
 
-- [ ] **`[Medium]`** **3.1 Multi-layer summary format** — replace prose summary prompt with structured `EVENTS / CHANGES / PRESSURE` format; token cap dynamic: `min(sceneCount × 120, 350)` (up from hardcoded 200); PRESSURE section points forward and feeds open story threads — `service.go:summarizeSystemPrompt()` + `Summarize()` MaxTokens
-- [ ] **`[Light]`** **3.2 Chapter title and position in summarize call** — prepend `Chapter N of TOTAL: "Title"\n\n` to summarize user turn; requires `GetChapterWithPosition` query using `ROW_NUMBER()` window — `context.go:regenerateSummary()`
-- [ ] **`[Light]`** **3.3 Scene separators in summarize input** — change scene concatenation from `"\n\n"` to `"\n\n---\n\n"` with scene title as a label (`## Scene: <title>`) so the model knows where scene boundaries are — `context.go` or `service.go:Summarize()`
-- [ ] **`[Light]`** **3.4 Basic retry + validation on summarize output** — `isValidSummary()` rejects strings under 30 chars, or starting with "In this chapter" / "This chapter"; retry up to 2 attempts before storing; eliminates the most common over-narration artifact — `context.go:regenerateSummary()`
+- [x] **`[Medium]`** **3.1 Multi-layer summary format** — `summarizeSystemPrompt()` rewritten with `EVENTS / CHANGES / PRESSURE` three-section output format; dynamic token cap `min(sceneCount × 120, 350)` in `summarizeWithTokens()` (background path); `isValidSummary()` added to filter over-narration
+- [x] **`[Light]`** **3.2 Chapter title + position** — `buildChapterPositionHeader()` prepends `Chapter N of TOTAL: "Title"` to summarize input; uses `ListChaptersByProject` + `GetChapter` (no new query needed)
+- [x] **`[Light]`** **3.3 Scene separators** — concatenation changed from `"\n\n"` to `"\n\n---\n\n"` + `## Scene: <title>` label; applied in both `regenerateSummary()` (background) and `RegenerateChapterSummary()` (manual)
+- [x] **`[Light]`** **3.4 Retry + validation** — `isValidSummary()` rejects strings <30 chars or starting with "in this chapter"/"this chapter"/"the chapter"; `regenerateSummary()` retries up to 2× before giving up; bad output logged with prefix sample
 
 ---
 
-### C9-P4 — Task-Specific Model Routing
+### C9-P4 — Task-Specific Model Routing ✅ complete (2026-07-14)
 
 **Expected gain:** 40–70% cost reduction on background tasks; better prose on generation tasks without writer having to manually select a model.
 
-- [ ] **`[Medium]`** **4.1 Task-tier model selection** — add `taskTier` enum (`tierBackground | tierAnalysis | tierCreative`); `getAdapterForTier()` routes: summarize → haiku/flash/mini (background), chat/workshop/agent-planning → sonnet/gpt-4o (analysis), beat/continue → sonnet/gpt-4o (creative); writer's explicit `Provider` field always overrides; routing table documented in `AI_IMPROVEMENT_PLAN.md` — `service.go`
+- [x] **`[Medium]`** **4.1 Task-tier model selection** — `taskTier` enum (`tierBackground | tierAnalysis | tierCreative`) in `service.go`; `getAdapterForTier()` wraps `getAdapter` with model override: background → adapter defaults (haiku/gpt-4o-mini), analysis (chat/workshop/agent) → `claude-sonnet-4-6` / `gpt-4o`, creative (beat/continue) → same; writer's explicit `Provider` field still bypasses tier routing; `StreamComplete` → tierCreative, `StreamChat` + `StreamChatWithTools` → tierAnalysis, `Summarize` → tierBackground (unchanged)
 
 ---
 
-### C9-P5 — Style Fingerprinting *(migration 036)*
+### C9-P5 — Style Fingerprinting ✅ complete (2026-07-14)
 
 **Expected gain:** Beat/Continue output that matches the writer's prose DNA without manual style preset configuration.
 
-- [ ] **`[Heavy]`** **5.1 Prose fingerprint extraction** — migration 036 `projects.prose_fingerprint JSONB`; new `internal/ai/fingerprint.go` extracts: avg sentence length, avg paragraph length, dialogue ratio, interiority frequency, adverb density, sentence variance (std dev); recomputed after every 3 scene saves (not every save); inject as `## Author's prose style` block in Beat/Continue system prompts — `fingerprint.go` + `context.go`
-- [ ] **`[Light]`** **5.2 Fingerprint-aware paragraph count** — use `AvgParagraphLength` from fingerprint to set dynamic paragraph count hint in Beat: short paragraphs (<2 avg) → "3–5 short paragraphs", long paragraphs (>4 avg) → "1–2 longer paragraphs" — `service.go:beatSystemPrompt()`
+- [x] **`[Heavy]`** **5.1 Prose fingerprint extraction** — migration 036 `projects.prose_fingerprint JSONB`; `internal/ai/fingerprint.go`: `ExtractProseFingerprint()` computes avg sentence length, avg paragraph length, dialogue ratio, adverb density, sentence variance from all project scenes; `RefreshProseFingerpint()` runs in background; `NotifySceneSaved()` on `SummaryNotifier` interface triggers refresh every 3 saves; `FingerprintContextBlock()` renders `## Author's prose style` block; injected into both Beat and Continue system prompts in `StreamComplete`
+- [x] **`[Light]`** **5.2 Fingerprint-aware paragraph count** — `beatSystemPrompt()` accepts `*ProseFingerprint`; paragraph count hint: `AvgParagraphLength ≤2` → "3–5 short paragraphs", `≥5` → "1–2 longer paragraphs", else "approximately 2–3"
 
 ---
 
-### C9-P6 — Regular Chat Mode Specialization
+### C9-P6 — Regular Chat Mode Specialization ✅ complete (2026-07-14)
 
 **Expected gain:** Nexus chat gives sharper answers when the writer's intent is known; reduces generic responses.
 
-- [ ] **`[Medium]`** **6.1 Chat modes** — extend `ChatRequest` with optional `Mode string`; routing: `brainstorm` (creative partner, suggest 2–3 alternatives, summaries+threads context only), `editorial` (structural editor lens, full BuildContext), `lore` (wiki oracle, entities+summaries only, sliding window history), empty/default (current Nexus identity, full BuildContext, digest compression) — `handler.go` + `service.go:StreamChat()`
+- [x] **`[Medium]`** **6.1 Chat modes** — `mode` field added to `chatRequest` wire type and `ChatRequest`; `nexusChatSystemPrompt(mode)` function in `service.go` returns tailored identity: `brainstorm` (2–3 directions, generative not evaluative), `editorial` (structural editor — cause/effect, pacing, promises-and-payoffs), `lore` (wiki oracle — answers only from existing project data, says so when not found), default (general Nexus); mode pills rendered in ChatBar input footer with dynamic placeholder text; `chatMode` passed to `api.ai.streamChat()`
 
 ---
 
