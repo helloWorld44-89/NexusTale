@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jconder44/nexustale/internal/ai/adapters"
 )
 
@@ -169,4 +170,29 @@ func TestApplyWorkshopHistoryWindow(t *testing.T) {
 			t.Errorf("expected truncation ellipsis in digest, got: %q", got[0].Content[:50])
 		}
 	})
+}
+
+func TestNumericToFloat64(t *testing.T) {
+	validNumeric := pgtype.Numeric{}
+	if err := validNumeric.Scan("12.5"); err != nil {
+		t.Fatalf("scan valid numeric: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		in   interface{}
+		want float64
+	}{
+		{"nil interface (would-be NULL)", nil, 0},
+		{"wrong type", "not a numeric", 0},
+		{"invalid/NaN numeric", pgtype.Numeric{Valid: false}, 0},
+		{"valid numeric", validNumeric, 12.5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := numericToFloat64(tt.in); got != tt.want {
+				t.Errorf("numericToFloat64(%v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
 }

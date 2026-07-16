@@ -5,6 +5,15 @@ import type { components } from './api-types'
 
 const BASE = '/api/v1'
 
+// Every request carries the bearer token, so every URL must resolve to our
+// own origin — never to an absolute/external URL that could exfiltrate it.
+function apiUrl(path: string): string {
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    throw new Error(`api.ts: refusing non-relative path "${path}"`)
+  }
+  return `${BASE}${path}`
+}
+
 // ── Re-export generated types for consumers ───────────────────────────────────
 
 export type User                   = components['schemas']['UserResponse']
@@ -369,7 +378,7 @@ async function request<T>(
   if (token) headers['Authorization'] = `Bearer ${token}`
   if (extraHeaders) Object.assign(headers, extraHeaders)
 
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
@@ -529,7 +538,7 @@ export const api = {
     uploadEntityImage: async (token: string, projectId: string, entityId: string, file: File): Promise<WikiEntity> => {
       const fd = new FormData()
       fd.append('image', file)
-      const res = await fetch(`${BASE}/projects/${projectId}/wiki/entities/${entityId}/image`, {
+      const res = await fetch(apiUrl(`/projects/${projectId}/wiki/entities/${entityId}/image`), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
@@ -683,7 +692,7 @@ export const api = {
       const branchHeaders: Record<string, string> = params.branch
         ? { 'X-NexusTale-Branch': params.branch }
         : {}
-      const res = await fetch(`${BASE}/projects/${projectId}/ai/complete`, {
+      const res = await fetch(apiUrl(`/projects/${projectId}/ai/complete`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -753,7 +762,7 @@ export const api = {
       const branchHeaders: Record<string, string> = branch
         ? { 'X-NexusTale-Branch': branch }
         : {}
-      const res = await fetch(`${BASE}/projects/${projectId}/ai/chat`, {
+      const res = await fetch(apiUrl(`/projects/${projectId}/ai/chat`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -857,7 +866,7 @@ export const api = {
         maxRounds?: number,
         promptId?: string | null,
       ): Promise<void> => {
-        const res = await fetch(`${BASE}/projects/${projectId}/ai/workshop/${sessionId}/chat`, {
+        const res = await fetch(apiUrl(`/projects/${projectId}/ai/workshop/${sessionId}/chat`), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -996,7 +1005,7 @@ export const api = {
      * Uses raw fetch because the response is binary, not JSON.
      */
     downloadMarkdown: async (token: string, projectId: string, filename: string): Promise<void> => {
-      const res = await fetch(`${BASE}/projects/${projectId}/export`, {
+      const res = await fetch(apiUrl(`/projects/${projectId}/export`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ format: 'markdown' }),
@@ -1159,7 +1168,7 @@ export const api = {
     preview: async (token: string, file: File): Promise<{ tree: ImportPreviewTree; format: string }> => {
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch(`${BASE}/projects/import`, {
+      const res = await fetch(apiUrl(`/projects/import`), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: form,

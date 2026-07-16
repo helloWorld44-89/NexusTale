@@ -127,18 +127,18 @@ flowchart TB
 
 ### 3.5 AI integration (backend)
 
-**Current state (as of 2026-06-04):** Full pipeline is live — adapters (Anthropic, OpenAI, OpenRouter, Gemini, Groq, DeepSeek, Ollama), SSE streaming, beat/continue/chat/workshop/summarize modes, agentic tool use (manuscript write), context window (`BuildContext` 8-section layout), writing styles, context pins, research notes, phase-aware workshop prompts, token/cost tracking.
+**Current state (as of 2026-07-14):** All C9 quality improvements complete.
 
-**Architectural direction (Phase C9 — see [ROADMAP.md §C9](../ROADMAP.md) and [AI_IMPROVEMENT_PLAN.md](./AI_IMPROVEMENT_PLAN.md)):**
+- **Adapters**: Anthropic, OpenAI, OpenRouter (dual-model: quality + background), Gemini, Groq, DeepSeek, Ollama — 7 providers
+- **Task-tier routing**: `tierBackground` (haiku/gpt-4o-mini/llama-8b for summarize), `tierAnalysis` (sonnet/gpt-4o/llama-70b for chat/workshop/agent), `tierCreative` (sonnet/gpt-4o for beat/continue); writer explicit provider always overrides
+- **Behavioral prompts**: Beat DO-NOT constraints (no repetition, no meta-narration, sensation not abstraction); Continue with `NarrativePhase` enum (6 phases); workshop phases use PRIMARY/SECONDARY/FAILURE CONDITIONS structure; agent PLANNING MANDATE + append-vs-replace rules
+- **Context**: `BuildContext` 8-section layout; 24k/32k char budgets; chapter summary cap (anchor+recent-5); entity type caps; semantic RAG via pgvector (migration 037) when embeddings exist; chat/workshop injects chapter AI summary not full scene text
+- **Summarization**: EVENTS/CHANGES/PRESSURE structured format; chapter title+position header; scene separators (`---`/`## Scene:`); `isValidSummary()` + 2-attempt retry
+- **Prose fingerprinting**: migration 036 `projects.prose_fingerprint JSONB`; 5 stats extracted from all scenes every 3 saves; `## Author's prose style` block in Beat/Continue; fingerprint-aware paragraph count hint
+- **Chat modes**: `brainstorm | editorial | lore | default` — tailored system prompts; mode pills in ChatBar
+- **Semantic RAG**: `pkg/embedding/` (OpenAIEmbedder + OllamaEmbedder, 768 dims); `EmbedStore` with pgvector search + background reembed worker; chapter summaries embedded immediately after generation; entities/notes via 10-min background worker; transparent brute-force fallback
 
-- **Behavioral prompting** — replace declarative craft hints with explicit DO-NOT constraints and failure conditions; add narrative phase enum to Continue mode (`escalation|reflection|confrontation|discovery|aftermath|transition`)
-- **Context budget enforcement** — `maxContextChars` per call type (24k beat/continue, 32k chat/workshop); priority drop policy: always keep scene tail + directive + in-scene entities; drop first: distant chapter summaries, off-scene threads, low-priority entity types
-- **Chapter summary capping** — inject first + last 5 + current chapter summaries only (not all); drop from 30 summaries → ~7 for a 30-chapter novel
-- **Summarization overhaul** — structured `EVENTS / CHANGES / PRESSURE` format; scene separators; chapter position injection; retry + validation loop
-- **Task-tier model routing** — `tierBackground` (haiku/flash for summarize), `tierAnalysis` (sonnet for chat/workshop), `tierCreative` (sonnet for beat/continue); writer override via explicit provider field
-- **Style fingerprinting** — background prose statistics extraction (`AvgSentenceLength`, `DialogueRatio`, `AdverbDensity`, etc.) stored as `projects.prose_fingerprint JSONB` (migration 036); injected as `## Author's prose style` in Beat/Continue
-- **Chat mode specialization** — `brainstorm | editorial | lore` modes on `ChatRequest`; each gets a tailored context profile and history strategy
-- **Semantic RAG** — pgvector (migration 037); embed chapter summaries, entity descriptions, research notes; replace brute-force injection with `embedding <=> query_vec LIMIT 5` retrieval; Ollama `nomic-embed-text` fallback
+**Remaining AI work (Phase D):** style fingerprinting UI exposure, cross-session memory, image generation integration.
 
 ### 3.6 Exports (backend)
 
@@ -251,16 +251,7 @@ frontend/
 
 **Current state:** Beat (story beat → prose), Continue (extend scene), Nexus Chat (SSE, full story context), Workshop (multi-session craft chat + agent tool use), BeatInput toolbar, context pins panel, writing style presets, phase-aware workshop system prompts, token/cost tracking. Adapters: Anthropic, OpenAI, OpenRouter, Gemini, Groq, DeepSeek, Ollama.
 
-**Planned improvements (C9 — detail in ROADMAP.md):**
-- Behavioral craft constraints on Beat/Continue output (no repetition, no meta-narration, emotion through sensation)
-- Narrative phase dropdown on Continue toolbar (escalation / reflection / confrontation / discovery / aftermath / transition)
-- Workshop prompt order fix + larger digest window for long sessions
-- PRIMARY / SECONDARY / FAILURE CONDITIONS structure for all Workshop phase directives
-- Agent planning-before-tools mandate in system prompt
-- Task-tier model routing (background vs. analysis vs. creative tiers)
-- Prose style fingerprinting — automatic extraction of sentence/paragraph rhythm, dialogue ratio, adverb density; injected into Beat/Continue
-- Chat modes: brainstorm / editorial / lore with tailored context profiles
-- Semantic RAG via pgvector (Phase C9-P7) replacing brute-force context injection
+**C9 improvements — all complete (2026-07-14). See ROADMAP.md §C9-P1 through §C9-P7 for details.**
 
 ### 5.5 Export options (major platforms)
 
@@ -778,15 +769,15 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - [x] **P1** File uploads: content-type validated server-side, max size enforced, `.svg` rejected — explicit allowlist only (no `mime.TypeByExtension` fallback which admitted `.svg`); 5 MiB hard cap added
 - [x] **P1** DOCX/EPUB export: user-provided title and scene content XML-escaped in the OOXML builder — `xmlEscape()` already applied to all user content; audited clean
 - [x] **P1** AI prompt: `BuildContext` output appended, not interpolated, into system prompt — no `\n\nHuman:` injection vector — all adapters use structured chat APIs (`system` param / `role:system` message); `+` concatenation only, no template engine
-- [ ] **P2** Timeline anchor DFS: add depth limit (currently unbounded recursion on malformed `anchor_event_id` cycles)
+- [x] **P2** Timeline anchor DFS: `maxAnchorDepth = 50` in `ResolveEvents` — depth counter threaded through recursive `resolve(id, depth+1)` call; returns error naming the offending event
 
 **Access control**
 - [x] **P0** Only project owner can approve/reject/merge MRs — `ResolveMergeRequest` checks `p.OwnerID != callerID` (verified correct)
 - [x] **P0** Only project owner can resolve annotations — `Resolve` in `annotations/service.go` now checks `p.OwnerID != resolverID`
 - [x] **P1** `repoPathForUser` cannot be bypassed via an arbitrary `userID` parameter — all callers pass `auth.GetUserID(c)` / `claims.UserID` from JWT; path sourced from DB columns set at creation time
 - [x] **P1** `DELETE /users/me` cascade: git repos + MinIO objects cleaned from disk after DB delete; no orphan files — `auth.Service.DeleteMe` collects repo/clone paths + wiki/export MinIO keys pre-cascade, removes best-effort after `DeleteUser`
-- [ ] **P2** Rate limiting on `POST /auth/login` and `POST /auth/register` (brute-force + account enumeration)
-- [ ] **P2** Rate limiting on AI endpoints (`/ai/complete`, `/ai/chat`) — cost-abuse protection
+- [x] **P2** Rate limiting on `POST /auth/login` and `POST /auth/register` — `ratelimit.ByIP(10/min)` on `authGroup` in `main.go`
+- [x] **P2** Rate limiting on AI endpoints — `ratelimit.ByUser(30/min)` on `aiGroup` in `main.go`
 
 **Dependencies**
 - [x] **P1** `govulncheck ./...` — zero High/Critical CVEs in Go dependencies; 2 imported vulns not called
@@ -803,7 +794,7 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - [x] **P1** SSE goroutines: `pw.Close()` called on every exit path — audited; all three SSE pipes (`Complete`, `Chat`, `WorkshopChat`) use `defer pw.Close()`
 - [x] **P1** `buildPinnedContext` / `appendPinnedNote` (full mode): no length cap — `pinnedContentLimit = 2000` rune cap applied in `appendPinnedChapter`, `appendPinnedScene`, `appendPinnedNote`
 - [x] **P2** `numericToFloat64()`: verify nil handling when SUM returns NULL over an empty set — nil interface fails type assertion → returns 0; Numeric with Valid=false → Float64Value returns invalid → returns 0; both safe
-- [ ] **P2** Request handlers must not use `context.Background()` — all queries should propagate the Gin request context for timeout/cancellation
+- [ ] **P2** Request handlers must not use `context.Background()` — all queries should propagate the Gin request context for timeout/cancellation *(background goroutines — summarize, fingerprint, embed — are the only legitimate users; handler code warrants a grep audit)*
 
 **Frontend**
 - [x] **P0** React error boundaries — `ErrorBoundary.tsx` created; all major Editor panels wrapped with label + "Try again" reset
@@ -845,7 +836,7 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 - [x] **P1** Structured log capture: Docker `json-file` driver with `max-size=50m`, `max-file=5` — `x-logging` anchor in `docker-compose.deploy.yml` applied to all services
 - [x] **P1** Uptime monitor on `GET /healthz` with email alert on 2 consecutive failures — Ansible cron every 5 min; failure counter in `/tmp/nexustale_healthz_fail`; mails on ≥2 failures
 - [x] **P1** Disk usage alert at 70% — `repos/` and MinIO grow unboundedly — Ansible cron every 4 hours; mails `nexustale_alert_email`
-- [ ] **P2** Admin AI usage view: `ai_usage` table queryable via psql or a simple Grafana panel
+- [x] **P2** Admin AI usage view: `GET /admin/ai-usage` endpoint (top-50 users by token spend, last 30d); AI Usage tab in `/admin` React page
 
 **Pre-launch code checklist**
 - [x] **P0** All P0 code review items resolved
@@ -880,9 +871,9 @@ Must be completed — or explicitly deferred with a documented rationale — bef
 
 ---
 
-### C9 — Manuscript Import `[Medium — demand-gated]`
+### C9 — Manuscript Import ✅ complete (2026-07-14)
 
-> **Status:** Planned, not started. Track demand from alpha users before building. If ≥ 5 alpha writers request it unprompted, prioritize above Phase D items.
+> **Status:** Complete. Built ahead of the demand gate — covers .md, .txt, and .docx.
 
 Writers arriving mid-draft need a way to bring existing work into NexusTale without starting over. This feature adds an import flow that parses a document into NexusTale's act → chapter → scene hierarchy and creates a new project from it.
 
@@ -926,9 +917,7 @@ No AI-assisted splitting in v1 — too expensive and unpredictable. Add as a Pha
 
 ---
 
-### C9.5 — Entity Rename Cascade `[Medium]`
-
-> **Status:** Planned, not started. Closely tied to C7.0 (scene_entity_mentions) — implement after C9 or whenever a writer hits this pain point in alpha.
+### C9.5 — Entity Rename Cascade ✅ complete (2026-07-14)
 
 When a writer renames a wiki entity, NexusTale offers to find and replace every occurrence of the old name (and its aliases) throughout the manuscript prose. The approval step reuses the existing `ProseDiffViewer` infrastructure so the writer sees a real word-level before/after diff — not a checkbox list — for each affected scene.
 

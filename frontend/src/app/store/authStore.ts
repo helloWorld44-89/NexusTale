@@ -96,17 +96,18 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'nexustale-auth',
+      // accessToken is deliberately excluded from persisted storage — it lives
+      // only in memory (module/store scope) to shrink the XSS token-theft
+      // surface. The longer-lived refreshToken is persisted so login survives
+      // a reload; silentRefresh() mints a fresh accessToken on rehydrate.
       partialize: (s) => ({
         user:            s.user,
-        accessToken:     s.accessToken,
         refreshToken:    s.refreshToken,
         isAuthenticated: s.isAuthenticated,
       }),
       onRehydrateStorage: () => (state) => {
-        // On page load, schedule a proactive refresh for the restored token.
-        // If the token is already expired or near expiry, this fires immediately.
-        if (state?.isAuthenticated && state.accessToken) {
-          setTimeout(() => state.scheduleRefresh(), 0)
+        if (state?.isAuthenticated && state.refreshToken) {
+          setTimeout(() => state.silentRefresh(), 0)
         }
       },
     },

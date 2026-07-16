@@ -1,20 +1,8 @@
 name: Alpha CI/CD
 
-# Deploys to the EC2 alpha instance.
+# Builds and pushes container images to GHCR on every push to master.
+# No deploy step — images are tagged :alpha and :<sha> for manual/other promotion.
 # Trigger: push to master, or manually via Actions → "Run workflow".
-#
-# Required GitHub secrets (Settings → Secrets → Actions):
-#   ALPHA_VM_HOST          — EC2 public IP or domain (e.g. 12.34.56.78 or nexustale.com)
-#   ALPHA_VM_USER          — SSH user on EC2 (typically "ubuntu")
-#   ALPHA_SSH_KEY          — full text of your EC2 private key (.pem contents)
-#   GHCR_PULL_TOKEN        — GitHub PAT with read:packages scope (same as dev)
-#   ALPHA_DOMAIN           — public domain name (e.g. nexustale.com) — enables TLS
-#   ALPHA_ALERT_EMAIL      — email for Let's Encrypt expiry + healthz alerts
-#   ALPHA_DB_PASSWORD      — Postgres password (generate fresh, not the dev value)
-#   ALPHA_JWT_SECRET       — JWT signing secret (≥32 random chars)
-#   ALPHA_ENCRYPTION_KEY   — 64 hex chars: openssl rand -hex 32
-#   ALPHA_MINIO_ACCESSKEY  — MinIO root user (not "minioadmin")
-#   ALPHA_MINIO_SECRETKEY  — MinIO root password (not "minioadmin")
 
 on:
   push:
@@ -107,58 +95,3 @@ jobs:
             .
           docker push ghcr.io/helloworld44-89/nexustale/frontend:alpha
           docker push ghcr.io/helloworld44-89/nexustale/frontend:${{ github.sha }}
-
-  # ── Job 2: Deploy via Ansible ─────────────────────────────────────────────────
-
-  deploy:
-    name: Deploy to EC2
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Ansible
-        run: pip install --quiet ansible
-
-      - name: Set up SSH key
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.ALPHA_SSH_KEY }}" > ~/.ssh/alpha_deploy_key
-          chmod 600 ~/.ssh/alpha_deploy_key
-          ssh-keyscan -H "${{ secrets.ALPHA_VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Write Ansible vars file
-        run: |
-          cat > /tmp/nexustale-alpha-vars.yml << 'EOF'
-          image_tag: "${{ github.sha }}"
-          ghcr_token: "${{ secrets.GHCR_PULL_TOKEN }}"
-          nexustale_domain: "${{ secrets.ALPHA_DOMAIN }}"
-          nexustale_alert_email: "${{ secrets.ALPHA_ALERT_EMAIL }}"
-          nexustale_db_password: "${{ secrets.ALPHA_DB_PASSWORD }}"
-          nexustale_jwt_secret: "${{ secrets.ALPHA_JWT_SECRET }}"
-          nexustale_encryption_key: "${{ secrets.ALPHA_ENCRYPTION_KEY }}"
-          nexustale_minio_accesskey: "${{ secrets.ALPHA_MINIO_ACCESSKEY }}"
-          nexustale_minio_secretkey: "${{ secrets.ALPHA_MINIO_SECRETKEY }}"
-          EOF
-          chmod 600 /tmp/nexustale-alpha-vars.yml
-        # no_log equivalent: the 'EOF' heredoc is expanded before the command
-        # runs; secrets are never echoed to the Actions log.
-
-      - name: Run Ansible deploy playbook
-        run: |
-          ansible-playbook $GITHUB_WORKSPACE/infra/ansible/deploy-dev.yml \
-            -i "${{ secrets.ALPHA_VM_HOST }}," \
-            --extra-vars "dev_vm_host=${{ secrets.ALPHA_VM_HOST }}" \
-            --extra-vars "dev_vm_user=${{ secrets.ALPHA_VM_USER }}" \
-            --extra-vars "workspace=$GITHUB_WORKSPACE" \
-            --extra-vars "@/tmp/nexustale-alpha-vars.yml" \
-            --private-key ~/.ssh/alpha_deploy_key
-        env:
-          ANSIBLE_HOST_KEY_CHECKING: "False"
-
-      - name: Clean up credentials
-        if: always()
-        run: rm -f /tmp/nexustale-alpha-vars.yml ~/.ssh/alpha_deploy_key

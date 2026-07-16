@@ -6,45 +6,40 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 ---
 
-## Current state (snapshot)
+## Current state (snapshot) — 2026-07-14
 
 | Area | Status |
 |------|--------|
-| **API shell** | Go 1.25 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens |
-| **Database** | PostgreSQL migrations **(035)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`) |
-| **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; act layer hidden in UI for single default act; full CRUD + integration tests + Bruno |
-| **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; 21 handler integration tests; fast-forward merge; Paradox detection |
-| **Wiki v1** | `wiki_entities`, `wiki_relationships`, `wiki_magic_rules`, `wiki_timeline_events` — full CRUD + timeline anchoring; all with integration tests; autolink + graph endpoints; relationship graph (d3 force) |
-| **Redis / MinIO** | Provisioned in dev compose; MinIO used for EPUB export (async job → presigned URL) |
-| **AI proxy** | `internal/ai`: Anthropic, OpenAI, Ollama adapters; beat + continue modes; chapter summaries + AI Bible in every call; `POST /ai/complete`, `/ai/chat`, `/ai/summarize`, `/ai/test-connection`, `GET /ai/usage`; usage recorded per call |
-| **AI context** | `BuildContext`: project identity + AI Bible + chapter summaries (raw content fallback) + current scene + @[Entity] refs + story structure; Nexus identity system prompt on every chat |
-| **AI Bible** | `projects.ai_instructions` (migration 016); auto-generated from guide steps on completion; editable on ProjectHome; 3 API routes |
-| **Writing styles** | `internal/prompts`: `project_prompts` table; CRUD routes; style applied to AI calls via `prompt_id` |
-| **Export** | Markdown (sync zip) + EPUB + DOCX (async jobs, MinIO, presigned URL); `export_jobs` table; goroutine worker pool (`asyncJob{format}`) |
-| **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene); side effects populate wiki + manuscript; guide steps auto-fill AI Bible |
-| **Story structures** | 12 seeded templates + scoring matrix; freeform option; structure badge on ProjectHome; phase banners in WikiHub timeline |
-| **Collaboration** | C3.0–C3.5 all complete — roles, invite system, clone-per-collaborator; collaborator-scoped git ops, branch-prefix enforcement, reviewer read-only; notifications (migration 026) + `NotificationBell`; **merge requests** (migration 027) — `internal/merge` open/list/get/diff/resolve; `FetchBranchFromClone` + `EchoBranches` on `GitService`; per-scene `SceneDiff` parsing; fast-forward canonize + HasParadox detection; `mr_*` notifications; `MergeRequestsPanel` + **`ProseDiffViewer`** (word-level diff-match-patch, per-scene resolution, bulk accept); **reviewer annotations** (migration 028 `manuscript_annotations`, `internal/annotations`, `AnnotationSidebar`, floating popover in `ScribeEditor`, note/suggestion/question types, `jumpToAnnotation` imperative handle) |
-| **Frontend** | React 18 + Vite + TypeScript + Tailwind; auth, project list, VSCode-style scene editor (TipTap/ProseMirror), act/chapter/scene explorer, wiki hub (entities/timeline/graph/research notes), git panel, **Nexus AI chat (SSE, identity, full story context), BeatInput, writing style selector, novel guide wizard, story structure picker, AI Bible editor, export panel, AI usage stats, context pins panel, multi-session Workshop panel, NotificationBell (60s polling, unread badge, dropdown)**; entity mention inline highlighting (type-colored dotted underlines) + hover card (portrait, summary, wiki link) |
-| **Navigation** | TopBar: left nav (logo → Dashboard, Home, Wiki, Guide) + breadcrumb + right area (panel toggles, username, Settings, logout); editor fully navigable |
-| **Settings** | AI provider keys (add/remove/test), Ollama URL + model selector, appearance (dark/light), account deletion |
-| **OpenAPI + types** | `docs/openapi.yaml` (45+ routes incl. acts); `frontend/src/services/api-types.ts` generated; inline types for AI/prompts/usage/guide/structures |
-| **CI/CD** | GitHub Actions (self-hosted) → GHCR → Ansible → dev VM; Go tests, tsc, ESLint, API-types drift, sqlc diff, Docker build + push, Ansible deploy |
-| **Bruno collection** | Full integration tests for auth, health, projects, acts, chapters, scenes, wiki (incl. anchor tests), git, collaboration (C3.0 + C3.1 — 44 tests in `10-collaboration/`) |
-| **README** | Written — prerequisites, quick start, env vars, Redis/MinIO note |
-| **K8s / Helm** | Stubs — not yet used |
+| **API shell** | Go 1.25 + Gin; `/healthz`; `/api/v1/auth/*`; `/api/v1/projects/*` (CRUD + acts + chapters + scenes), JWT + refresh tokens; rate-limited (auth: 10/min per IP, AI: 30/min per user) |
+| **Database** | PostgreSQL migrations **(037)** + **sqlc** (`pkg/db/queries` → `pkg/db/sqlcgen`); pgvector extension for semantic RAG |
+| **Manuscript hierarchy** | **Project → Act → Chapter → Scene**; git-first (scenes.content dropped migration 029 — all prose in git working tree); full CRUD + integration tests + Bruno |
+| **Git per project** | Non-bare repos on disk; full Chronicle/Lore/Echo/Diverge/TravelTo/Canonize API; fast-forward merge; Paradox detection; `repoPathForUser` for collaborator clones |
+| **Wiki** | `wiki_entities` (with image upload), `wiki_relationships`, `wiki_magic_rules` (structured attrs), `wiki_timeline_events` (anchor chain, DFS depth-capped at 50); autolink + graph endpoints; scene entity auto-tagging (migration 035) + suppress; **rename cascade** (preview/confirm with word-level diff, case-preserving replace, Chronicle commit) |
+| **AI pipeline** | 7 providers: Anthropic, OpenAI, OpenRouter (dual-model: quality + background), Gemini, Groq, DeepSeek, Ollama; **task-tier routing** (haiku/mini for summarize, sonnet/gpt-4o for beat/continue/chat); beat + continue (behavioral constraints, NarrativePhase dropdown), chat (brainstorm/editorial/lore modes), workshop (agent tool use, 25 rounds), summarize (EVENTS/CHANGES/PRESSURE format + retry), context pins, AI Bible, writing styles |
+| **AI context** | `BuildContext` 8-section layout; **semantic RAG** via pgvector (migration 037) — `pkg/embedding/` (OpenAI + Ollama); brute-force window fallback when no embeddings; chapter summary cap (anchor + recent 5); entity type caps (5 chars, 3 locs, 2 other); chat injects summary not full scene text; 24k/32k char budgets |
+| **AI quality (C9)** | Prose fingerprinting (migration 036, auto-refreshes every 3 saves, `## Author's prose style` in Beat/Continue); `isValidSummary()` retry loop; chapter position header in summarize input; scene separators; agent PLANNING MANDATE + tool intent routing |
+| **Export** | Markdown (sync zip) + EPUB + DOCX (async jobs, MinIO, presigned URL) |
+| **Import** | `POST /projects/import` (preview) + `/import/confirm` — parses `.md`, `.txt`, `.docx` into act/chapter/scene tree; preview UI with editable titles, merge/remove scenes |
+| **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene); story structure templates (12 seeded + scoring matrix) |
+| **Collaboration** | Roles + invite system; per-collaborator git clones; branch-prefix enforcement; merge requests (diff/resolve/merge); prose diff viewer (word-level, paginated); reviewer annotations; notifications (60s polling) |
+| **Admin** | `GET /admin/stats`, `/admin/users` (paginated, role+plan dropdowns), `/admin/ai-usage`; `RequireRole(RoleAdmin)`; `/admin` React page; "Admin Panel" link in Settings for admins |
+| **Frontend** | React 18 + Vite + TypeScript + Tailwind; full editor (TipTap/ProseMirror), entity mention highlighting + hover cards, wiki hub (entities/timeline/graph/research/story threads), Nexus chat (modes), Workshop (agent), Beat/Continue toolbar (NarrativePhase dropdown), Import manuscript page, rename cascade modal, Dashboard Import button |
+| **Settings** | All 7 AI providers; per-provider model selection; OpenRouter dual-model (quality + background); Ollama model picker; appearance; account deletion; Admin Panel link |
+| **Security** | TLS via certbot/Ansible; CORS locked; branch name validation; file upload magic-byte check; `RequireProjectAccess` + `RequireChapterAccess` on all project routes |
+| **Deployment** | Self-hosted; Docker Compose (`pgvector/pgvector:pg16`); GitHub Actions → GHCR; Ansible deploy; daily pg_dump + git-repos backup; disk usage alert |
 
 ---
 
 ## Core features (product pillars)
 
-1. **Accounts & access** — Register/login, JWT access + refresh, roles. *Done.*
-2. **Manuscript structure** — Projects, chapters, scenes, ordering, summaries, tags; Git-backed. *API done; Git history stubs.*
-3. **World wiki** — Entities (character/location/faction/item/concept/lore), relationships graph, timeline, magic rules, autolink. *API + Bruno tests done; no frontend yet.*
-4. **AI-assisted writing** — Completion, chat, summarize, adapters, RAG. *B1 + B1.5 + B3 done. B2 (context/memory) next.*
-5. **Export** — Markdown, EPUB, Scrivener. *B4 next.*
-6. **Collaboration** — Git-backed async: per-collaborator clones, invite system, merge requests, prose diff + conflict resolution, reviewer annotations, notifications. *C3.0 + C3.1 + C3.5 + C3.2 done.*
-7. **Assets** — Covers and binaries via MinIO/S3. *Package stub; not integrated.*
-8. **Writer UI** — React app: editor, wiki, AI panels, export. *Not started.*
+1. **Accounts & access** — Register/login, JWT access + refresh, roles, plan. *Done.* Admin panel for role/plan management.
+2. **Manuscript structure** — Projects, chapters, scenes, ordering; Git-first (prose in working tree). *Done.* Import from .md/.txt/.docx.
+3. **World wiki** — Entities, relationships graph, timeline (anchor-relative, DFS depth-capped), magic rules, research notes, story threads. *Done.* Entity rename cascade patches prose across manuscript.
+4. **AI-assisted writing** — 7 providers, task-tier model routing, semantic RAG, prose fingerprinting, beat/continue/chat/workshop/agent tools, C9-P1–P7 quality improvements. *Done.*
+5. **Export** — Markdown, EPUB, DOCX. *Done.* Scrivener/Fountain/PDF deferred to Phase D.
+6. **Collaboration** — Git-backed async: per-collaborator clones, invite system, merge requests, prose diff + conflict resolution, reviewer annotations, notifications. *Done.*
+7. **Assets** — Wiki image upload via MinIO (presigned URLs). Map builder / image generation deferred to Phase D.
+8. **Writer UI** — Full React SPA: editor, wiki, AI panels, export, import, admin, guide wizard, collaboration. *Done.*
 
 ---
 
@@ -285,20 +280,20 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 - [x] **P1** All handlers use `handleError(c, err)` — the two `c.JSON(500)` lines in `collaboration/handler.go` and `annotations/handler.go` are inside each file's own `handleError` function; no bypass; audited clean
 - [x] **P1** SSE goroutines: `defer pw.Close()` confirmed on all three SSE pipes (`Complete`, `Chat`, `WorkshopChat`); audited clean
 - [x] **P1** `buildPinnedContext` / `appendPinnedNote` (full mode): `pinnedContentLimit = 2000` constant applied in `appendPinnedScene`, `appendPinnedNote`, `appendPinnedEntity`; audited present in `context.go`
-- [ ] **P2** `numericToFloat64()`: verify COALESCE(SUM(...)) nil handling when the aggregate returns zero rows (Postgres returns NULL for SUM over empty set even with COALESCE on the column)
-- [ ] **P2** DB pool: confirm `context.Background()` is not used in request handlers — all queries should respect the request context for proper timeout/cancellation
+- [x] **P2** `numericToFloat64()`: verified via `TestNumericToFloat64` (`internal/ai/service_test.go`) — nil interface, wrong type, and invalid `pgtype.Numeric` all safely return `0`; SQL always wraps aggregates in `COALESCE(SUM(...), 0)` so the driver never actually hands back an untyped nil, but the fallback is now locked in by a test either way
+- [x] **P2** DB pool: audited every `context.Background()` in `internal/`/`pkg/` — all occurrences are in genuinely detached goroutines (debounced summarizer/tagger jobs, async export workers, fire-and-forget usage recording, one-time bucket init); none found threading through a live Gin request path
 
 **Frontend**
 - [x] **P0** React error boundaries — `ErrorBoundary.tsx` class component created; all major panels in `Editor.tsx` wrapped (Nexus, Context, Workshop, Chronicle, Wiki, Annotations, scene editor, project explorer); shows error message + "Try again" reset button
 - [x] **P1** `ScribeEditor` navigate-away race: `pendingSaveRef` stores current save callback; flushed via `useEffect` cleanup on `selectedSceneId` change and via `beforeunload` handler
 - [x] **P1** SSE `EventSource` cleanup: `useEffect(() => () => abortRef.current?.abort(), [])` added to `ChatBar`, `WorkshopPanel`, and `BeatInput` — aborts in-flight fetch streams on unmount
 - [x] **P1** `ProseDiffViewer`: 20-per-page pagination with Prev/Next controls replaces full synchronous render of all `SceneDiffCard` components
-- [ ] **P2** `localStorage` for access token: consider moving to an in-memory variable (survives React re-renders via module scope) to reduce XSS token exposure surface; refresh token flow already handles persistence
-- [ ] **P2** `api.ts`: confirm no `Authorization` header is ever sent to third-party origins; the fetch wrapper should assert `url.startsWith('/')` or compare to configured base URL
+- [x] **P2** `localStorage` for access token — `authStore.ts` `partialize` no longer persists `accessToken`; it now lives only in the Zustand store's in-memory state. `refreshToken` remains persisted so login survives a reload; `onRehydrateStorage` calls `silentRefresh()` to mint a fresh access token on load instead of restoring one from disk
+- [x] **P2** `api.ts`: added `apiUrl(path)` helper — throws if `path` isn't a same-origin-relative string (`startsWith('/')`, not `//`); all 7 raw `fetch()` call sites plus the shared `request()` helper now route through it before the `Authorization` header is attached
 
 **API contract**
 - [x] **P1** OpenAPI spec (`docs/openapi.yaml`) brought current — 49 operations added across AI, export, guide, prompts, research, collaboration, merge requests, notifications, and annotations; spec grew from 1907 → 3335 lines; `api-types.ts` regenerated clean (`npm run gen:api`); `npx tsc --noEmit` passes
-- [ ] **P2** No versioning strategy beyond `/api/v1/` prefix — document policy for breaking changes before beta clients exist
+- [x] **P2** API versioning policy documented directly in `docs/openapi.yaml` info.description — breaking changes ship under a new `/api/v2` prefix once beta clients exist (with a deprecation window for `v1`); additive/non-breaking changes continue landing in-place under `v1`
 
 ---
 
@@ -510,4 +505,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-06-04: C6 craft-depth pass, C7.1 TipTap + inline entity highlighting, and full Phase C9 AI quality improvement plan (7 phases, 21 items from `docs/AI_IMPROVEMENT_PLAN.md`) added. C8 admin section planned. Phase C+ environment checklist and UX/onboarding items remain before first alpha invite.*
+*Last updated 2026-07-14: C8 admin area, C9 manuscript import, C9.5 entity rename cascade, C9-P1–P7 AI quality improvements (behavioral prompts, context efficiency, summarization overhaul, task-tier model routing, prose fingerprinting, chat mode specialization, semantic RAG via pgvector), OpenRouter background model, Groq tier routing, and P2 hardening (DFS depth cap, rate limiting confirmed) all complete. C-series is fully done. Next: Phase D (monetization, MinIO→S3, map builder) or open P2 items (localStorage token, api.ts URL assertion, context.Background() audit).*

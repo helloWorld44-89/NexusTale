@@ -1,4 +1,6 @@
 // Settings — user account settings, starting with AI provider key management.
+declare const __APP_VERSION__: string
+
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
@@ -952,7 +954,7 @@ export default function Settings() {
 
       {/* Version footer */}
       <p className="text-center text-xs text-brand-muted/50 py-6">
-        NexusTale {import.meta.env.VITE_APP_VERSION ?? 'dev'}
+        NexusTale v{__APP_VERSION__}
       </p>
 
       {/* Delete account confirm dialog */}

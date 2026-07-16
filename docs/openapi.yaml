@@ -7,6 +7,18 @@ info:
     REST API for NexusTale — a sci-fi/fantasy novel-writing platform with
     Git-backed versioning, world wiki, and AI co-author support.
 
+
+    ## Versioning policy
+
+    All routes are served under the `/api/v1` prefix. While NexusTale is
+    pre-beta (no external clients), breaking changes are made directly against
+    `v1` — additive changes (new endpoints, new optional fields) do not bump
+    the version. Once beta clients exist, any breaking change (removed/renamed
+    field, changed status code semantics, removed endpoint) must ship under a
+    new `/api/v2` prefix rather than mutating `v1` in place, with `v1` kept
+    available for a deprecation window. Non-breaking changes continue to land
+    in-place under `v1`.
+
 servers:
   - url: /api/v1
     description: Current API prefix (served by nginx reverse-proxy in all environments)
