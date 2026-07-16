@@ -73,6 +73,13 @@ services:
       NEXUSTALE_MINIO_BUCKET: "nexustale"
       NEXUSTALE_MINIO_USESSL: "false"
       NEXUSTALE_GIT_REPOSPATH: "/data/repos"
+      # Ollama runs on the host, not in a container — "localhost" from inside
+      # the api container would resolve to itself. host.docker.internal is
+      # mapped to the host gateway below (works on Docker Desktop out of the
+      # box; extra_hosts makes it work on Linux too).
+      NEXUSTALE_AI_OLLAMAURL: "${NEXUSTALE_AI_OLLAMAURL:-http://host.docker.internal:11434}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - git-repos:/data/repos
     depends_on:

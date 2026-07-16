@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/app/store/authStore'
-import { api } from '@/services/api'
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
@@ -31,7 +30,7 @@ const FEATURES = [
 const LIMITATIONS = [
   {
     title: 'Alpha — expect rough edges',
-    body: 'This is invite-only alpha software. Data is backed up daily, but no SLA is provided. Please report anything unexpected on GitHub.',
+    body: 'This is alpha software. Data is backed up daily, but no SLA is provided. Please report anything unexpected on GitHub.',
   },
   {
     title: 'Async collaboration only',
@@ -53,36 +52,14 @@ const LIMITATIONS = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-type FormState = 'idle' | 'submitting' | 'success' | 'error'
-
 export default function Landing() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const navigate = useNavigate()
-  const formRef = useRef<HTMLDivElement>(null)
-
-  const [email, setEmail] = useState('')
-  const [whatTheyWrite, setWhatTheyWrite] = useState('')
-  const [formState, setFormState] = useState<FormState>('idle')
-  const [errorMsg, setErrorMsg] = useState('')
 
   // Logged-in users skip the landing page
   useEffect(() => {
     if (isAuthenticated) navigate('/dashboard', { replace: true })
   }, [isAuthenticated, navigate])
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setFormState('submitting')
-    setErrorMsg('')
-    try {
-      await api.waitlist.join(email.trim(), whatTheyWrite.trim())
-      setFormState('success')
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong — please try again.'
-      setErrorMsg(msg)
-      setFormState('error')
-    }
-  }
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text font-sans">
@@ -111,7 +88,7 @@ export default function Landing() {
         {/* ── Hero ─────────────────────────────────────────────────────── */}
         <section className="space-y-5 text-center">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-amber-400 border border-amber-400/30 bg-amber-400/10 rounded px-2 py-0.5">
-            Invite-only alpha
+            Alpha
           </span>
           <h1 className="text-4xl font-bold leading-tight text-brand-text">
             The writing tool built like a writer thinks
@@ -120,12 +97,12 @@ export default function Landing() {
             Branching timelines, a living world wiki, and an AI that has read your whole
             manuscript before offering a single word.
           </p>
-          <button
-            onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          <Link
+            to="/register"
             className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-cyan text-brand-bg font-semibold text-sm hover:opacity-90 transition-opacity shadow-cyan-glow"
           >
-            Request an invite →
-          </button>
+            Get started →
+          </Link>
         </section>
 
         {/* ── Features ─────────────────────────────────────────────────── */}
@@ -143,79 +120,6 @@ export default function Landing() {
               </div>
             ))}
           </div>
-        </section>
-
-        {/* ── Waitlist form ─────────────────────────────────────────────── */}
-        <section ref={formRef} className="space-y-5">
-          <div>
-            <h2 className="text-base font-semibold text-brand-text">Request an invite</h2>
-            <p className="text-sm text-brand-text-muted mt-1">
-              Alpha spots are limited. We prioritise sci-fi and fantasy writers who are serious
-              about long-form work. We'll reach out when a spot opens.
-            </p>
-          </div>
-
-          {formState === 'success' ? (
-            <div className="border border-brand-cyan/30 rounded-xl px-5 py-6 bg-brand-cyan/5 text-center space-y-2">
-              <p className="text-brand-cyan font-semibold">You're on the list.</p>
-              <p className="text-sm text-brand-text-muted">
-                We'll email you when a spot opens. In the meantime, you can follow the build on{' '}
-                <a
-                  href="https://github.com/helloWorld44-89/NexusTale"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-brand-cyan hover:underline"
-                >
-                  GitHub
-                </a>
-                .
-              </p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1">
-                <label htmlFor="wl-email" className="text-xs font-medium text-brand-muted uppercase tracking-wide">
-                  Email
-                </label>
-                <input
-                  id="wl-email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full rounded-lg border border-brand-border bg-brand-bg-input px-3 py-2.5 text-sm text-brand-text placeholder:text-brand-muted focus:outline-none focus:ring-2 focus:ring-brand-cyan/40"
-                />
-              </div>
-              <div className="space-y-1">
-                <label htmlFor="wl-what" className="text-xs font-medium text-brand-muted uppercase tracking-wide">
-                  What do you write?
-                </label>
-                <textarea
-                  id="wl-what"
-                  required
-                  rows={3}
-                  value={whatTheyWrite}
-                  onChange={(e) => setWhatTheyWrite(e.target.value)}
-                  placeholder="e.g. Secondary-world epic fantasy, currently on book 2 of a planned trilogy. About 80k words in."
-                  className="w-full rounded-lg border border-brand-border bg-brand-bg-input px-3 py-2.5 text-sm text-brand-text placeholder:text-brand-muted focus:outline-none focus:ring-2 focus:ring-brand-cyan/40 resize-none"
-                />
-                <p className="text-xs text-brand-muted">{whatTheyWrite.length}/500</p>
-              </div>
-
-              {formState === 'error' && (
-                <p className="text-sm text-red-400">{errorMsg}</p>
-              )}
-
-              <button
-                type="submit"
-                disabled={formState === 'submitting'}
-                className="px-5 py-2.5 rounded-lg bg-brand-cyan text-brand-bg font-semibold text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
-              >
-                {formState === 'submitting' ? 'Sending…' : 'Request invite'}
-              </button>
-            </form>
-          )}
         </section>
 
         {/* ── Known limitations ─────────────────────────────────────────── */}

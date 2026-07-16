@@ -188,6 +188,38 @@ NexusTale/
 
 ---
 
+## Self-hosting
+
+NexusTale ships prebuilt, public images on GHCR — no build step required.
+
+```bash
+cd infra/docker
+cp .env.selfhost.example .env
+# Edit .env: fill in the 5 required secrets (openssl rand -hex 32 for each)
+
+docker compose -f docker-compose.selfhost.yml --env-file .env up -d
+```
+
+That's it — the app is reachable at `http://localhost:8080` (or whatever
+`NEXUSTALE_PORT` you set). No TLS is bundled; put your own reverse proxy in
+front (Nginx Proxy Manager, Caddy, Traefik, Cloudflare Tunnel, ...) if you
+want to expose this beyond your LAN, the same way you'd front any other
+self-hosted docker-compose app.
+
+**Updating** to the newest image for your pinned `NEXUSTALE_VERSION`:
+
+```bash
+docker compose -f docker-compose.selfhost.yml --env-file .env pull
+docker compose -f docker-compose.selfhost.yml --env-file .env up -d
+```
+
+`NEXUSTALE_VERSION` defaults to `latest` (the newest tagged release). Pin it
+to a specific version (e.g. `v0.3.0`) for reproducible, deliberate upgrades —
+see [Releases](https://github.com/helloWorld44-89/NexusTale/releases) for
+the version history.
+
+---
+
 ## Running tests
 
 ```bash

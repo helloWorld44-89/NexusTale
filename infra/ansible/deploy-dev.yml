@@ -57,7 +57,7 @@
           IMAGE_TAG={{ image_tag }}
           NEXUSTALE_SERVER_MODE={{ 'release' if nexustale_domain | length > 0 else 'debug' }}
           NEXUSTALE_SERVER_ALLOWEDORIGIN={{ 'https://' + nexustale_domain if nexustale_domain | length > 0 else '*' }}
-          NEXUSTALE_SERVER_REGISTRATIONOPEN=false
+          NEXUSTALE_SERVER_REGISTRATIONOPEN=true
           NEXUSTALE_DB_PASSWORD={{ nexustale_db_password }}
           NEXUSTALE_AUTH_JWTSECRET={{ nexustale_jwt_secret }}
           NEXUSTALE_ENCRYPTION_KEY={{ nexustale_encryption_key }}

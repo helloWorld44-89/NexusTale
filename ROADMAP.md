@@ -299,7 +299,13 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 
 ## Alpha / self-hosted deployment ✅ complete
 
-NexusTale is self-hosted. AWS deployment removed (2026-07-14). All features deployed via Docker Compose on a self-managed server. No public sign-up until beta.
+NexusTale is self-hosted. AWS deployment removed (2026-07-14). All features deployed via Docker Compose on a self-managed server. Public registration reopened (2026-07-16) — `NEXUSTALE_SERVER_REGISTRATIONOPEN=true` in `deploy-dev.yml` + compose default; waitlist form removed from Landing (backend `internal/waitlist` package + admin view kept, unused). MinIO stays as the object storage backend for now (AGPL concern only applies once a paid tier exists — see Phase D S3 migration note).
+
+**Public self-hosting path added (2026-07-16):** `infra/docker/docker-compose.selfhost.yml` + `.env.selfhost.example` — pulls prebuilt public GHCR images, no build step, no bundled TLS (self-hosters front it with their own reverse proxy: Nginx Proxy Manager, Caddy, Traefik, Cloudflare Tunnel, etc., same pattern as other self-hosted docker-compose apps). Only 5 required env vars (JWT secret, encryption key, DB password, MinIO access/secret keys); everything else has a working default. `NEXUSTALE_SERVER_MODE` defaults to `debug` so a fresh install never crash-loops on `ValidateProd()`'s strict release-mode checks. `infra/ansible/*` is unchanged and remains the path for the maintainer's own dev VM auto-deploy — the two paths are intentionally separate.
+
+**Versioning introduced (2026-07-16):** semver git tags (`vX.Y.Z`) trigger `.github/workflows/release.yml`, which builds and pushes `:vX.Y.Z` + `:latest` images — this is the tag self-hosters pin `NEXUSTALE_VERSION` to for reproducible upgrades. Distinct from the existing floating `:alpha` (master push) and `:dev` (dev push) tags, which remain for internal testing only. First tagged release is `v0.3.0` — the product is still alpha (per Landing page framing and unmet beta graduation criteria above), so 1.0.0 is reserved for when that's no longer true.
+
+**Manual step still required:** the `nexustale/api` and `nexustale/frontend` GHCR packages are currently private and must be flipped to public through the GitHub web UI (package Settings → Danger Zone → Change visibility) — the REST API returns 404 for visibility changes on packages linked to a repository, so this can't be scripted.
 
 **Beta graduation criteria** (milestone, not a date):
 - [ ] ≥10 writers completed the novel guide wizard (premise → first scene)
