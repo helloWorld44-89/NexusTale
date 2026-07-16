@@ -2,7 +2,7 @@
 
 Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters → scenes), worldbuilding, AI-assisted drafting, export, and (eventually) collaboration.
 
-**Companion docs:** [CLAUDE.md](./CLAUDE.md) (how to work in this repo), [docs/PROJECT_PLAN.md](./docs/PROJECT_PLAN.md) (full architecture + phases), [docs/specs/phase-a-mvp.md](./docs/specs/phase-a-mvp.md) (Phase A checklist), [Makefile](./Makefile) (dev commands).
+**Companion docs:** [CLAUDE.md](./CLAUDE.md) (how to work in this repo), [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) (system design), [Makefile](./Makefile) (dev commands).
 
 ---
 
@@ -86,7 +86,6 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 ## Phase A+ — Pre-Phase B foundations
 
-**Actionable checklist:** [specs/phase-aplus.md](./docs/specs/phase-aplus.md)
 
 ### A+1 — Word count + scene metadata in editor
 - [x] **A+1.1** Migration 007 — `word_count INTEGER NOT NULL DEFAULT 0` on `scenes`
@@ -138,7 +137,6 @@ Sci-fi/fantasy novel-writing tool: structured manuscripts (projects → chapters
 
 ## Phase B — AI + export core
 
-**Actionable checklist:** [specs/phase-b.md](./docs/specs/phase-b.md)
 
 ### B1 — AI proxy + adapters ✓
 - [x] **B1.1** Backend — `Adapter` interface: `Complete/Chat/Summarize/StreamComplete/StreamChat/IsThinkingModel/Provider`; `CompleteMode` (`continue` | `beat`)
@@ -386,9 +384,7 @@ Infrastructure already in place:
 
 ## Phase C9 — AI Quality Improvements
 
-> Sourced from `docs/AI_IMPROVEMENT_PLAN.md` — three-model consensus review (o3, GPT-4o, Gemini 2.5 Pro) of the full AI pipeline. Overall system grade: **2.9 / 5**. Items are ordered by impact-to-effort within each phase.
->
-> Top five root issues identified: brute-force RAG, declarative-not-behavioral craft prompting, broken summarization architecture, no task-specific model routing, agent has no planning phase.
+> Driven by a three-model consensus review (o3, GPT-4o, Gemini 2.5 Pro) of the full AI pipeline that scored the system 2.9/5 and identified five root issues: brute-force RAG, declarative-not-behavioral craft prompting, broken summarization architecture, no task-specific model routing, agent has no planning phase. All seven phases below (P1–P7) address those findings and are complete as of 2026-07-14.
 
 Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 

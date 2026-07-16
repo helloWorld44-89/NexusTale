@@ -51,6 +51,7 @@ infra/helm/*.lock
 # ── Private docs (local only) ─────────────────────────────────────────────────
 docs/MONETIZATION_PLAN.md
 docs/features.md
+docs/MARKETING_PLAN.md
 
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store

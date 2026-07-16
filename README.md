@@ -167,7 +167,7 @@ NexusTale/
       services/           # api.ts (hand-written fetch layer) + api-types.ts (generated)
   docs/
     openapi.yaml          # OpenAPI 3.1.0 spec — source of truth for generated types
-    PROJECT_PLAN.md       # Full architecture + phased delivery plan
+    ARCHITECTURE.md       # System design — what's actually built, not the original plan
   infra/
     docker/               # docker-compose files + Dockerfiles (API + frontend)
     ansible/              # Deployment playbooks (dev VM)
