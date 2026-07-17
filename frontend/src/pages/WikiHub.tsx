@@ -402,6 +402,12 @@ function EntityDetail({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
+  const [draftPanelOpen, setDraftPanelOpen] = useState(false)
+  const [draftImage, setDraftImage] = useState<string | null>(null) // base64, no data: prefix
+  const [draftPrompt, setDraftPrompt] = useState('')
+  const [draftLoading, setDraftLoading] = useState(false)
+  const [draftError, setDraftError] = useState<string | null>(null)
+  const [draftSaving, setDraftSaving] = useState(false)
   const [appearsOpen, setAppearsOpen] = useState(false)
   const [appearances, setAppearances] = useState<EntityAppearance[] | null>(null)
   const [appearsLoading, setAppearsLoading] = useState(false)
@@ -472,6 +478,65 @@ function EntityDetail({
     } finally {
       setImageUploading(false)
     }
+  }
+
+  // AI portrait draft: generate (no reference), then optionally revise
+  // (reference = current draft) any number of times before saving. Fully
+  // ephemeral — nothing is persisted until handleSaveDraft runs.
+  const handleGenerateDraft = async () => {
+    setDraftLoading(true)
+    setDraftError(null)
+    try {
+      const res = await api.ai.generatePortrait(token, projectId, entity.id, { prompt: draftPrompt })
+      setDraftImage(res.image_base64)
+      setDraftPrompt('')
+    } catch (err: unknown) {
+      setDraftError(err instanceof Error ? err.message : 'Generation failed')
+    } finally {
+      setDraftLoading(false)
+    }
+  }
+
+  const handleReviseDraft = async () => {
+    if (!draftImage || !draftPrompt.trim()) return
+    setDraftLoading(true)
+    setDraftError(null)
+    try {
+      const res = await api.ai.generatePortrait(token, projectId, entity.id, {
+        prompt: draftPrompt,
+        reference_image_base64: draftImage,
+      })
+      setDraftImage(res.image_base64)
+      setDraftPrompt('')
+    } catch (err: unknown) {
+      setDraftError(err instanceof Error ? err.message : 'Revision failed')
+    } finally {
+      setDraftLoading(false)
+    }
+  }
+
+  const handleSaveDraft = async () => {
+    if (!draftImage) return
+    setDraftSaving(true)
+    setDraftError(null)
+    try {
+      const blob = await (await fetch(`data:image/png;base64,${draftImage}`)).blob()
+      const file = new File([blob], 'portrait.png', { type: 'image/png' })
+      const updated = await api.wiki.uploadEntityImage(token, projectId, entity.id, file)
+      onUpdated(updated)
+      setDraftImage(null)
+      setDraftPanelOpen(false)
+    } catch (err: unknown) {
+      setDraftError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setDraftSaving(false)
+    }
+  }
+
+  const handleDiscardDraft = () => {
+    setDraftImage(null)
+    setDraftPrompt('')
+    setDraftError(null)
   }
 
   return (
@@ -549,10 +614,78 @@ function EntityDetail({
               />
               {imageUploading ? 'Uploading…' : entity.image_url ? 'Replace Image' : 'Upload Image'}
             </label>
+            <button
+              onClick={() => setDraftPanelOpen((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-border text-xs font-medium text-brand-muted hover:text-brand-text hover:border-brand-border/60 transition-colors"
+            >
+              {draftPanelOpen ? 'Cancel Generate' : 'Generate Portrait'}
+            </button>
             <p className="text-[10px] text-brand-muted">JPG, PNG, GIF or WebP</p>
             {imageError && <p className="text-[10px] text-red-400">{imageError}</p>}
           </div>
         </div>
+
+        {/* AI portrait draft panel */}
+        {draftPanelOpen && (
+          <div className="rounded-xl border border-brand-border bg-brand-bg p-4 space-y-3">
+            {draftImage && (
+              <img
+                src={`data:image/png;base64,${draftImage}`}
+                alt="AI portrait draft"
+                className="w-40 h-40 rounded-xl object-cover border border-brand-border"
+              />
+            )}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-brand-muted uppercase tracking-wider">
+                {draftImage ? 'Request changes' : 'Guidance (optional)'}
+              </label>
+              <input
+                type="text"
+                value={draftPrompt}
+                onChange={(e) => setDraftPrompt(e.target.value)}
+                placeholder={draftImage ? 'e.g. make the hair silver' : 'e.g. wearing ceremonial armor'}
+                className="input-field text-sm"
+                disabled={draftLoading}
+              />
+            </div>
+            {draftError && <p className="text-xs text-red-400">{draftError}</p>}
+            <div className="flex flex-wrap items-center gap-2">
+              {!draftImage ? (
+                <button
+                  onClick={handleGenerateDraft}
+                  disabled={draftLoading}
+                  className="px-3 py-1.5 rounded-lg bg-brand-cyan text-brand-bg text-xs font-semibold hover:bg-brand-cyan/80 disabled:opacity-50 transition-colors"
+                >
+                  {draftLoading ? 'Generating…' : 'Generate'}
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleReviseDraft}
+                    disabled={draftLoading || !draftPrompt.trim()}
+                    className="px-3 py-1.5 rounded-lg border border-brand-border text-xs font-medium text-brand-text hover:border-brand-cyan/40 disabled:opacity-50 transition-colors"
+                  >
+                    {draftLoading ? 'Revising…' : 'Revise'}
+                  </button>
+                  <button
+                    onClick={handleSaveDraft}
+                    disabled={draftSaving || draftLoading}
+                    className="px-3 py-1.5 rounded-lg bg-brand-cyan text-brand-bg text-xs font-semibold hover:bg-brand-cyan/80 disabled:opacity-50 transition-colors"
+                  >
+                    {draftSaving ? 'Saving…' : 'Use this image'}
+                  </button>
+                  <button
+                    onClick={handleDiscardDraft}
+                    disabled={draftLoading || draftSaving}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-brand-muted hover:text-red-400 disabled:opacity-50 transition-colors"
+                  >
+                    Discard
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Summary */}
         <div>

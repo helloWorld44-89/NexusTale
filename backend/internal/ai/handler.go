@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,6 +36,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	ai.GET("/usage", h.Usage)
 	ai.GET("/beat-history", h.BeatHistory)
 	ai.GET("/context-preview", h.ContextPreview)
+	ai.POST("/entities/:eid/portrait", h.GeneratePortrait)
 
 	// Context pins (C2): writer-curated additions to the AI context window.
 	ai.GET("/context-pins", h.ListContextPins)
@@ -87,6 +89,16 @@ type summarizeRequest struct {
 	Text     string `json:"text"`      // inline text, or
 	SceneID  string `json:"scene_id"`  // resolve from DB if text is empty
 	Provider string `json:"provider"`
+}
+
+type generatePortraitRequest struct {
+	Prompt               string `json:"prompt"`                 // guidance (first draft) or revision instruction (with a reference)
+	ReferenceImageBase64 string `json:"reference_image_base64"` // prior draft, present on revision calls
+}
+
+type generatePortraitResponse struct {
+	ImageBase64 string `json:"image_base64"`
+	Provider    string `json:"provider"`
 }
 
 // ── handlers ──────────────────────────────────────────────────────────────────
@@ -286,6 +298,53 @@ func (h *Handler) Summarize(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"summary": summary})
+}
+
+// GeneratePortrait generates a first-draft portrait for a wiki entity, or
+// revises the previous draft when reference_image_base64 is present. Nothing
+// is persisted here — the caller saves the chosen draft via the existing
+// wiki entity image upload endpoint.
+//
+// POST /projects/:id/ai/entities/:eid/portrait
+//
+//	{ "prompt": "wearing ceremonial armor" }
+//	{ "prompt": "make the hair silver", "reference_image_base64": "..." }
+func (h *Handler) GeneratePortrait(c *gin.Context) {
+	projectID, userID, ok := resolveIDs(c)
+	if !ok {
+		return
+	}
+	entityID, err := uuid.Parse(c.Param("eid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid entity id"})
+		return
+	}
+
+	var req generatePortraitRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "detail": err.Error()})
+		return
+	}
+
+	var referenceImage []byte
+	if req.ReferenceImageBase64 != "" {
+		referenceImage, err = base64.StdEncoding.DecodeString(req.ReferenceImageBase64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid reference_image_base64"})
+			return
+		}
+	}
+
+	result, err := h.svc.GenerateEntityPortrait(c.Request.Context(), userID, projectID, entityID, req.Prompt, referenceImage)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, generatePortraitResponse{
+		ImageBase64: base64.StdEncoding.EncodeToString(result.ImageBytes),
+		Provider:    h.svc.imageProviderForUser(c.Request.Context(), userID),
+	})
 }
 
 // Usage returns aggregate token/cost stats for the project.

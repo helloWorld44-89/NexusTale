@@ -11,6 +11,14 @@ import type { APIKeyResponse } from '@/services/api'
 const PROVIDERS = ['openai', 'anthropic', 'openrouter', 'gemini', 'groq', 'deepseek', 'mistral', 'custom'] as const
 type Provider = typeof PROVIDERS[number]
 
+// Image-generation providers (AI portrait generation, D-Portraits). Separate
+// list from PROVIDERS above since not every text provider supports images —
+// adding a second one later is just appending here plus a backend adapter.
+const IMAGE_PROVIDERS = ['openai'] as const
+const IMAGE_PROVIDER_LABELS: Record<typeof IMAGE_PROVIDERS[number], string> = {
+  openai: 'OpenAI (gpt-image-1)',
+}
+
 function SunIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -110,6 +118,12 @@ export default function Settings() {
   const [dsModelOk,     setDsModelOk]     = useState(false)
   const [dsModelErr,    setDsModelErr]    = useState<string | null>(null)
 
+  // Image generation provider selection state
+  const [imageProvider,       setImageProvider]       = useState<typeof IMAGE_PROVIDERS[number]>('openai')
+  const [imageProviderSaving, setImageProviderSaving] = useState(false)
+  const [imageProviderOk,     setImageProviderOk]     = useState(false)
+  const [imageProviderErr,    setImageProviderErr]    = useState<string | null>(null)
+
   // Danger zone state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [confirmEmail, setConfirmEmail]         = useState('')
@@ -204,6 +218,27 @@ export default function Settings() {
       setKeys((prev) => prev.filter((k) => k.provider !== p))
       setTestStates((prev) => { const n = { ...prev }; delete n[p]; return n })
     } catch {}
+  }
+
+  const handleSetImageProvider = async (p: typeof IMAGE_PROVIDERS[number]) => {
+    if (!accessToken) return
+    setImageProviderSaving(true)
+    setImageProviderOk(false)
+    setImageProviderErr(null)
+    try {
+      const saved = await api.apiKeys.upsert(accessToken, 'image_provider', p)
+      setKeys((prev) => {
+        const filtered = prev.filter((k) => k.provider !== 'image_provider')
+        return [...filtered, saved].sort((a, b) => a.provider.localeCompare(b.provider))
+      })
+      setImageProvider(p)
+      setImageProviderOk(true)
+      setTimeout(() => setImageProviderOk(false), 2500)
+    } catch (e: unknown) {
+      setImageProviderErr(e instanceof Error ? e.message : 'Failed to save image provider')
+    } finally {
+      setImageProviderSaving(false)
+    }
   }
 
   const handleSetOllamaModel = async (model: string) => {
@@ -848,6 +883,40 @@ export default function Settings() {
               {savingOllama ? 'Saving…' : 'Save URL'}
             </button>
           </form>
+        </section>
+
+        {/* Image generation (AI portraits) */}
+        <section>
+          <h2 className="text-lg font-semibold text-brand-text mb-1">Image Generation</h2>
+          <p className="text-sm text-brand-text-muted mb-4">
+            Provider used for AI-generated wiki entity portraits. Requires an API key for the
+            selected provider above.
+          </p>
+          <div className="rounded-lg border border-brand-border bg-brand-bg-card p-5 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {IMAGE_PROVIDERS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => handleSetImageProvider(p)}
+                  disabled={imageProviderSaving}
+                  className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 ${
+                    imageProvider === p
+                      ? 'border-brand-cyan text-brand-cyan bg-brand-cyan/10'
+                      : 'border-brand-border text-brand-text-muted hover:text-brand-text hover:border-brand-cyan/40'
+                  }`}
+                >
+                  {IMAGE_PROVIDER_LABELS[p]}
+                </button>
+              ))}
+            </div>
+            {!keys.find((k) => k.provider === imageProvider) && (
+              <p className="text-xs text-amber-400">
+                Add an {IMAGE_PROVIDER_LABELS[imageProvider]} key above to enable portrait generation.
+              </p>
+            )}
+            {imageProviderErr && <p className="text-xs text-red-400">{imageProviderErr}</p>}
+            {imageProviderOk  && <p className="text-xs text-emerald-400">Image provider saved.</p>}
+          </div>
         </section>
 
         {/* Appearance */}

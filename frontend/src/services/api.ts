@@ -388,7 +388,7 @@ async function request<T>(
     let message = res.statusText
     try {
       const data = await res.json()
-      message = data.message ?? data.detail ?? message
+      message = data.detail ?? data.message ?? message
     } catch {}
     throw new ApiError(res.status, message)
   }
@@ -668,6 +668,14 @@ export const api = {
 
     beatHistory: (token: string, projectId: string) =>
       request<BeatHistoryEntry[]>('GET', `/projects/${projectId}/ai/beat-history`, undefined, token),
+
+    /**
+     * Generate (no reference_image_base64) or revise (with one) an AI
+     * portrait draft for a wiki entity. Fully ephemeral — nothing is
+     * persisted server-side; save the chosen draft via wiki.uploadEntityImage.
+     */
+    generatePortrait: (token: string, projectId: string, entityId: string, body: { prompt?: string; reference_image_base64?: string }) =>
+      request<{ image_base64: string; provider: string }>('POST', `/projects/${projectId}/ai/entities/${entityId}/portrait`, body, token),
 
     /**
      * Stream a scene completion from POST /projects/:id/ai/complete.

@@ -1128,11 +1128,11 @@ func numericToFloat64(v interface{}) float64 {
 
 // recordUsage inserts a usage row non-blocking. Errors are logged and discarded
 // so they never block or fail the parent AI call.
-// mode is one of: "beat", "continue", "chat", "summarize".
+// mode is one of: "beat", "continue", "chat", "summarize", "portrait".
 // beatText is the writer's beat sentence (mode=beat only; empty otherwise).
 // sceneID is the scene in focus at call time (uuid.Nil when not applicable).
 func (s *Service) recordUsage(projectID, userID uuid.UUID, model string, usage adapters.Usage, mode, beatText string, sceneID uuid.UUID) {
-	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.CostUSD == 0 {
 		return // nothing to record (e.g. streaming aborted before tokens known)
 	}
 	go func() {
