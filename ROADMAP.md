@@ -464,14 +464,80 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 
 ## Phase D — Premium / advanced
 
-- **Monetization** — `users.plan` column already added (migration 022: free/writer/studio tiers); plan-gated invite limits in `InviteCollaborator` (`TODO(monetization)` marker in service.go); billing integration (Stripe), upgrade flow, and feature gates are Phase D work
-- Map builder; image generation pipelines for wiki entities
+- **AI-assisted map builder** — see [D-Map](#d-map--ai-assisted-map-builder) below
+- **AI-assisted entity artwork** — see [D-Portraits](#d-portraits--ai-assisted-entity-artwork) below
 - Scrivener / Fountain export; advanced Git branching UX
 - Series-level continuity management
 - Multi-region, scale-out collaboration tuning
 - **OpenAPI catch-up** — bring `docs/openapi.yaml` current with all B1–C routes; regenerate `api-types.ts`; restore codegen for newer endpoints (schedule before C3)
 - **Customizable workspaces** — per-user, per-project saved panel layouts (which panels are open, their widths, which scene/chapter is active); named workspace presets ("drafting", "research", "editing") switchable from the TopBar; stored in `user_workspaces` table (JSONB layout blob); synced across sessions so the editor opens exactly where you left off
-- **Object storage migration (MinIO → S3-compatible)** — The self-hosted MinIO server is AGPL v3.0 licensed; running it as part of a commercial SaaS without a commercial license creates legal exposure. The `minio-go` client SDK (Apache 2.0) is not the issue — only the server binary. Plan: replace `pkg/storage/storage.go` with `aws-sdk-go-v2/service/s3` (~100 line rewrite; interface unchanged: `PutObject`, `PresignedGetURL`, `DeleteObject`); target **Cloudflare R2** for alpha/beta (free tier: 10 GB storage, no egress fees, S3-compatible) or Backblaze B2 as an alternative; dev Docker Compose keeps MinIO locally since `aws-sdk-go-v2` speaks the same S3 API. Config env vars (`NEXUSTALE_MINIO_*`) can be renamed to `NEXUSTALE_S3_*` at the same time. No DB migrations needed. Must be done before any paid tier goes live.
+
+### D-Map — AI-assisted map builder
+
+> Scoped 2026-07-17. Two-layer model: structural **layout** data (JSON, git-diffable — shapes + symbols) is separate from rendered artwork (binary, regenerated from the layout on demand). AI can both edit the layout (tool calls, like the existing manuscript agent) and generate art from it (new image-adapter layer, multi-provider). Draft iteration is ephemeral — nothing persists until the user commits. Everything lives in the project's git working tree, so Chronicle/Diverge/TravelTo/Canonize apply to maps for free, same as scenes. A project can hold many maps at different scales (world, region, city, galaxy, planet, custom), and maps plug into the existing wiki relationship graph so they can reference each other and other entities.
+
+**M1 — Data model + git plumbing** `[Medium]`
+- Maps are a new `wiki_entities` type (`type = 'map'`, extends the CHECK constraint from migration 000005) rather than a standalone table — this gets two things for free: `parent_entity_id` for scale hierarchy (a city map's parent can be the region map it zooms into) and `wiki_relationships` for arbitrary typed edges (a galaxy map "contains" a planet map; a region map "depicts" a location entity)
+- `attributes` JSONB on the entity row holds only lightweight metadata: `{map_type: 'world'|'region'|'city'|'galaxy'|'planet'|'custom', git_path}` — the map type drives which icon palette M2 shows (terrain vs. space, see below)
+- Git storage per map: `maps/<entity-id>.json` (the layout — see M2 for its two arrays) + `maps/<entity-id>.png` (last-committed rendered artwork), read/written through `GitService`'s existing working-tree helpers, same as scene prose
+- Branch-aware CRUD routes: `GET/POST /projects/:id/maps`, `GET/PUT/DELETE /projects/:id/maps/:mid` (thin wrapper over the wiki-entity + git layout read/write), following the same `ResolveBranch` pattern used for scenes
+- A project can have any number of map entities; each is committed/saved independently, so a "world map," its "region map," and a "city map" nested under it coexist as separate git-versioned files linked through `parent_entity_id`/`wiki_relationships`
+
+**M2 — Manual canvas editor (layered layout)** `[Heavy]`
+- New "Map Studio" frontend panel, canvas library Konva.js recommended (React bindings, layer/shape/transform support built in)
+- Map creation starts with picking a **map type** (world/region/city/galaxy/planet/custom, stored per M1) — this selects the default icon palette so the tool isn't fantasy-terrain-only: a *terrain* palette (mountain, lake, river, ocean, forest, desert, swamp, city) for world/region/city maps, and a *space* palette (star, planet, moon, nebula, asteroid field, space station, wormhole, black hole) for galaxy/planet maps; palette is just data, so adding more later doesn't touch the schema
+- **Shape layer** (`regions[]`): user draws a polygon/freehand outline, assigns a type from the active palette's region types and a fill color (landmass, ocean, nebula cloud, gravity well, etc.) — this is the base layer everything else sits on
+- **Symbol layer** (`symbols[]`), stacked on top of shapes: user picks an icon from the active palette, drops it onto/over a shape, then drags/rotates/scales it independently — each symbol is its own object: `{icon_type, x, y, scale, rotation, region_id?, entity_id?}`; `entity_id` can point at *any* wiki entity, including another map — this is how clicking a city symbol on a region map jumps to that city's own dedicated map
+- Both arrays live in the same `maps/<entity-id>.json`; this phase ships and is usable standalone — no AI required yet
+- Layout is a pure vector/schematic representation throughout — it is never itself the "map art," only ever the input to M5's generation step
+
+**M3 — AI layout tool calls** `[Heavy]`
+- Extends the existing `ManuscriptTools` agent tool-call pattern (`internal/ai/tools.go`) with `MapTools`, mirroring exactly what M2's UI can do so AI and user edit the same draft state interchangeably: `add_region`/`update_region`/`remove_region` (shapes) and `add_symbol`/`update_symbol`/`remove_symbol` (icon type, position, scale, rotation, optional region/entity link)
+- New agent chat surface scoped to the active map, reusing the `WorkshopPanel` chat UI and the planning-mandate/`AgentPhase` pattern from C2.5
+- A user can hand-draw a coastline in M2, then ask the AI to "add a mountain range along the north border and drop three city icons along the coast" and see the same symbols appear, fully editable afterward
+
+**M4 — Multi-provider image generation adapter** `[Heavy]`
+- New `ImageAdapter` interface, parallel to the existing `Adapter`/`ToolAdapter`: `GenerateImage(ctx, prompt, referenceImage []byte) ([]byte, error)` — takes a reference image (the rendered layout, see M5) plus a text prompt, so any provider wired in must support image-conditioned generation (image-to-image / edits / references), not text-only
+- Versatility is a hard requirement, not a "start with one and expand later" — build the `AdapterFactory` for images the same way `internal/ai/adapters` already does for chat (OpenAI/Anthropic/Ollama), so multiple providers are live from the first release: candidates are OpenAI (`gpt-image-1`), Google (Gemini image generation), and a hosted SDXL/Flux provider (Stability img2img or fal.ai) — each verified individually for reference-image support before being wired in (per the earlier scoping note: don't assume a provider supports image input just because it does text)
+- Provider + model selectable per-user in Settings (mirrors the existing text-model provider picker and `user_api_keys` pattern); Settings gets an "Image generation" section with per-provider API keys and a default-provider selector, consistent with how text-model routing already works
+
+**M5 — Layout → base image → generation flow** `[Medium–Heavy]`
+- "Use as base image": client-side canvas export flattens the current `regions[]` + `symbols[]` into a single flat schematic raster (no AI involved — this is a deterministic render of the layout, done entirely in the browser/canvas) — this schematic is the reference image, not the final art
+- "Generate": sends the schematic reference image + a style/mood text prompt to the selected `ImageAdapter`; the model uses the schematic as compositional ground truth (where the coastline, mountains, cities are) and produces polished map artwork from it; result renders inline in Map Studio, fully ephemeral until committed
+- Iteration loop: further edits happen back on the layout (M2 UI or M3 chat), not on the generated art directly; each subsequent "Generate" re-flattens the *current* layout into a fresh schematic and re-runs generation, so the art always reflects the latest layout rather than drifting from repeated image-to-image passes
+- "Commit": writes the final layout JSON and the latest generated artwork to git in one commit via `GitService`, the same path scene edits take through Chronicle — the map then participates in project history and branches like any other versioned file
+
+**M6 — Polish / integration** `[Light–Medium]`
+- Map thumbnail surfaced in `ProjectExplorer` / `ProjectHome`, and maps appear in the Wiki hub entity list (filterable by `map_type`) since they're `wiki_entities` rows
+- Map version history reuses the existing Chronicle timeline UI (a map is just another versioned git file)
+- Map-to-map and map-to-entity relationships (world → region → city, galaxy → planet, "region map depicts location X") are visible/editable through the existing wiki relationship UI with no new UI surface required — M1 already put maps in that graph
+- Optional: map diff view (structural JSON diff + side-by-side image compare), analogous to `ProseDiffViewer`
+
+---
+
+### D-Portraits — AI-assisted entity artwork
+
+> Scoped 2026-07-17. Lighter-weight sibling of D-Map: same `ImageAdapter` (reference image + prompt) and ephemeral-draft-until-saved philosophy from M4/M5 above, but no git layout step — wiki entities already have a DB-backed `image_key`/MinIO upload path from C1 (`POST/DELETE /wiki/entities/:eid/image`), so "saving" a generated portrait is just calling that existing endpoint with the generated bytes instead of a file picker. Applies to any wiki entity type (character, location, faction, item, concept, lore), not characters only. Because this only needs `ImageAdapter` and not the full map layout/canvas stack, **it's reasonable to build this before D-Map** and let D-Map's M4 reuse the adapter foundation this establishes, rather than the other way around.
+
+**P1 — Generate flow** `[Medium]`
+- "Generate portrait" action on `EntityDetail` for any entity type
+- Backend builds a base prompt from the entity's existing data, reusing the type-dispatched context helpers already in `internal/ai/context.go` (`buildEntityContextLine` / `buildCharacterContextLine`) rather than writing new prompt-assembly logic, plus an optional free-text addition from the user ("wearing ceremonial armor", "cyberpunk lighting")
+- Calls `ImageAdapter.GenerateImage(prompt, referenceImage=nil)` for the first draft; result renders inline as an ephemeral draft, matching D-Map's "nothing persists until saved" rule
+
+**P2 — Revision loop** `[Medium]`
+- A "request changes" field under the draft ("make the hair shorter", "darker armor") re-calls `GenerateImage(prompt=revision text, referenceImage=previous draft)` — the same signature D-Map M4 already defines, no new adapter method needed
+- Last few drafts kept in ephemeral session state so the user can step back/forward between revisions before committing to one
+- No git involved anywhere in this flow — wiki entities aren't git-versioned, so this is strictly simpler than maps
+
+**P3 — Save / replace portrait** `[Light]`
+- "Use this image" pipes the chosen draft through the existing C1 upload path (`POST /wiki/entities/:eid/image`), setting `image_key` exactly as a manual upload would — no new storage plumbing
+- Regenerating an entity that already has a manually-uploaded portrait simply replaces it, same lifecycle as today's upload/remove flow
+
+**P4 — Prompt quality / style consistency** `[Light–Medium]`
+- Optional project-level "art style" guidance (e.g. "digital painting, muted fantasy palette") applied to every entity-image prompt for a consistent look across a project's cast — reuse the existing `ai_instructions` (AI Bible, C0.5) pattern rather than inventing a new setting
+- Character `attributes` JSONB appearance fields (if the writer has filled them in), when present, take priority over generic `summary` text in the auto-built prompt
+
+---
 
 ### D-Desktop — Native desktop app (optional, Tauri-based)
 
@@ -507,4 +573,4 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 Treat unchecked items as **Claude Code / issue seeds**: one checkbox → one focused task with acceptance criteria. For deep design, add `docs/specs/<topic>.md` and link from a roadmap line.
 
-*Last updated 2026-07-14: C8 admin area, C9 manuscript import, C9.5 entity rename cascade, C9-P1–P7 AI quality improvements (behavioral prompts, context efficiency, summarization overhaul, task-tier model routing, prose fingerprinting, chat mode specialization, semantic RAG via pgvector), OpenRouter background model, Groq tier routing, and P2 hardening (DFS depth cap, rate limiting confirmed) all complete. C-series is fully done. Next: Phase D (monetization, MinIO→S3, map builder) or open P2 items (localStorage token, api.ts URL assertion, context.Background() audit).*
+*Last updated 2026-07-14: C8 admin area, C9 manuscript import, C9.5 entity rename cascade, C9-P1–P7 AI quality improvements (behavioral prompts, context efficiency, summarization overhaul, task-tier model routing, prose fingerprinting, chat mode specialization, semantic RAG via pgvector), OpenRouter background model, Groq tier routing, and P2 hardening (DFS depth cap, rate limiting confirmed, localStorage token, api.ts URL assertion, context.Background() audit) all complete. C-series and all P0–P2 hardening items are fully done. Next: Phase D (map builder, image generation, Scrivener/Fountain/PDF export, esbuild/vite audit fixes, customizable workspaces).*
