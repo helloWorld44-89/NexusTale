@@ -463,6 +463,33 @@ func (g *GitService) WriteSceneFile(repoPath string, chapterID, sceneID uuid.UUI
 	return os.WriteFile(filepath.Join(dir, sceneID.String()+".md"), []byte(content), 0o644)
 }
 
+// ReadMapFile reads a map's layout JSON from the git working tree.
+// Returns (json, true, nil) when the file exists, ("", false, nil) when it
+// does not (map created but layout never written — caller should fall back
+// to a default layout), and ("", false, err) on unexpected I/O errors.
+func (g *GitService) ReadMapFile(repoPath string, mapID uuid.UUID) (string, bool, error) {
+	path := filepath.Join(repoPath, "maps", mapID.String()+".json")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return string(data), true, nil
+}
+
+// WriteMapFile writes a map's layout JSON to the working tree at
+// maps/{mapID}.json. Does not stage or commit — Chronicle picks it up on
+// the writer's next explicit snapshot, same as WriteSceneFile.
+func (g *GitService) WriteMapFile(repoPath string, mapID uuid.UUID, layoutJSON string) error {
+	dir := filepath.Join(repoPath, "maps")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	return os.WriteFile(filepath.Join(dir, mapID.String()+".json"), []byte(layoutJSON), 0o644)
+}
+
 // ErrNothingToChronicle is returned by Chronicle when the working tree is
 // identical to the last commit (no changes to record).
 var ErrNothingToChronicle = errors.New("nothing to chronicle: no changes since last chronicle")

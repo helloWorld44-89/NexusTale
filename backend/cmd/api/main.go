@@ -20,6 +20,7 @@ import (
 	"github.com/jconder44/nexustale/internal/config"
 	"github.com/jconder44/nexustale/internal/export"
 	"github.com/jconder44/nexustale/internal/guide"
+	"github.com/jconder44/nexustale/internal/maps"
 	"github.com/jconder44/nexustale/internal/merge"
 	"github.com/jconder44/nexustale/internal/notifications"
 	"github.com/jconder44/nexustale/internal/project"
@@ -205,6 +206,9 @@ func main() {
 	threadsService := threads.NewService(queries)
 	threadsHandler := threads.NewHandler(threadsService)
 
+	mapsService := maps.NewService(queries, gitService)
+	mapsHandler := maps.NewHandler(mapsService)
+
 	waitlistService := waitlist.NewService(queries)
 	waitlistHandler := waitlist.NewHandler(waitlistService)
 
@@ -292,6 +296,9 @@ func main() {
 		// Story threads — project-scoped.
 		threadsGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		threadsHandler.RegisterRoutes(threadsGroup)
+
+		mapsGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
+		mapsHandler.RegisterRoutes(mapsGroup)
 
 		// Waitlist — public submit, admin-only list.
 		waitlistHandler.RegisterRoutes(v1)

@@ -17,6 +17,7 @@ import (
 	"github.com/jconder44/nexustale/internal/annotations"
 	"github.com/jconder44/nexustale/internal/auth"
 	"github.com/jconder44/nexustale/internal/collaboration"
+	"github.com/jconder44/nexustale/internal/maps"
 	"github.com/jconder44/nexustale/internal/notifications"
 	"github.com/jconder44/nexustale/internal/project"
 	"github.com/jconder44/nexustale/internal/research"
@@ -127,6 +128,7 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 	// storage is nil in tests — wiki image upload and export routes return 500 if
 	// exercised, but existing tests do not call those paths.
 	wikiService          := wiki.NewService(queries, nil)
+	mapsService          := maps.NewService(queries, gitSvc)
 	researchService      := research.NewService(queries)
 	annotationService    := annotations.NewService(queries)
 	notifService         := notifications.NewService(queries)
@@ -136,6 +138,7 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 	authHandler        := auth.NewHandler(authService, true) // open in tests
 	projectHandler     := project.NewHandler(projectService)
 	wikiHandler        := wiki.NewHandler(wikiService)
+	mapsHandler        := maps.NewHandler(mapsService)
 	researchHandler    := research.NewHandler(researchService)
 	annotationHandler  := annotations.NewHandler(annotationService)
 	notifHandler       := notifications.NewHandler(notifService)
@@ -154,6 +157,9 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 
 		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService))
 		wikiHandler.RegisterRoutes(wikiGroup)
+
+		mapsGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		mapsHandler.RegisterRoutes(mapsGroup)
 
 		researchGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
 		researchHandler.RegisterRoutes(researchGroup)
