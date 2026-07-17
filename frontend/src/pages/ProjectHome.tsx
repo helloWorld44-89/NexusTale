@@ -303,7 +303,7 @@ export default function ProjectHome() {
         {usage && usage.total_tokens === 0 && <div className="mb-10" />}
 
         {/* Quick-open cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
           <ActionCard
             title="Open Editor"
             description="Write and manage your manuscript — scenes, chapters, and acts."
@@ -324,6 +324,13 @@ export default function ProjectHome() {
             accent="gold"
             onClick={() => navigate(`/projects/${id}/guide`)}
             icon={<GuideIcon />}
+          />
+          <ActionCard
+            title="Maps"
+            description="Draw regions and place symbols to map out your world."
+            accent="purple"
+            onClick={() => navigate(`/projects/${id}/maps`)}
+            icon={<MapsIcon />}
           />
         </div>
 
@@ -557,6 +564,15 @@ function GuideIcon() {
   return (
     <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 4h12M4 8h8M4 12h10M4 16h6" />
+    </svg>
+  )
+}
+
+function MapsIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 5l5-2 4 2 5-2v12l-5 2-4-2-5 2V5z" />
+      <path d="M8 3v12M12 5v12" />
     </svg>
   )
 }

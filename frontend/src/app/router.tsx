@@ -7,6 +7,8 @@ import ProjectHome from '@/pages/ProjectHome'
 import Editor from '@/pages/Editor'
 import Guide from '@/pages/Guide'
 import WikiHub from '@/pages/WikiHub'
+import MapsHub from '@/pages/MapsHub'
+import MapStudio from '@/pages/MapStudio'
 import Settings from '@/pages/Settings'
 import InviteAccept from '@/pages/InviteAccept'
 import About from '@/pages/About'
@@ -67,6 +69,24 @@ export function AppRouter() {
         element={
           <ProtectedRoute>
             <WikiHub />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/projects/:id/maps"
+        element={
+          <ProtectedRoute>
+            <MapsHub />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/projects/:id/maps/:mid"
+        element={
+          <ProtectedRoute>
+            <MapStudio />
           </ProtectedRoute>
         }
       />

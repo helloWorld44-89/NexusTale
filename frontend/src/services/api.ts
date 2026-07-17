@@ -257,6 +257,40 @@ export interface StoryThread {
   updated_at:          string
 }
 
+export interface MapRegion {
+  id:     string
+  type:   string
+  color:  string
+  points: { x: number; y: number }[]
+}
+
+export interface MapSymbol {
+  id:         string
+  icon_type:  string
+  x:          number
+  y:          number
+  scale:      number
+  rotation:   number
+  region_id?: string
+  entity_id?: string
+}
+
+export interface MapLayout {
+  regions: MapRegion[]
+  symbols: MapSymbol[]
+}
+
+export interface MapEntry {
+  id:               string
+  project_id:       string
+  parent_entity_id?: string
+  name:             string
+  map_type:         string
+  layout?:          MapLayout
+  created_at:       string
+  updated_at:       string
+}
+
 export interface WorkshopMessage {
   role:      'user' | 'assistant'
   content:   string
@@ -1079,6 +1113,23 @@ export const api = {
 
     chapterCounts: (token: string, projectId: string) =>
       request<{ chapter_id: string; open_thread_count: number }[]>('GET', `/projects/${projectId}/story-threads/chapter-counts`, undefined, token),
+  },
+
+  maps: {
+    list: (token: string, projectId: string) =>
+      request<MapEntry[]>('GET', `/projects/${projectId}/maps`, undefined, token),
+
+    create: (token: string, projectId: string, data: { name: string; map_type: string; parent_entity_id?: string }) =>
+      request<MapEntry>('POST', `/projects/${projectId}/maps`, data, token),
+
+    get: (token: string, projectId: string, mapId: string) =>
+      request<MapEntry>('GET', `/projects/${projectId}/maps/${mapId}`, undefined, token),
+
+    update: (token: string, projectId: string, mapId: string, data: { name?: string; map_type?: string; layout?: MapLayout }) =>
+      request<MapEntry>('PUT', `/projects/${projectId}/maps/${mapId}`, data, token),
+
+    delete: (token: string, projectId: string, mapId: string) =>
+      request<void>('DELETE', `/projects/${projectId}/maps/${mapId}`, undefined, token),
   },
 
   users: {
