@@ -111,7 +111,7 @@ func (s *Service) runDetection(sceneID, projectID uuid.UUID, branchName, content
 	}
 
 	type match struct {
-		entity    sqlcgen.WikiEntity
+		entity    entityRow
 		matchText string
 	}
 	var matches []match
@@ -127,7 +127,7 @@ func (s *Service) runDetection(sceneID, projectID uuid.UUID, branchName, content
 			}
 			found := re.FindString(content)
 			if found != "" {
-				matches = append(matches, match{entity: e, matchText: found})
+				matches = append(matches, match{entity: entityRow(e), matchText: found})
 				seen[e.ID] = true
 				break
 			}

@@ -2,28 +2,39 @@
 -- Entities
 -- ========================
 
+-- entityColumns: wiki_entities queries list columns explicitly rather than
+-- using * — the embedding/embedding_updated_at columns (migration 037) are
+-- NULL until the background reembed worker runs, and pgvector-go's
+-- Vector.Scan doesn't handle a SQL NULL src, so SELECT */RETURNING * break
+-- entity reads/writes for any entity without a computed embedding yet.
+-- Same convention already used in chapter_summaries.sql/research_notes.sql.
+
 -- name: CreateEntity :one
 INSERT INTO wiki_entities (project_id, parent_entity_id, type, name, summary, attributes)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING *;
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key;
 
 -- name: GetEntity :one
-SELECT * FROM wiki_entities WHERE id = $1;
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+FROM wiki_entities WHERE id = $1;
 
 -- name: ListEntitiesByProject :many
-SELECT * FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+FROM wiki_entities
 WHERE project_id = $1
   AND (sqlc.narg('type')::text IS NULL OR type = sqlc.narg('type')::text)
 ORDER BY name ASC;
 
 -- name: GetEntitiesByNames :many
-SELECT * FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+FROM wiki_entities
 WHERE project_id = sqlc.arg('project_id')
   AND LOWER(name) = ANY(sqlc.arg('names')::text[])
 ORDER BY name ASC;
 
 -- name: ListEntitiesByParent :many
-SELECT * FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+FROM wiki_entities
 WHERE parent_entity_id = $1
 ORDER BY name ASC;
 
@@ -33,28 +44,28 @@ SET name       = COALESCE(sqlc.narg('name'), name),
     summary    = COALESCE(sqlc.narg('summary'), summary),
     updated_at = now()
 WHERE id = $1
-RETURNING *;
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key;
 
 -- name: UpdateEntityAttributes :one
 UPDATE wiki_entities
 SET attributes = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING *;
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key;
 
 -- name: UpdateEntityImage :one
 UPDATE wiki_entities
 SET image_key  = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING *;
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key;
 
 -- name: ClearEntityImage :one
 UPDATE wiki_entities
 SET image_key  = NULL,
     updated_at = now()
 WHERE id = $1
-RETURNING *;
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key;
 
 -- name: DeleteEntity :exec
 DELETE FROM wiki_entities WHERE id = $1;
@@ -202,7 +213,8 @@ WHERE sem.entity_id = $1 AND sem.branch_name = $2 AND sem.suppressed = FALSE
 ORDER BY c.sort_order, s.sort_order;
 
 -- name: ListMentionedEntitiesByScene :many
-SELECT we.*
+SELECT we.id, we.project_id, we.parent_entity_id, we.type, we.name, we.summary,
+       we.attributes, we.created_at, we.updated_at, we.image_key
 FROM wiki_entities we
 JOIN scene_entity_mentions sem ON sem.entity_id = we.id
 WHERE sem.scene_id = sqlc.arg('scene_id')::uuid

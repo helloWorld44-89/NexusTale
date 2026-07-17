@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
@@ -641,7 +642,11 @@ func (s *Service) buildEntityContext(ctx context.Context, projectID, currentScen
 			BranchName: branchName,
 		})
 		if mErr == nil && len(mentionedEntities) > 0 {
-			entityLines = capAndBuildEntityLines(mentionedEntities, currentChapterIdx, totalChapters)
+			rows := make([]entityRow, len(mentionedEntities))
+			for i, e := range mentionedEntities {
+				rows[i] = entityRow(e)
+			}
+			entityLines = capAndBuildEntityLines(rows, currentChapterIdx, totalChapters)
 			sectionHeader = "## Entities in this scene\n"
 		}
 	}
@@ -665,7 +670,11 @@ func (s *Service) buildEntityContext(ctx context.Context, projectID, currentScen
 			ProjectID: projectID,
 			Names:     names,
 		})
-		entityLines = capAndBuildEntityLines(entities, currentChapterIdx, totalChapters)
+		rows := make([]entityRow, len(entities))
+		for i, e := range entities {
+			rows[i] = entityRow(e)
+		}
+		entityLines = capAndBuildEntityLines(rows, currentChapterIdx, totalChapters)
 		sectionHeader = "## Referenced entities\n"
 	}
 
@@ -681,10 +690,28 @@ func (s *Service) buildEntityContext(ctx context.Context, projectID, currentScen
 	return out.String()
 }
 
+// entityRow is the shape shared by every wiki_entities query's generated Row
+// type now that those queries list columns explicitly instead of `*` (see
+// wiki.sql — avoids the embedding-column NULL-scan bug, since embedding is
+// NULL until the background reembed worker runs and pgvector-go's
+// Vector.Scan doesn't accept a NULL src). Field order/types are identical
+// across all of them, so any such Row type converts to entityRow for free
+// via a plain type conversion at the call site.
+type entityRow struct {
+	ID             uuid.UUID
+	ProjectID      uuid.UUID
+	ParentEntityID pgtype.UUID
+	Type           string
+	Name           string
+	Summary        string
+	Attributes     json.RawMessage
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	ImageKey       pgtype.Text
+}
+
 // capAndBuildEntityLines applies per-type caps and builds context lines.
-// entities must be WikiEntity rows from either ListMentionedEntitiesByScene
-// or GetEntitiesByNames (both return sqlcgen.WikiEntity).
-func capAndBuildEntityLines(entities []sqlcgen.WikiEntity, chapterIdx, totalChapters int) []string {
+func capAndBuildEntityLines(entities []entityRow, chapterIdx, totalChapters int) []string {
 	var (
 		chars     []string
 		locations []string
@@ -728,7 +755,7 @@ type charContextAttrs struct {
 //
 // chapterIdx is 0-based index of the current chapter; totalChapters is the full count.
 // Both are used to inject an arc position hint for character entities.
-func buildEntityContextLine(e sqlcgen.WikiEntity, chapterIdx, totalChapters int) string {
+func buildEntityContextLine(e entityRow, chapterIdx, totalChapters int) string {
 	if e.Name == "" {
 		return ""
 	}
@@ -752,7 +779,7 @@ func buildEntityContextLine(e sqlcgen.WikiEntity, chapterIdx, totalChapters int)
 	}
 }
 
-func buildCharacterContextLine(e sqlcgen.WikiEntity, chapterIdx, totalChapters int) string {
+func buildCharacterContextLine(e entityRow, chapterIdx, totalChapters int) string {
 	var attrs charContextAttrs
 	if len(e.Attributes) > 0 {
 		_ = json.Unmarshal(e.Attributes, &attrs)
@@ -787,7 +814,7 @@ func buildCharacterContextLine(e sqlcgen.WikiEntity, chapterIdx, totalChapters i
 	return fmt.Sprintf("**%s** (character) — %s", e.Name, strings.Join(parts, " | "))
 }
 
-func buildLocationContextLine(e sqlcgen.WikiEntity) string {
+func buildLocationContextLine(e entityRow) string {
 	desc := truncateRunes(e.Summary, 500)
 	if desc == "" {
 		return fmt.Sprintf("**%s** (location)", e.Name)

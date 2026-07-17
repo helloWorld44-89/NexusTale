@@ -65,7 +65,7 @@ func (s *Service) CreateEntity(ctx context.Context, projectID uuid.UUID, req Cre
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("create entity: %v", err))
 	}
-	return toEntityResponse(e), nil
+	return toEntityResponse(entityRow(e)), nil
 }
 
 func (s *Service) GetEntity(ctx context.Context, id uuid.UUID) (*EntityResponse, error) {
@@ -76,7 +76,7 @@ func (s *Service) GetEntity(ctx context.Context, id uuid.UUID) (*EntityResponse,
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("get entity: %v", err))
 	}
-	return s.entityWithURL(ctx, e)
+	return s.entityWithURL(ctx, entityRow(e))
 }
 
 // ListEntities returns entities for a project, optionally filtered by type.
@@ -94,7 +94,11 @@ func (s *Service) ListEntities(ctx context.Context, projectID uuid.UUID, entityT
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("list entities: %v", err))
 	}
-	return toEntityResponses(entities), nil
+	rows := make([]entityRow, len(entities))
+	for i, e := range entities {
+		rows[i] = entityRow(e)
+	}
+	return toEntityResponses(rows), nil
 }
 
 // ListChildEntities returns all entities whose parent is the given entity ID.
@@ -104,7 +108,11 @@ func (s *Service) ListChildEntities(ctx context.Context, parentID uuid.UUID) ([]
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("list child entities: %v", err))
 	}
-	return toEntityResponses(entities), nil
+	rows := make([]entityRow, len(entities))
+	for i, e := range entities {
+		rows[i] = entityRow(e)
+	}
+	return toEntityResponses(rows), nil
 }
 
 func (s *Service) UpdateEntity(ctx context.Context, id uuid.UUID, req UpdateEntityRequest) (*EntityResponse, error) {
@@ -124,22 +132,24 @@ func (s *Service) UpdateEntity(ctx context.Context, id uuid.UUID, req UpdateEnti
 		params.Summary = pgtype.Text{String: *req.Summary, Valid: true}
 	}
 
-	e, err := s.queries.UpdateEntity(ctx, params)
+	updated, err := s.queries.UpdateEntity(ctx, params)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, apperror.NotFound("entity", id.String())
 	}
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("update entity: %v", err))
 	}
+	e := entityRow(updated)
 
 	if len(req.Attributes) > 0 {
-		e, err = s.queries.UpdateEntityAttributes(ctx, sqlcgen.UpdateEntityAttributesParams{
+		updatedAttrs, err := s.queries.UpdateEntityAttributes(ctx, sqlcgen.UpdateEntityAttributesParams{
 			ID:         id,
 			Attributes: req.Attributes,
 		})
 		if err != nil {
 			return nil, apperror.Internal(fmt.Sprintf("update entity attributes: %v", err))
 		}
+		e = entityRow(updatedAttrs)
 	}
 
 	resp, err := s.entityWithURL(ctx, e)
@@ -210,7 +220,7 @@ func (s *Service) UploadEntityImage(ctx context.Context, entityID uuid.UUID, fil
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("save image key: %v", err))
 	}
-	return s.entityWithURL(ctx, updated)
+	return s.entityWithURL(ctx, entityRow(updated))
 }
 
 // DeleteEntityImage removes the stored image from MinIO and clears the DB key.
@@ -233,7 +243,7 @@ func (s *Service) DeleteEntityImage(ctx context.Context, entityID uuid.UUID) (*E
 	if err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("clear image key: %v", err))
 	}
-	return toEntityResponse(updated), nil
+	return toEntityResponse(entityRow(updated)), nil
 }
 
 // Autolink scans text for entity name mentions and returns the matched entities.
@@ -509,9 +519,28 @@ func (s *Service) DeleteTimelineEvent(ctx context.Context, id uuid.UUID) error {
 // Converters (sqlcgen → response DTOs)
 // ========================
 
+// entityRow is the shape shared by every wiki_entities query's generated Row
+// type (CreateEntityRow, GetEntityRow, ListEntitiesByProjectRow, ...) now
+// that those queries list columns explicitly instead of using `*` (see
+// wiki.sql — avoids the embedding-column NULL-scan bug). Because the field
+// order/types are identical across all of them, any such Row type converts
+// to entityRow for free via a plain type conversion at the call site.
+type entityRow struct {
+	ID             uuid.UUID
+	ProjectID      uuid.UUID
+	ParentEntityID pgtype.UUID
+	Type           string
+	Name           string
+	Summary        string
+	Attributes     json.RawMessage
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	ImageKey       pgtype.Text
+}
+
 // toEntityResponse builds an EntityResponse without a presigned image URL.
 // Used for list operations where calling MinIO per-row would be too slow.
-func toEntityResponse(e sqlcgen.WikiEntity) *EntityResponse {
+func toEntityResponse(e entityRow) *EntityResponse {
 	resp := &EntityResponse{
 		ID:         e.ID,
 		ProjectID:  e.ProjectID,
@@ -531,7 +560,7 @@ func toEntityResponse(e sqlcgen.WikiEntity) *EntityResponse {
 
 // entityWithURL builds an EntityResponse and, if an image_key is stored,
 // calls MinIO to generate a short-lived presigned GET URL for it.
-func (s *Service) entityWithURL(ctx context.Context, e sqlcgen.WikiEntity) (*EntityResponse, error) {
+func (s *Service) entityWithURL(ctx context.Context, e entityRow) (*EntityResponse, error) {
 	resp := toEntityResponse(e)
 	if e.ImageKey.Valid && e.ImageKey.String != "" && s.store != nil {
 		url, err := s.store.PresignedGetURL(ctx, e.ImageKey.String, imageURLExpiry)
@@ -543,7 +572,7 @@ func (s *Service) entityWithURL(ctx context.Context, e sqlcgen.WikiEntity) (*Ent
 	return resp, nil
 }
 
-func toEntityResponses(rows []sqlcgen.WikiEntity) []EntityResponse {
+func toEntityResponses(rows []entityRow) []EntityResponse {
 	result := make([]EntityResponse, len(rows))
 	for i, e := range rows {
 		result[i] = *toEntityResponse(e)

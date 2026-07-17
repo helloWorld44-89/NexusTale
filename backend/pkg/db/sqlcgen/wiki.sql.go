@@ -18,12 +18,25 @@ UPDATE wiki_entities
 SET image_key  = NULL,
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
 `
 
-func (q *Queries) ClearEntityImage(ctx context.Context, id uuid.UUID) (WikiEntity, error) {
+type ClearEntityImageRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
+func (q *Queries) ClearEntityImage(ctx context.Context, id uuid.UUID) (ClearEntityImageRow, error) {
 	row := q.db.QueryRow(ctx, clearEntityImage, id)
-	var i WikiEntity
+	var i ClearEntityImageRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -35,8 +48,6 @@ func (q *Queries) ClearEntityImage(ctx context.Context, id uuid.UUID) (WikiEntit
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
-		&i.Embedding,
-		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -56,9 +67,10 @@ func (q *Queries) CountUnsuppressedMentionsByEntity(ctx context.Context, entityI
 
 const createEntity = `-- name: CreateEntity :one
 
+
 INSERT INTO wiki_entities (project_id, parent_entity_id, type, name, summary, attributes)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
 `
 
 type CreateEntityParams struct {
@@ -70,10 +82,29 @@ type CreateEntityParams struct {
 	Attributes     json.RawMessage `json:"attributes"`
 }
 
+type CreateEntityRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
 // ========================
 // Entities
 // ========================
-func (q *Queries) CreateEntity(ctx context.Context, arg CreateEntityParams) (WikiEntity, error) {
+// entityColumns: wiki_entities queries list columns explicitly rather than
+// using * — the embedding/embedding_updated_at columns (migration 037) are
+// NULL until the background reembed worker runs, and pgvector-go's
+// Vector.Scan doesn't handle a SQL NULL src, so SELECT */RETURNING * break
+// entity reads/writes for any entity without a computed embedding yet.
+// Same convention already used in chapter_summaries.sql/research_notes.sql.
+func (q *Queries) CreateEntity(ctx context.Context, arg CreateEntityParams) (CreateEntityRow, error) {
 	row := q.db.QueryRow(ctx, createEntity,
 		arg.ProjectID,
 		arg.ParentEntityID,
@@ -82,7 +113,7 @@ func (q *Queries) CreateEntity(ctx context.Context, arg CreateEntityParams) (Wik
 		arg.Summary,
 		arg.Attributes,
 	)
-	var i WikiEntity
+	var i CreateEntityRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -94,8 +125,6 @@ func (q *Queries) CreateEntity(ctx context.Context, arg CreateEntityParams) (Wik
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
-		&i.Embedding,
-		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -296,7 +325,8 @@ func (q *Queries) DeleteTimelineEvent(ctx context.Context, id uuid.UUID) error {
 }
 
 const getEntitiesByNames = `-- name: GetEntitiesByNames :many
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+FROM wiki_entities
 WHERE project_id = $1
   AND LOWER(name) = ANY($2::text[])
 ORDER BY name ASC
@@ -307,15 +337,28 @@ type GetEntitiesByNamesParams struct {
 	Names     []string  `json:"names"`
 }
 
-func (q *Queries) GetEntitiesByNames(ctx context.Context, arg GetEntitiesByNamesParams) ([]WikiEntity, error) {
+type GetEntitiesByNamesRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
+func (q *Queries) GetEntitiesByNames(ctx context.Context, arg GetEntitiesByNamesParams) ([]GetEntitiesByNamesRow, error) {
 	rows, err := q.db.Query(ctx, getEntitiesByNames, arg.ProjectID, arg.Names)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WikiEntity{}
+	items := []GetEntitiesByNamesRow{}
 	for rows.Next() {
-		var i WikiEntity
+		var i GetEntitiesByNamesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
@@ -327,8 +370,6 @@ func (q *Queries) GetEntitiesByNames(ctx context.Context, arg GetEntitiesByNames
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ImageKey,
-			&i.Embedding,
-			&i.EmbeddingUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -341,12 +382,26 @@ func (q *Queries) GetEntitiesByNames(ctx context.Context, arg GetEntitiesByNames
 }
 
 const getEntity = `-- name: GetEntity :one
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at FROM wiki_entities WHERE id = $1
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+FROM wiki_entities WHERE id = $1
 `
 
-func (q *Queries) GetEntity(ctx context.Context, id uuid.UUID) (WikiEntity, error) {
+type GetEntityRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
+func (q *Queries) GetEntity(ctx context.Context, id uuid.UUID) (GetEntityRow, error) {
 	row := q.db.QueryRow(ctx, getEntity, id)
-	var i WikiEntity
+	var i GetEntityRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -358,8 +413,6 @@ func (q *Queries) GetEntity(ctx context.Context, id uuid.UUID) (WikiEntity, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
-		&i.Embedding,
-		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -430,20 +483,34 @@ func (q *Queries) GetTimelineEvent(ctx context.Context, id uuid.UUID) (WikiTimel
 }
 
 const listEntitiesByParent = `-- name: ListEntitiesByParent :many
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+FROM wiki_entities
 WHERE parent_entity_id = $1
 ORDER BY name ASC
 `
 
-func (q *Queries) ListEntitiesByParent(ctx context.Context, parentEntityID pgtype.UUID) ([]WikiEntity, error) {
+type ListEntitiesByParentRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
+func (q *Queries) ListEntitiesByParent(ctx context.Context, parentEntityID pgtype.UUID) ([]ListEntitiesByParentRow, error) {
 	rows, err := q.db.Query(ctx, listEntitiesByParent, parentEntityID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WikiEntity{}
+	items := []ListEntitiesByParentRow{}
 	for rows.Next() {
-		var i WikiEntity
+		var i ListEntitiesByParentRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
@@ -455,8 +522,6 @@ func (q *Queries) ListEntitiesByParent(ctx context.Context, parentEntityID pgtyp
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ImageKey,
-			&i.Embedding,
-			&i.EmbeddingUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -469,7 +534,8 @@ func (q *Queries) ListEntitiesByParent(ctx context.Context, parentEntityID pgtyp
 }
 
 const listEntitiesByProject = `-- name: ListEntitiesByProject :many
-SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at FROM wiki_entities
+SELECT id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
+FROM wiki_entities
 WHERE project_id = $1
   AND ($2::text IS NULL OR type = $2::text)
 ORDER BY name ASC
@@ -480,15 +546,28 @@ type ListEntitiesByProjectParams struct {
 	Type      pgtype.Text `json:"type"`
 }
 
-func (q *Queries) ListEntitiesByProject(ctx context.Context, arg ListEntitiesByProjectParams) ([]WikiEntity, error) {
+type ListEntitiesByProjectRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
+func (q *Queries) ListEntitiesByProject(ctx context.Context, arg ListEntitiesByProjectParams) ([]ListEntitiesByProjectRow, error) {
 	rows, err := q.db.Query(ctx, listEntitiesByProject, arg.ProjectID, arg.Type)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WikiEntity{}
+	items := []ListEntitiesByProjectRow{}
 	for rows.Next() {
-		var i WikiEntity
+		var i ListEntitiesByProjectRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
@@ -500,8 +579,6 @@ func (q *Queries) ListEntitiesByProject(ctx context.Context, arg ListEntitiesByP
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ImageKey,
-			&i.Embedding,
-			&i.EmbeddingUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -593,7 +670,8 @@ func (q *Queries) ListMagicRulesForContext(ctx context.Context, projectID uuid.U
 }
 
 const listMentionedEntitiesByScene = `-- name: ListMentionedEntitiesByScene :many
-SELECT we.id, we.project_id, we.parent_entity_id, we.type, we.name, we.summary, we.attributes, we.created_at, we.updated_at, we.image_key, we.embedding, we.embedding_updated_at
+SELECT we.id, we.project_id, we.parent_entity_id, we.type, we.name, we.summary,
+       we.attributes, we.created_at, we.updated_at, we.image_key
 FROM wiki_entities we
 JOIN scene_entity_mentions sem ON sem.entity_id = we.id
 WHERE sem.scene_id = $1::uuid
@@ -607,15 +685,28 @@ type ListMentionedEntitiesBySceneParams struct {
 	BranchName string    `json:"branch_name"`
 }
 
-func (q *Queries) ListMentionedEntitiesByScene(ctx context.Context, arg ListMentionedEntitiesBySceneParams) ([]WikiEntity, error) {
+type ListMentionedEntitiesBySceneRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
+func (q *Queries) ListMentionedEntitiesByScene(ctx context.Context, arg ListMentionedEntitiesBySceneParams) ([]ListMentionedEntitiesBySceneRow, error) {
 	rows, err := q.db.Query(ctx, listMentionedEntitiesByScene, arg.SceneID, arg.BranchName)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WikiEntity{}
+	items := []ListMentionedEntitiesBySceneRow{}
 	for rows.Next() {
-		var i WikiEntity
+		var i ListMentionedEntitiesBySceneRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
@@ -627,8 +718,6 @@ func (q *Queries) ListMentionedEntitiesByScene(ctx context.Context, arg ListMent
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ImageKey,
-			&i.Embedding,
-			&i.EmbeddingUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -929,7 +1018,7 @@ SET name       = COALESCE($2, name),
     summary    = COALESCE($3, summary),
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
 `
 
 type UpdateEntityParams struct {
@@ -938,9 +1027,22 @@ type UpdateEntityParams struct {
 	Summary pgtype.Text `json:"summary"`
 }
 
-func (q *Queries) UpdateEntity(ctx context.Context, arg UpdateEntityParams) (WikiEntity, error) {
+type UpdateEntityRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
+func (q *Queries) UpdateEntity(ctx context.Context, arg UpdateEntityParams) (UpdateEntityRow, error) {
 	row := q.db.QueryRow(ctx, updateEntity, arg.ID, arg.Name, arg.Summary)
-	var i WikiEntity
+	var i UpdateEntityRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -952,8 +1054,6 @@ func (q *Queries) UpdateEntity(ctx context.Context, arg UpdateEntityParams) (Wik
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
-		&i.Embedding,
-		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -963,7 +1063,7 @@ UPDATE wiki_entities
 SET attributes = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
 `
 
 type UpdateEntityAttributesParams struct {
@@ -971,9 +1071,22 @@ type UpdateEntityAttributesParams struct {
 	Attributes json.RawMessage `json:"attributes"`
 }
 
-func (q *Queries) UpdateEntityAttributes(ctx context.Context, arg UpdateEntityAttributesParams) (WikiEntity, error) {
+type UpdateEntityAttributesRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
+func (q *Queries) UpdateEntityAttributes(ctx context.Context, arg UpdateEntityAttributesParams) (UpdateEntityAttributesRow, error) {
 	row := q.db.QueryRow(ctx, updateEntityAttributes, arg.ID, arg.Attributes)
-	var i WikiEntity
+	var i UpdateEntityAttributesRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -985,8 +1098,6 @@ func (q *Queries) UpdateEntityAttributes(ctx context.Context, arg UpdateEntityAt
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
-		&i.Embedding,
-		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
@@ -996,7 +1107,7 @@ UPDATE wiki_entities
 SET image_key  = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key, embedding, embedding_updated_at
+RETURNING id, project_id, parent_entity_id, type, name, summary, attributes, created_at, updated_at, image_key
 `
 
 type UpdateEntityImageParams struct {
@@ -1004,9 +1115,22 @@ type UpdateEntityImageParams struct {
 	ImageKey pgtype.Text `json:"image_key"`
 }
 
-func (q *Queries) UpdateEntityImage(ctx context.Context, arg UpdateEntityImageParams) (WikiEntity, error) {
+type UpdateEntityImageRow struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	ParentEntityID pgtype.UUID        `json:"parent_entity_id"`
+	Type           string             `json:"type"`
+	Name           string             `json:"name"`
+	Summary        string             `json:"summary"`
+	Attributes     json.RawMessage    `json:"attributes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ImageKey       pgtype.Text        `json:"image_key"`
+}
+
+func (q *Queries) UpdateEntityImage(ctx context.Context, arg UpdateEntityImageParams) (UpdateEntityImageRow, error) {
 	row := q.db.QueryRow(ctx, updateEntityImage, arg.ID, arg.ImageKey)
-	var i WikiEntity
+	var i UpdateEntityImageRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -1018,8 +1142,6 @@ func (q *Queries) UpdateEntityImage(ctx context.Context, arg UpdateEntityImagePa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ImageKey,
-		&i.Embedding,
-		&i.EmbeddingUpdatedAt,
 	)
 	return i, err
 }
