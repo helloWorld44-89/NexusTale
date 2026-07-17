@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jconder44/nexustale/internal/ai/adapters"
@@ -23,13 +24,22 @@ func (s *Service) imageProviderForUser(ctx context.Context, userID uuid.UUID) st
 	return defaultImageProvider
 }
 
+// artStyleExcerptRunes caps how much of the project's AI Bible is folded into
+// an image prompt — the Bible is prose-oriented and often long; only a short
+// excerpt is needed as a visual style hint, not the full narrative brief.
+const artStyleExcerptRunes = 300
+
 // buildPortraitPrompt builds an image-generation prompt from an entity's
 // existing wiki data plus optional free-text guidance from the writer. This
 // is deliberately separate from buildEntityContextLine/buildCharacterContextLine
 // in context.go — those are tuned for prose context injection, not visual
 // description, and entities without appearance-relevant summaries would
 // produce weak image prompts if reused as-is.
-func buildPortraitPrompt(e entityRow, userPrompt string) string {
+//
+// Structured character attributes take priority over the generic summary:
+// they're specific, writer-curated fields, whereas summary is often narrative
+// prose that describes plot role more than physical appearance.
+func buildPortraitPrompt(e entityRow, userPrompt, artStyle string) string {
 	desc := fmt.Sprintf("A detailed portrait of %s, a %s.", e.Name, e.Type)
 
 	if e.Type == "character" {
@@ -40,10 +50,17 @@ func buildPortraitPrompt(e entityRow, userPrompt string) string {
 		if attrs.Motivation != "" {
 			desc += " " + attrs.Motivation
 		}
+		if attrs.CapabilityNotes != "" {
+			desc += " " + attrs.CapabilityNotes
+		}
 	}
 
 	if e.Summary != "" {
 		desc += " " + truncateRunes(e.Summary, 500)
+	}
+
+	if artStyle != "" {
+		desc += "\n\nVisual style guidance: " + truncateRunes(artStyle, artStyleExcerptRunes)
 	}
 
 	if userPrompt != "" {
@@ -76,7 +93,11 @@ func (s *Service) GenerateEntityPortrait(ctx context.Context, userID, projectID,
 
 	finalPrompt := prompt
 	if referenceImage == nil {
-		finalPrompt = buildPortraitPrompt(e, prompt)
+		var artStyle string
+		if proj, err := s.queries.GetProject(ctx, projectID); err == nil {
+			artStyle = strings.TrimSpace(proj.AiInstructions)
+		}
+		finalPrompt = buildPortraitPrompt(e, prompt, artStyle)
 	}
 
 	provider := s.imageProviderForUser(ctx, userID)
