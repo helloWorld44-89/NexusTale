@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -451,33 +452,23 @@ func pingOpenRouter(ctx context.Context, key string) ([]string, error) {
 		return nil, fmt.Errorf("unexpected OpenRouter response: %w", err)
 	}
 
-	// Return a curated set of popular models so the picker stays usable.
-	priority := []string{
-		"anthropic/claude-3-5-haiku",
-		"anthropic/claude-3-5-sonnet",
-		"openai/gpt-4o-mini",
-		"openai/gpt-4o",
-		"google/gemini-flash-1.5",
-		"google/gemini-pro-1.5",
-		"meta-llama/llama-3.1-8b-instruct",
-		"mistralai/mistral-7b-instruct",
-	}
-	available := map[string]bool{}
+	// Return the full catalog, free-tier (":free") models first, so the
+	// picker doesn't silently hide models the user can actually select —
+	// the previous curated whitelist only listed paid IDs and excluded
+	// every free model.
+	models := make([]string, 0, len(body.Data))
 	for _, m := range body.Data {
-		available[m.ID] = true
+		models = append(models, m.ID)
 	}
-	keep := []string{}
-	for _, p := range priority {
-		if available[p] {
-			keep = append(keep, p)
+	sort.Slice(models, func(i, j int) bool {
+		iFree := strings.HasSuffix(models[i], ":free")
+		jFree := strings.HasSuffix(models[j], ":free")
+		if iFree != jFree {
+			return iFree
 		}
-	}
-	if len(keep) == 0 {
-		for _, m := range body.Data {
-			keep = append(keep, m.ID)
-		}
-	}
-	return keep, nil
+		return models[i] < models[j]
+	})
+	return models, nil
 }
 
 func pingAnthropic(ctx context.Context, key string) ([]string, error) {

@@ -102,6 +102,10 @@ export default function Settings() {
   const [orBgModelSaving, setOrBgModelSaving] = useState(false)
   const [orBgModelOk,     setOrBgModelOk]     = useState(false)
   const [orBgModelErr,    setOrBgModelErr]    = useState<string | null>(null)
+  const [orModelCustom,   setOrModelCustom]   = useState('')
+  const [orBgModelCustom, setOrBgModelCustom] = useState('')
+  const [orModelSearch,   setOrModelSearch]   = useState('')
+  const [orBgModelSearch, setOrBgModelSearch] = useState('')
 
   // Gemini model selection state
   const [geminiModelSaving, setGeminiModelSaving] = useState(false)
@@ -494,6 +498,10 @@ export default function Settings() {
           const orBgKey    = keys.find((k) => k.provider === 'openrouter_background_model')
           const ts         = testStates['openrouter']
           const modelList  = ts?.result?.ok ? (ts.result.models ?? []) : []
+          const orModelQuery   = orModelSearch.trim().toLowerCase()
+          const orModelFiltered   = orModelQuery   ? modelList.filter((m) => m.toLowerCase().includes(orModelQuery))   : modelList
+          const orBgModelQuery = orBgModelSearch.trim().toLowerCase()
+          const orBgModelFiltered = orBgModelQuery ? modelList.filter((m) => m.toLowerCase().includes(orBgModelQuery)) : modelList
           return (
             <section>
               <h2 className="text-lg font-semibold text-brand-text mb-1">OpenRouter</h2>
@@ -547,17 +555,43 @@ export default function Settings() {
                           </p>
                           {orModelErr && <p className="text-red-400 mb-1">{orModelErr}</p>}
                           {orModelOk  && <p className="text-emerald-400 mb-1">Quality model saved.</p>}
+                          <input
+                            type="text"
+                            value={orModelSearch}
+                            onChange={(e) => setOrModelSearch(e.target.value)}
+                            placeholder={`Search ${modelList.length} models…`}
+                            className="w-full mb-1 bg-brand-bg border border-brand-border rounded px-2 py-1 text-xs font-mono text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-cyan/50"
+                          />
                           <div className="space-y-0.5 max-h-48 overflow-y-auto">
-                            {modelList.map((m) => (
+                            {orModelFiltered.map((m) => (
                               <button
                                 key={m}
                                 onClick={() => handleSetOpenRouterModel(m)}
                                 disabled={orModelSaving}
-                                className={`block w-full text-left font-mono hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50 ${orModelKey?.key_hint && m.endsWith(orModelKey.key_hint) ? 'text-brand-purple' : 'text-brand-text'}`}
+                                className={`block w-full text-left font-mono hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50 ${orModelKey?.key_hint && m.endsWith(orModelKey.key_hint) ? 'text-brand-purple' : 'text-brand-text'} ${m.endsWith(':free') ? 'after:content-["_free"] after:text-emerald-400 after:font-sans after:text-[10px]' : ''}`}
                               >
                                 {m}
                               </button>
                             ))}
+                            {orModelFiltered.length === 0 && (
+                              <p className="text-brand-text-muted px-2 py-1">No models match "{orModelSearch}".</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
+                            <input
+                              type="text"
+                              value={orModelCustom}
+                              onChange={(e) => setOrModelCustom(e.target.value)}
+                              placeholder="or type any model id, e.g. meta-llama/llama-3.1-8b-instruct:free"
+                              className="flex-1 bg-brand-bg border border-brand-border rounded px-2 py-1 text-xs font-mono text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-cyan/50"
+                            />
+                            <button
+                              onClick={() => { if (orModelCustom.trim()) { handleSetOpenRouterModel(orModelCustom.trim()); setOrModelCustom('') } }}
+                              disabled={orModelSaving || !orModelCustom.trim()}
+                              className="text-xs text-brand-cyan hover:text-brand-cyan/80 border border-brand-cyan/30 hover:border-brand-cyan/60 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                            >
+                              Use
+                            </button>
                           </div>
                         </div>
 
@@ -578,17 +612,43 @@ export default function Settings() {
                           </p>
                           {orBgModelErr && <p className="text-red-400 mb-1">{orBgModelErr}</p>}
                           {orBgModelOk  && <p className="text-emerald-400 mb-1">Background model saved.</p>}
+                          <input
+                            type="text"
+                            value={orBgModelSearch}
+                            onChange={(e) => setOrBgModelSearch(e.target.value)}
+                            placeholder={`Search ${modelList.length} models…`}
+                            className="w-full mb-1 bg-brand-bg border border-brand-border rounded px-2 py-1 text-xs font-mono text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-cyan/50"
+                          />
                           <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                            {modelList.map((m) => (
+                            {orBgModelFiltered.map((m) => (
                               <button
                                 key={m}
                                 onClick={() => handleSetOpenRouterBackgroundModel(m)}
                                 disabled={orBgModelSaving}
-                                className={`block w-full text-left font-mono hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50 ${orBgKey?.key_hint && m.endsWith(orBgKey.key_hint) ? 'text-brand-cyan/70' : 'text-brand-muted'}`}
+                                className={`block w-full text-left font-mono hover:text-brand-cyan hover:bg-brand-cyan/5 px-2 py-1 rounded transition-colors disabled:opacity-50 ${orBgKey?.key_hint && m.endsWith(orBgKey.key_hint) ? 'text-brand-cyan/70' : 'text-brand-muted'} ${m.endsWith(':free') ? 'after:content-["_free"] after:text-emerald-400 after:font-sans after:text-[10px]' : ''}`}
                               >
                                 {m}
                               </button>
                             ))}
+                            {orBgModelFiltered.length === 0 && (
+                              <p className="text-brand-text-muted px-2 py-1">No models match "{orBgModelSearch}".</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
+                            <input
+                              type="text"
+                              value={orBgModelCustom}
+                              onChange={(e) => setOrBgModelCustom(e.target.value)}
+                              placeholder="or type any model id, e.g. meta-llama/llama-3.1-8b-instruct:free"
+                              className="flex-1 bg-brand-bg border border-brand-border rounded px-2 py-1 text-xs font-mono text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-cyan/50"
+                            />
+                            <button
+                              onClick={() => { if (orBgModelCustom.trim()) { handleSetOpenRouterBackgroundModel(orBgModelCustom.trim()); setOrBgModelCustom('') } }}
+                              disabled={orBgModelSaving || !orBgModelCustom.trim()}
+                              className="text-xs text-brand-cyan hover:text-brand-cyan/80 border border-brand-cyan/30 hover:border-brand-cyan/60 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                            >
+                              Use
+                            </button>
                           </div>
                         </div>
                       </div>

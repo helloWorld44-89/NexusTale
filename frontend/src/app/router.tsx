@@ -21,10 +21,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
 }
 
+// Alpha/marketing landing page is kept at /welcome for later reuse, but is
+// no longer the default "/" route — self-hosted instances go straight to
+// login/dashboard instead.
+function RootRedirect() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />
+}
+
 export function AppRouter() {
   return (
     <Routes>
-      <Route path="/"         element={<Landing />} />
+      <Route path="/"         element={<RootRedirect />} />
+      <Route path="/welcome"  element={<Landing />} />
       <Route path="/login"    element={<Login />} />
       <Route path="/register" element={<Register />} />
 
