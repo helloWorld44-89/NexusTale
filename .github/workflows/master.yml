@@ -1,7 +1,7 @@
-name: Alpha CI/CD
+name: Master CI/CD
 
 # Builds and pushes container images to GHCR on every push to master.
-# No deploy step — images are tagged :alpha and :<sha> for manual/other promotion.
+# No deploy step — images are tagged :master and :<sha> for manual/other promotion.
 # Trigger: push to master, or manually via Actions → "Run workflow".
 
 on:
@@ -79,10 +79,10 @@ jobs:
           docker build \
             --build-arg APP_VERSION=${{ env.APP_VERSION }} \
             -f infra/docker/Dockerfile.api \
-            -t ghcr.io/helloworld44-89/nexustale/api:alpha \
+            -t ghcr.io/helloworld44-89/nexustale/api:master \
             -t ghcr.io/helloworld44-89/nexustale/api:${{ github.sha }} \
             .
-          docker push ghcr.io/helloworld44-89/nexustale/api:alpha
+          docker push ghcr.io/helloworld44-89/nexustale/api:master
           docker push ghcr.io/helloworld44-89/nexustale/api:${{ github.sha }}
 
       - name: Build and push frontend image
@@ -90,8 +90,8 @@ jobs:
           docker build \
             --build-arg APP_VERSION=${{ env.APP_VERSION }} \
             -f infra/docker/Dockerfile.frontend \
-            -t ghcr.io/helloworld44-89/nexustale/frontend:alpha \
+            -t ghcr.io/helloworld44-89/nexustale/frontend:master \
             -t ghcr.io/helloworld44-89/nexustale/frontend:${{ github.sha }} \
             .
-          docker push ghcr.io/helloworld44-89/nexustale/frontend:alpha
+          docker push ghcr.io/helloworld44-89/nexustale/frontend:master
           docker push ghcr.io/helloworld44-89/nexustale/frontend:${{ github.sha }}

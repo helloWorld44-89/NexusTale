@@ -236,7 +236,7 @@ tags:
 
 - `dev.yml` (push to `dev`, self-hosted runner) → `:dev` + `:<sha>`, then
   auto-deploys to the maintainer's dev VM
-- `alpha.yml` (push to `master`) → `:alpha` + `:<sha>`, build-and-push only,
+- `master.yml` (push to `master`) → `:master` + `:<sha>`, build-and-push only,
   no auto-deploy
 - `release.yml` (push tag `vX.Y.Z`) → `:vX.Y.Z` + `:latest` — this is what
   self-hosters pin `NEXUSTALE_VERSION` to for reproducible upgrades

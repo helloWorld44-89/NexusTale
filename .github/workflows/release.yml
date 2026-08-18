@@ -2,7 +2,7 @@ name: Release
 
 # Builds and pushes versioned container images to GHCR when a semver tag
 # (vX.Y.Z) is pushed. This is the image self-hosters pin NEXUSTALE_VERSION
-# to — distinct from the floating :alpha/:dev tags used for internal testing.
+# to — distinct from the floating :master/:dev tags used for internal testing.
 # Trigger: git tag vX.Y.Z && git push origin vX.Y.Z
 
 on:
