@@ -220,9 +220,14 @@ type ToolEvent struct {
 	// CreatedID + CreatedType identify what was made; ParentID and ProjectID
 	// are routing context so the frontend can call the right DELETE endpoint.
 	CreatedID   string `json:"created_id,omitempty"`
-	CreatedType string `json:"created_type,omitempty"` // "scene"|"chapter"|"act"|"wiki_entity"|"wiki_relationship"
+	CreatedType string `json:"created_type,omitempty"` // "scene"|"chapter"|"act"|"wiki_entity"|"wiki_relationship"|"map_region"|"map_symbol"
 	ActID       string `json:"act_id,omitempty"`        // for chapter delete: /projects/:pid/acts/:aid/chapters/:cid
 	ProjectID   string `json:"project_id,omitempty"`    // for act/chapter/wiki delete
+
+	// Map tool ops (D-Map M3). Every mutating map tool snapshots the full
+	// layout beforehand — undo is a full-layout PUT, not a per-field revert.
+	MapID        string `json:"map_id,omitempty"`
+	BeforeLayout string `json:"before_layout,omitempty"`
 }
 
 // executeToolCall dispatches a single tool invocation and returns both the

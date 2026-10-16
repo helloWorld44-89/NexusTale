@@ -9,7 +9,7 @@ import { useParams, Link } from 'react-router-dom'
 import { Stage, Layer, Line, Group, Circle, Ellipse, Rect, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import { api } from '@/services/api'
-import type { MapEntry, MapRegion, MapSymbol, WikiEntity } from '@/services/api'
+import type { MapEntry, MapLayout, MapRegion, MapSymbol, ToolCallEvent, WikiEntity } from '@/services/api'
 import { paletteForMapType, REGION_COLORS } from '@/components/maps/palette'
 import { MapIcon } from '@/components/maps/MapIcons'
 import { useAuthStore } from '@/app/store/authStore'
@@ -55,6 +55,8 @@ export default function MapStudio() {
   const [pendingIcon, setPendingIcon] = useState<string | null>(null)
   const [selectedSymbolId, setSelectedSymbolId] = useState<string | null>(null)
 
+  const [aiOpen, setAiOpen] = useState(false)
+
   const stageRef = useRef<Konva.Stage>(null)
   const trRef = useRef<Konva.Transformer>(null)
   const nodeRefs = useRef<Map<string, Konva.Group>>(new Map())
@@ -83,6 +85,32 @@ export default function MapStudio() {
   }, [selectedSymbolId, symbols.length])
 
   const palette = paletteForMapType(map?.map_type ?? 'world')
+
+  // Re-fetch the map after an AI tool call writes directly to git — the
+  // agent's edits bypass local draft state entirely, so the canvas (and any
+  // subsequent manual Save) must pick up the persisted layout or a manual
+  // save would clobber what the AI just wrote.
+  const refreshLayout = useCallback(async () => {
+    if (!projectId || !mapId) return
+    const m = await api.maps.get(token, projectId, mapId)
+    setMap(m)
+    setRegions(m.layout?.regions ?? [])
+    setSymbols(m.layout?.symbols ?? [])
+  }, [token, projectId, mapId])
+
+  const undoMapTool = useCallback(async (beforeLayout: string) => {
+    if (!projectId || !mapId) return
+    let layout: MapLayout
+    try {
+      layout = JSON.parse(beforeLayout) as MapLayout
+    } catch {
+      return
+    }
+    const updated = await api.maps.update(token, projectId, mapId, { layout })
+    setMap(updated)
+    setRegions(updated.layout?.regions ?? [])
+    setSymbols(updated.layout?.symbols ?? [])
+  }, [token, projectId, mapId])
 
   const handleSave = async () => {
     if (!projectId || !mapId) return
@@ -234,6 +262,16 @@ export default function MapStudio() {
         {saveOk && <span className="text-xs text-emerald-400">Saved.</span>}
         {error && <span className="text-xs text-red-400">{error}</span>}
         <button
+          onClick={() => setAiOpen((v) => !v)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+            aiOpen
+              ? 'border-brand-cyan/40 text-brand-cyan bg-brand-cyan/10'
+              : 'border-brand-border text-brand-muted hover:text-brand-text'
+          }`}
+        >
+          Nexus
+        </button>
+        <button
           onClick={handleSave}
           disabled={saving || loading}
           className="px-3 py-1.5 rounded-lg bg-brand-gradient text-brand-bg text-xs font-semibold disabled:opacity-50"
@@ -368,6 +406,17 @@ export default function MapStudio() {
               </Stage>
             </div>
           </div>
+
+          {aiOpen && (
+            <MapChatPanel
+              projectId={projectId}
+              mapId={mapId}
+              token={token}
+              onToolApplied={refreshLayout}
+              onUndo={undoMapTool}
+              onClose={() => setAiOpen(false)}
+            />
+          )}
         </div>
       )}
 
@@ -537,5 +586,142 @@ function BackIcon() {
     <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 15l-5-5 5-5" />
     </svg>
+  )
+}
+
+// ── Nexus map agent chat panel (D-Map M3) ───────────────────────────────────
+// No session persistence — reload loses the conversation, same as an
+// unsaved layout edit. Every tool call the AI makes writes straight to git
+// (via MapTools on the backend), so onToolApplied re-fetches the layout
+// into MapStudio's draft state after each one.
+
+type ChatTurn = { role: 'user' | 'assistant'; content: string }
+type ToolLogEntry = ToolCallEvent & { id: string }
+
+function MapChatPanel({
+  projectId, mapId, token, onToolApplied, onUndo, onClose,
+}: {
+  projectId: string
+  mapId: string
+  token: string
+  onToolApplied: () => Promise<void>
+  onUndo: (beforeLayout: string) => Promise<void>
+  onClose: () => void
+}) {
+  const [turns, setTurns] = useState<ChatTurn[]>([])
+  const [input, setInput] = useState('')
+  const [streaming, setStreaming] = useState(false)
+  const [planningRound, setPlanningRound] = useState<number | null>(null)
+  const [toolLog, setToolLog] = useState<ToolLogEntry[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => abortRef.current?.abort(), [])
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || streaming) return
+
+    const next = [...turns, { role: 'user' as const, content: text }]
+    setTurns([...next, { role: 'assistant', content: '' }])
+    setInput('')
+    setStreaming(true)
+    setPlanningRound(null)
+    setError(null)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    try {
+      await api.maps.streamChat(
+        token,
+        projectId,
+        mapId,
+        next,
+        (delta) => {
+          setTurns((prev) => {
+            const copy = [...prev]
+            const last = copy[copy.length - 1]
+            copy[copy.length - 1] = { ...last, content: last.content + delta }
+            return copy
+          })
+        },
+        controller.signal,
+        (evt) => {
+          setToolLog((prev) => [...prev, { ...evt, id: crypto.randomUUID() }])
+          void onToolApplied()
+        },
+        (round) => setPlanningRound(round),
+      )
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name !== 'AbortError') setError(e.message)
+    } finally {
+      setStreaming(false)
+      setPlanningRound(null)
+      abortRef.current = null
+    }
+  }
+
+  return (
+    <div className="w-72 shrink-0 border-l border-brand-border bg-brand-bg-card flex flex-col overflow-hidden">
+      <div className="h-9 shrink-0 flex items-center justify-between px-3 border-b border-brand-border">
+        <span className="text-xs font-semibold text-brand-text">Nexus — Map Assistant</span>
+        <button onClick={onClose} className="text-brand-muted hover:text-brand-text text-xs">×</button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {turns.length === 0 && (
+          <p className="text-xs text-brand-muted">
+            Ask Nexus to add regions or symbols — e.g. "add a mountain range along the north border
+            and drop three city icons along the coast."
+          </p>
+        )}
+        {turns.map((t, i) => (
+          <div key={i} className={t.role === 'user' ? 'text-right' : ''}>
+            <div
+              className={`inline-block max-w-full text-xs rounded-lg px-2.5 py-1.5 whitespace-pre-wrap text-left ${
+                t.role === 'user'
+                  ? 'bg-brand-cyan/10 text-brand-cyan'
+                  : 'bg-brand-bg text-brand-text border border-brand-border'
+              }`}
+            >
+              {t.content || (streaming && i === turns.length - 1 ? '…' : '')}
+            </div>
+          </div>
+        ))}
+        {planningRound != null && (
+          <p className="text-[10px] text-brand-muted italic">Nexus is planning (round {planningRound})…</p>
+        )}
+        {toolLog.map((evt) => (
+          <div key={evt.id} className="text-[10px] border border-brand-border rounded px-2 py-1 flex items-center justify-between gap-2">
+            <span className={evt.is_error ? 'text-red-400' : 'text-brand-muted'}>{evt.tool}</span>
+            {evt.before_layout && !evt.is_error && (
+              <button onClick={() => void onUndo(evt.before_layout!)} className="text-brand-cyan hover:underline shrink-0">
+                Undo
+              </button>
+            )}
+          </div>
+        ))}
+        {error && <p className="text-[10px] text-red-400">{error}</p>}
+      </div>
+
+      <div className="shrink-0 p-2.5 border-t border-brand-border flex gap-1.5">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
+          placeholder="Ask Nexus to edit the map…"
+          disabled={streaming}
+          className="input-field flex-1 text-xs"
+        />
+        <button
+          onClick={() => void send()}
+          disabled={streaming || !input.trim()}
+          className="px-2.5 py-1.5 rounded-lg bg-brand-gradient text-brand-bg text-xs font-semibold disabled:opacity-50"
+        >
+          Send
+        </button>
+      </div>
+    </div>
   )
 }

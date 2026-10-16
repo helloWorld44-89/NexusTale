@@ -201,9 +201,13 @@ export interface ToolCallEvent {
   before_content?: string
   // Create ops (create_scene, create_chapter, create_act)
   created_id?:    string
-  created_type?:  'scene' | 'chapter' | 'act' | 'wiki_entity' | 'wiki_relationship'
+  created_type?:  'scene' | 'chapter' | 'act' | 'wiki_entity' | 'wiki_relationship' | 'map_region' | 'map_symbol'
   act_id?:        string   // for chapter delete endpoint
   project_id?:    string   // for act/chapter delete endpoints
+  // Map tool ops (D-Map M3) — every mutating map tool snapshots the full
+  // layout beforehand, so undo is a full-layout PUT rather than a per-field revert.
+  map_id?:        string
+  before_layout?: string
 }
 
 export interface ContextPin {
@@ -1130,6 +1134,75 @@ export const api = {
 
     delete: (token: string, projectId: string, mapId: string) =>
       request<void>('DELETE', `/projects/${projectId}/maps/${mapId}`, undefined, token),
+
+    /**
+     * Stream a map-scoped agent chat response as SSE (D-Map M3).
+     * The AI may call MapTools (add/update/remove region & symbol) on this
+     * map before replying — same planning/tool-event/delta protocol as
+     * workshop.streamChat, so it reuses the same parsing loop.
+     */
+    streamChat: async (
+      token: string,
+      projectId: string,
+      mapId: string,
+      messages: { role: string; content: string }[],
+      onDelta: (text: string) => void,
+      signal?: AbortSignal,
+      onToolCall?: (event: ToolCallEvent) => void,
+      onAgentPlanning?: (round: number) => void,
+      maxRounds?: number,
+    ): Promise<void> => {
+      const res = await fetch(apiUrl(`/projects/${projectId}/maps/${mapId}/ai/chat`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          messages,
+          max_rounds: maxRounds ?? 0,
+        }),
+        signal,
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { message?: string }).message ?? `AI error ${res.status}`)
+      }
+
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let buf = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const payload = line.slice(6)
+          if (payload === '[DONE]') return
+          let evt: { delta?: string; error?: string }
+          try {
+            evt = JSON.parse(payload) as { delta?: string; error?: string }
+          } catch {
+            continue
+          }
+          if (evt.error) throw new Error(evt.error)
+          if (evt.delta) onDelta(evt.delta)
+          if ((evt as ToolCallEvent).tool && onToolCall) {
+            onToolCall(evt as ToolCallEvent)
+          }
+          if ((evt as { agent_planning?: boolean; round?: number }).agent_planning && onAgentPlanning) {
+            onAgentPlanning((evt as { round: number }).round)
+          }
+        }
+      }
+    },
   },
 
   users: {

@@ -55,6 +55,10 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	// Chapter summary endpoints (B2): mounted under the project group.
 	rg.GET("/chapters/:cid/summary", h.GetChapterSummary)
 	rg.POST("/chapters/:cid/summarize", h.RegenerateChapterSummary)
+
+	// Map agent chat (D-Map M3): mounted under the project's /maps group
+	// (not ai/maps) so it sits next to the maps CRUD routes in internal/maps.
+	rg.POST("/maps/:mid/ai/chat", h.MapChat)
 }
 
 // RegisterUserRoutes mounts user-scoped (non-project) AI routes.

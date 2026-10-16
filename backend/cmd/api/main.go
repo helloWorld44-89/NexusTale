@@ -209,6 +209,10 @@ func main() {
 	mapsService := maps.NewService(queries, gitService)
 	mapsHandler := maps.NewHandler(mapsService)
 
+	// Wire the map layout store into the AI service so the map-scoped agent
+	// chat can call MapTools (D-Map M3).
+	aiService.WithMaps(mapsService)
+
 	waitlistService := waitlist.NewService(queries)
 	waitlistHandler := waitlist.NewHandler(waitlistService)
 

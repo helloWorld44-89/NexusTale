@@ -40,3 +40,36 @@ type MapResponse struct {
 type mapAttrs struct {
 	MapType string `json:"map_type"`
 }
+
+// Point, MapRegion, MapSymbol, and Layout mirror the frontend's
+// MapRegion/MapSymbol/MapLayout shapes in frontend/src/services/api.ts —
+// structured Go types over the otherwise-opaque layout JSON so the AI tool
+// executor (D-Map M3) can decode, mutate, and re-encode a map's layout
+// instead of hand-rolling JSON patches.
+type Point struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type MapRegion struct {
+	ID     string  `json:"id"`
+	Type   string  `json:"type"`
+	Color  string  `json:"color"`
+	Points []Point `json:"points"`
+}
+
+type MapSymbol struct {
+	ID       string  `json:"id"`
+	IconType string  `json:"icon_type"`
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Scale    float64 `json:"scale"`
+	Rotation float64 `json:"rotation"`
+	RegionID string  `json:"region_id,omitempty"`
+	EntityID string  `json:"entity_id,omitempty"`
+}
+
+type Layout struct {
+	Regions []MapRegion `json:"regions"`
+	Symbols []MapSymbol `json:"symbols"`
+}

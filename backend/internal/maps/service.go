@@ -223,6 +223,36 @@ func (s *Service) UpdateMap(ctx context.Context, projectID, userID, mapID uuid.U
 	return &resp, nil
 }
 
+// GetLayout decodes a map's current layout into structured Go types, for
+// callers that need to mutate regions/symbols rather than pass the layout
+// through as opaque JSON (the AI map-tools executor, D-Map M3).
+func (s *Service) GetLayout(ctx context.Context, projectID, userID, mapID uuid.UUID) (Layout, error) {
+	resp, err := s.GetMap(ctx, projectID, userID, mapID)
+	if err != nil {
+		return Layout{}, err
+	}
+	var layout Layout
+	if len(resp.Layout) > 0 {
+		if err := json.Unmarshal(resp.Layout, &layout); err != nil {
+			return Layout{}, apperror.Internal(fmt.Sprintf("decode map layout: %v", err))
+		}
+	}
+	return layout, nil
+}
+
+// SetLayout re-encodes and writes a full layout back to git, same path as
+// UpdateMap(Layout: ...). Callers that mutate one region/symbol must pass
+// the complete layout — there is no partial-patch git write.
+func (s *Service) SetLayout(ctx context.Context, projectID, userID, mapID uuid.UUID, layout Layout) error {
+	raw, err := json.Marshal(layout)
+	if err != nil {
+		return apperror.Internal(fmt.Sprintf("encode map layout: %v", err))
+	}
+	rawMsg := json.RawMessage(raw)
+	_, err = s.UpdateMap(ctx, projectID, userID, mapID, UpdateMapRequest{Layout: &rawMsg})
+	return err
+}
+
 // DeleteMap removes the wiki_entities row. The git layout file is left in
 // the working tree — harmless (an orphaned file until the next Chronicle),
 // and no other content type in this codebase cleans up its git file on

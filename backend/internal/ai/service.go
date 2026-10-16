@@ -44,7 +44,8 @@ type Service struct {
 	cfg         AIConfig
 	debounce    *debouncer
 	sceneWriter SceneFileWriter
-	embedStore  *EmbedStore // nil when pgvector is not configured
+	embedStore  *EmbedStore    // nil when pgvector is not configured
+	mapStore    MapLayoutStore // nil when map AI tools are not wired (D-Map M3)
 
 	// fingerprintSaveCount tracks scene-save events per project so we can
 	// trigger a fingerprint refresh every 3 saves without a DB round-trip.
@@ -77,6 +78,12 @@ func (s *Service) WithEmbedding(pool *pgxpool.Pool, e embedding.Embedder) {
 
 // EmbedStore returns the configured EmbedStore (may be nil).
 func (s *Service) EmbedStore() *EmbedStore { return s.embedStore }
+
+// WithMaps wires the map layout store so map-scoped agent chats can call
+// MapTools (D-Map M3). Called from main after both services are constructed.
+func (s *Service) WithMaps(m MapLayoutStore) {
+	s.mapStore = m
+}
 
 // NotifySceneSaved is called after every scene save. Every 3 saves it triggers
 // a background prose fingerprint recompute for the project so Beat/Continue
@@ -854,6 +861,107 @@ func (s *Service) StreamChatWithTools(ctx context.Context, userID uuid.UUID, req
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 
 	s.recordUsage(req.ProjectID, userID, adapter.Provider(), totalUsage, "chat_tools", "", req.SceneID)
+	return totalUsage, nil
+}
+
+// MapChatRequest is the request type for a map-scoped agent chat (D-Map M3).
+type MapChatRequest struct {
+	ProjectID            uuid.UUID
+	MapID                uuid.UUID
+	Messages             []adapters.Message
+	Provider             string
+	MaxTokens            int
+	SystemPromptOverride string
+}
+
+const defaultMapAgentSystem = "You are Nexus, an AI cartography assistant embedded in NexusTale's Map Studio. " +
+	"You may use tools to add, update, and remove regions (shaped areas like mountains, lakes, forests, or " +
+	"territories) and symbols (icons like cities, peaks, or points of interest) on the writer's active map.\n\n" +
+	"PLANNING MANDATE — before calling any tool:\n" +
+	"1. State your plan in plain text: what you intend to add, change, or remove, and why.\n" +
+	"2. Call list_map_layout first if you need existing region_id/symbol_id values.\n" +
+	"3. Only then call tools.\n\n" +
+	"Coordinates are on a 900x600 canvas, origin top-left. Keep shapes and placements plausible for the " +
+	"map's scale (world/region/city/galaxy/planet/custom) and avoid overlapping symbols.\n\n" +
+	"After each tool call, briefly confirm what you changed and what comes next."
+
+// StreamMapChatWithTools streams an agentic chat response scoped to a single
+// map, with MapTools (add/update/remove region & symbol) available instead
+// of ManuscriptTools. Mirrors StreamChatWithTools's planning/tool-event/
+// final-text SSE protocol exactly, so the frontend can reuse the same
+// WorkshopPanel-style parsing. Falls back to a plain StreamChat-style single
+// response if the adapter doesn't implement ToolAdapter (Ollama).
+func (s *Service) StreamMapChatWithTools(ctx context.Context, userID uuid.UUID, req MapChatRequest, w io.Writer, maxRounds int) (adapters.Usage, error) {
+	adapter, err := s.getAdapterForTier(ctx, userID, req.Provider, tierAnalysis)
+	if err != nil {
+		return adapters.Usage{}, fmt.Errorf("get adapter: %w", err)
+	}
+
+	ta, ok := adapter.(adapters.ToolAdapter)
+	if !ok {
+		fmt.Fprintf(w, "data: {\"error\":%q}\n\n", "this provider does not support tool use required for the map assistant")
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		return adapters.Usage{}, nil
+	}
+
+	maxTok := req.MaxTokens
+	if maxTok == 0 {
+		maxTok = s.cfg.MaxTokens
+	}
+
+	system := defaultMapAgentSystem
+	if req.SystemPromptOverride != "" {
+		system = req.SystemPromptOverride
+	}
+
+	messages := append([]adapters.Message{{Role: "system", Content: system}}, applyHistoryWindow(req.Messages, chatHistoryWindow)...)
+
+	var extraMsgs []json.RawMessage
+	var totalUsage adapters.Usage
+	if maxRounds <= 0 {
+		maxRounds = 25
+	}
+	finalText := ""
+
+	for round := 0; round < maxRounds; round++ {
+		planningPayload, _ := json.Marshal(map[string]any{"agent_planning": true, "round": round + 1})
+		fmt.Fprintf(w, "data: %s\n\n", planningPayload)
+
+		resp, err := ta.ChatTools(ctx, messages, extraMsgs, MapTools, maxTok)
+		if err != nil {
+			return totalUsage, fmt.Errorf("map tool chat round %d: %w", round, err)
+		}
+
+		totalUsage.PromptTokens += resp.Usage.PromptTokens
+		totalUsage.CompletionTokens += resp.Usage.CompletionTokens
+		totalUsage.CostUSD += resp.Usage.CostUSD
+
+		if resp.StopReason != "tool_use" || len(resp.ToolCalls) == 0 {
+			finalText = resp.Text
+			break
+		}
+
+		extraMsgs = append(extraMsgs, resp.RawAssistantMsg)
+
+		toolResults := make([]adapters.ToolResult, 0, len(resp.ToolCalls))
+		for _, tc := range resp.ToolCalls {
+			result, evt := s.executeMapToolCall(ctx, req.ProjectID, userID, req.MapID, tc)
+			toolResults = append(toolResults, result)
+
+			evtPayload, _ := json.Marshal(evt)
+			fmt.Fprintf(w, "data: %s\n\n", evtPayload)
+		}
+
+		extraMsgs = append(extraMsgs, ta.BuildToolResultMessages(toolResults)...)
+	}
+
+	if finalText != "" {
+		encoded, _ := json.Marshal(map[string]string{"delta": finalText})
+		fmt.Fprintf(w, "data: %s\n\n", encoded)
+	}
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+
+	s.recordUsage(req.ProjectID, userID, adapter.Provider(), totalUsage, "map_chat_tools", "", uuid.Nil)
 	return totalUsage, nil
 }
 
