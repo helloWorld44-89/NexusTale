@@ -28,9 +28,9 @@ type docChapter struct {
 // 1-inch margins. Page breaks between chapters. Scene headings are italic,
 // centered. Scene breaks use "# # #".
 func BuildDOCX(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUID, title, repoPath string) (string, error) {
-	chapters, err := queries.ListChaptersByProject(ctx, projectID)
+	chapters, err := orderedChapters(ctx, queries, projectID)
 	if err != nil {
-		return "", fmt.Errorf("list chapters: %w", err)
+		return "", err
 	}
 
 	var docs []docChapter

@@ -15,9 +15,9 @@ import (
 // One .md file per chapter: "01-chapter-title.md", containing all scenes in order.
 // Writes directly to w — no temp file is needed.
 func WriteMarkdownZip(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUID, repoPath string, w io.Writer) error {
-	chapters, err := queries.ListChaptersByProject(ctx, projectID)
+	chapters, err := orderedChapters(ctx, queries, projectID)
 	if err != nil {
-		return fmt.Errorf("list chapters: %w", err)
+		return err
 	}
 
 	zw := zip.NewWriter(w)

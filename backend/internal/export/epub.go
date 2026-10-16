@@ -18,9 +18,9 @@ func BuildEPUB(ctx context.Context, queries *sqlcgen.Queries, projectID uuid.UUI
 	e := epub.NewEpub(title)
 	e.SetAuthor("NexusTale")
 
-	chapters, err := queries.ListChaptersByProject(ctx, projectID)
+	chapters, err := orderedChapters(ctx, queries, projectID)
 	if err != nil {
-		return "", fmt.Errorf("list chapters: %w", err)
+		return "", err
 	}
 
 	for _, ch := range chapters {
