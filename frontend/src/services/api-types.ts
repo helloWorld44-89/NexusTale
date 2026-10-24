@@ -1607,6 +1607,468 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/registration-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether public registration is open */
+        get: operations["authRegistrationStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/waitlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join the waitlist (idempotent per email)
+         * @description Re-submitting an existing email updates the entry rather than failing.
+         */
+        post: operations["joinWaitlist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/{key}": {
+        parameters: {
+            query: {
+                /** @description Unix expiry time of the link. */
+                exp: number;
+                /** @description HMAC-SHA256 signature over the key and expiry. */
+                sig: string;
+            };
+            header?: never;
+            path: {
+                /** @description Storage key, including slashes (e.g. `wiki/entities/<id>/<name>.png`). Only keys the API has signed can be fetched. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Download a stored file via a signed URL
+         * @description Authorization is the signature in the query string, not a bearer token, so `<img src>` and plain download links work. Obtain URLs from `image_url` on wiki entities and `download_url` on export jobs — they are minted server-side and expire (images ~4 h, exports ~24 h). Supports `Range` requests. Images are served inline; everything else as an attachment.
+         */
+        get: operations["getFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Instance-wide totals */
+        get: operations["adminGetStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List users */
+        get: operations["adminListUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change a user's role and/or plan */
+        patch: operations["adminUpdateUser"];
+        trace?: never;
+    };
+    "/admin/ai-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** AI usage per user */
+        get: operations["adminListAIUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/phase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** Get the project's writing phase */
+        get: operations["getProjectPhase"];
+        /** Set the project's writing phase */
+        put: operations["updateProjectPhase"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse an uploaded manuscript into a preview tree
+         * @description Nothing is created yet; edit the tree if needed, then call `/projects/import/confirm`. Max 10 MiB.
+         */
+        post: operations["importPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/import/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a project from a (possibly edited) preview tree */
+        post: operations["importConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/scenes/{sceneId}/mentions": {
+        parameters: {
+            query?: {
+                /** @description Timeline (git branch); defaults to the active one. */
+                branch?: string;
+            };
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Entity mentions detected in a scene
+         * @description Active (non-suppressed) mentions only.
+         */
+        get: operations["listSceneMentions"];
+        put?: never;
+        post?: never;
+        /** Suppress every mention in the scene */
+        delete: operations["suppressAllSceneMentions"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/scenes/{sceneId}/mentions/{mentionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+                mentionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Suppress a single mention */
+        delete: operations["suppressSceneMention"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/wiki/entities/{entityId}/appearances": {
+        parameters: {
+            query?: {
+                branch?: string;
+            };
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        /** Scenes in which an entity is mentioned */
+        get: operations["listEntityAppearances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/wiki/entities/{entityId}/rename-cascade/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview scene edits for renaming an entity
+         * @description Read-only; returns a diff per affected scene for the writer to approve.
+         */
+        post: operations["renameCascadePreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/wiki/entities/{entityId}/rename-cascade/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply the rename to the approved scenes */
+        post: operations["renameCascadeConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/story-threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** List story threads */
+        get: operations["listStoryThreads"];
+        put?: never;
+        /** Open a story thread */
+        post: operations["createStoryThread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/story-threads/chapter-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** Open-thread count per chapter */
+        get: operations["storyThreadChapterCounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/story-threads/{threadId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                threadId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Update or close a story thread */
+        put: operations["updateStoryThread"];
+        post?: never;
+        /** Delete a story thread */
+        delete: operations["deleteStoryThread"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List maps
+         * @description Layouts are omitted; fetch a single map for its layout.
+         */
+        get: operations["listMaps"];
+        put?: never;
+        /**
+         * Create a map
+         * @description Creates a `map` wiki entity and an empty layout file in the project's git working tree.
+         */
+        post: operations["createMap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/maps/{mapId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mapId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a map with its layout */
+        get: operations["getMap"];
+        /**
+         * Update name, type and/or layout
+         * @description The layout is written to the working tree and picked up by the next Chronicle, like scene prose.
+         */
+        put: operations["updateMap"];
+        post?: never;
+        /** Delete a map */
+        delete: operations["deleteMap"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/maps/{mapId}/ai/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mapId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat with the map-scoped AI agent (can edit the layout via tool calls)
+         * @description Stateless — send the whole conversation each time. The agent can list and add/update/remove regions and symbols; the layout is saved as tool calls run, so clients should re-fetch the map on each tool event.
+         */
+        post: operations["mapAIChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/ai/entities/{entityId}/portrait": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate or revise a portrait draft for an entity
+         * @description Returns an ephemeral draft; nothing is stored. To keep it, upload the image through `POST /projects/{projectId}/wiki/entities/{entityId}/image`.
+         */
+        post: operations["generateEntityPortrait"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1836,7 +2298,7 @@ export interface components {
             paradox_note?: string;
         };
         /** @enum {string} */
-        EntityType: "character" | "location" | "faction" | "item" | "concept" | "lore";
+        EntityType: "character" | "location" | "faction" | "item" | "concept" | "lore" | "map";
         CreateEntityRequest: {
             type: components["schemas"]["EntityType"];
             name: string;
@@ -2367,6 +2829,263 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at?: string;
+        };
+        RegistrationStatusResponse: {
+            /** @description False when the instance is invite-only and POST /auth/register returns 403. */
+            open: boolean;
+        };
+        AdminStatsResponse: {
+            total_users?: number;
+            total_projects?: number;
+            total_scenes?: number;
+            total_ai_calls?: number;
+            /** Format: int64 */
+            total_tokens?: number;
+            total_cost_usd?: number;
+        };
+        AdminUserResponse: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: email */
+            email?: string;
+            display_name?: string;
+            /** @enum {string} */
+            role?: "author" | "admin" | "viewer";
+            /** @enum {string} */
+            plan?: "free" | "scribe" | "chronicler" | "studio";
+            /** Format: date-time */
+            created_at?: string;
+            project_count?: number;
+        };
+        /** @description Send only the fields to change. */
+        AdminUpdateUserRequest: {
+            /** @enum {string} */
+            role?: "author" | "admin" | "viewer";
+            /** @enum {string} */
+            plan?: "free" | "scribe" | "chronicler" | "studio";
+        };
+        AdminAIUsageRow: {
+            /** Format: uuid */
+            user_id?: string;
+            /** Format: email */
+            email?: string;
+            display_name?: string;
+            call_count?: number;
+            /** Format: int64 */
+            total_tokens?: number;
+            total_cost_usd?: number;
+        };
+        WaitlistRequest: {
+            /** Format: email */
+            email: string;
+            what_they_write: string;
+        };
+        WaitlistSignupResponse: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: email */
+            email?: string;
+            what_they_write?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        /** @enum {string} */
+        ProjectPhase: "drafting" | "story_pass" | "character_pass" | "language_pass" | "editorial_pass";
+        ProjectPhaseResponse: {
+            phase: components["schemas"]["ProjectPhase"];
+        };
+        ImportScene: {
+            title?: string;
+            content?: string;
+        };
+        ImportChapter: {
+            title?: string;
+            scenes?: components["schemas"]["ImportScene"][];
+        };
+        ImportTree: {
+            project_title: string;
+            chapters: components["schemas"]["ImportChapter"][];
+        };
+        ImportPreviewResponse: {
+            tree?: components["schemas"]["ImportTree"];
+            /** @description Detected input format (e.g. markdown, docx, txt). */
+            format?: string;
+        };
+        ImportConfirmRequest: {
+            tree: components["schemas"]["ImportTree"];
+        };
+        ImportConfirmResponse: {
+            /** Format: uuid */
+            project_id?: string;
+            title?: string;
+            /** @description Number of chapters created. */
+            chapters?: number;
+        };
+        MentionResponse: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            scene_id?: string;
+            /** Format: uuid */
+            entity_id?: string;
+            entity_name?: string;
+            entity_type?: string;
+            /** @description The exact text in the scene that matched (name or alias). */
+            match_text?: string;
+            branch_name?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        EntityAppearance: {
+            /** Format: uuid */
+            scene_id?: string;
+            scene_title?: string;
+            scene_order?: number;
+            /** Format: uuid */
+            chapter_id?: string;
+            chapter_title?: string;
+            chapter_order?: number;
+            branch_name?: string;
+        };
+        RenameCascadePreviewRequest: {
+            old_name: string;
+            new_name: string;
+        };
+        RenameCascadePreviewItem: {
+            /** Format: uuid */
+            scene_id?: string;
+            scene_title?: string;
+            chapter_title?: string;
+            /** @description Distinct matched strings in this scene (e.g. "John", "Commander John"). */
+            match_texts?: string[];
+            /** @description Before/after diff for display. */
+            unified_diff?: string;
+        };
+        RenameCascadeConfirmRequest: {
+            old_name: string;
+            new_name: string;
+            /** @description Only the scenes the writer approved. */
+            scene_ids: string[];
+        };
+        RenameCascadeConfirmResponse: {
+            patched_scenes?: number;
+        };
+        /** @enum {string} */
+        StoryThreadType: "world" | "mystery" | "arc" | "conflict";
+        StoryThread: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            project_id?: string;
+            title?: string;
+            type?: components["schemas"]["StoryThreadType"];
+            notes?: string;
+            /** Format: uuid */
+            opened_at_scene_id?: string;
+            /** Format: uuid */
+            closed_at_scene_id?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        CreateStoryThreadRequest: {
+            title: string;
+            type: components["schemas"]["StoryThreadType"];
+            notes?: string;
+            /** Format: uuid */
+            opened_at_scene_id?: string | null;
+        };
+        UpdateStoryThreadRequest: {
+            title?: string;
+            type?: components["schemas"]["StoryThreadType"];
+            notes?: string;
+            /** Format: uuid */
+            opened_at_scene_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Scene where the thread resolves. Send null to re-open it.
+             */
+            closed_at_scene_id?: string | null;
+        };
+        ChapterThreadCount: {
+            /** Format: uuid */
+            chapter_id?: string;
+            open_thread_count?: number;
+        };
+        /** @enum {string} */
+        MapType: "world" | "region" | "city" | "galaxy" | "planet" | "custom";
+        MapPoint: {
+            x: number;
+            y: number;
+        };
+        MapRegion: {
+            id?: string;
+            /** @description Terrain/space region kind (e.g. mountain, ocean, nebula). */
+            type?: string;
+            color?: string;
+            points?: components["schemas"]["MapPoint"][];
+        };
+        MapSymbol: {
+            id?: string;
+            icon_type?: string;
+            x?: number;
+            y?: number;
+            scale?: number;
+            rotation?: number;
+            /** @description Set when the symbol sits inside a region. */
+            region_id?: string;
+            /** @description Optional link to a wiki entity. */
+            entity_id?: string;
+        };
+        /** @description Structural layout stored in git at maps/<id>.json. */
+        MapLayout: {
+            regions?: components["schemas"]["MapRegion"][];
+            symbols?: components["schemas"]["MapSymbol"][];
+        };
+        MapResponse: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            project_id?: string;
+            /** Format: uuid */
+            parent_entity_id?: string;
+            name?: string;
+            map_type?: components["schemas"]["MapType"];
+            /** @description Omitted in list responses (needs a git read per row). */
+            layout?: components["schemas"]["MapLayout"];
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        CreateMapRequest: {
+            name: string;
+            map_type: components["schemas"]["MapType"];
+            /** Format: uuid */
+            parent_entity_id?: string | null;
+        };
+        UpdateMapRequest: {
+            name?: string;
+            map_type?: components["schemas"]["MapType"];
+            layout?: components["schemas"]["MapLayout"];
+        };
+        MapChatRequest: {
+            messages: components["schemas"]["ChatMessage"][];
+            provider?: string;
+            max_tokens?: number;
+            /** @description Tool-call rounds; 0 uses the server default (25). */
+            max_rounds?: number;
+        };
+        GeneratePortraitRequest: {
+            /** @description Guidance for a first draft, or the revision instruction when a reference image is sent. */
+            prompt?: string;
+            /** @description Prior draft (base64) for revisions; omit for a first draft. */
+            reference_image_base64?: string;
+        };
+        GeneratePortraitResponse: {
+            image_base64?: string;
+            provider?: string;
         };
     };
     responses: {
@@ -5449,6 +6168,827 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    authRegistrationStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Registration status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationStatusResponse"];
+                };
+            };
+        };
+    };
+    joinWaitlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaitlistRequest"];
+            };
+        };
+        responses: {
+            /** @description Signup recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitlistSignupResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getFile: {
+        parameters: {
+            query: {
+                /** @description Unix expiry time of the link. */
+                exp: number;
+                /** @description HMAC-SHA256 signature over the key and expiry. */
+                sig: string;
+            };
+            header?: never;
+            path: {
+                /** @description Storage key, including slashes (e.g. `wiki/entities/<id>/<name>.png`). Only keys the API has signed can be fetched. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File contents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                    "application/epub+zip": string;
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": string;
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Partial content (Range request). */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Signature missing, invalid or expired. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminGetStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Totals. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStatsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Caller is not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminListUsers: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Users, with project counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Caller is not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminUpdateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Caller is not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminListAIUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-user call, token and cost totals. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAIUsageRow"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Caller is not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProjectPhase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current phase. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPhaseResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateProjectPhase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPhaseResponse"];
+            };
+        };
+        responses: {
+            /** @description Phase updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPhaseResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    importPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description Markdown, DOCX or plain-text manuscript.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Parsed preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreviewResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description File exceeds 10 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description File could not be parsed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    importConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Project, chapters and scenes created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportConfirmResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listSceneMentions: {
+        parameters: {
+            query?: {
+                /** @description Timeline (git branch); defaults to the active one. */
+                branch?: string;
+            };
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Mentions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mentions?: components["schemas"]["MentionResponse"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    suppressAllSceneMentions: {
+        parameters: {
+            query?: {
+                /** @description Timeline (git branch); defaults to the active one. */
+                branch?: string;
+            };
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suppressed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    suppressSceneMention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                sceneId: string;
+                mentionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suppressed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listEntityAppearances: {
+        parameters: {
+            query?: {
+                branch?: string;
+            };
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Appearances in manuscript order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        appearances?: components["schemas"]["EntityAppearance"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameCascadePreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameCascadePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description One item per affected scene. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameCascadePreviewItem"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    renameCascadeConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameCascadeConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Scenes patched. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameCascadeConfirmResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listStoryThreads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Threads, open and closed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoryThread"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createStoryThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStoryThreadRequest"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoryThread"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    storyThreadChapterCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One row per chapter that has open threads. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterThreadCount"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateStoryThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                threadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStoryThreadRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoryThread"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteStoryThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                threadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMaps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Maps. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMapRequest"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mapId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Map. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mapId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMapRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mapId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    mapAIChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                mapId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Server-Sent Events stream. Each event is a text token or a tool_call/tool_result JSON event; errors arrive as an {"error": ...} event followed by [DONE]. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    generateEntityPortrait: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                entityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneratePortraitRequest"];
+            };
+        };
+        responses: {
+            /** @description Draft image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratePortraitResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };

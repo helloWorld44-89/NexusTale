@@ -351,7 +351,7 @@ components:
     # ── Wiki — Entities ───────────────────────────────────────────────────────
     EntityType:
       type: string
-      enum: [character, location, faction, item, concept, lore]
+      enum: [character, location, faction, item, concept, lore, map]
 
     CreateEntityRequest:
       type: object
@@ -1018,6 +1018,301 @@ components:
         resolved_by:     { type: string, format: uuid, nullable: true }
         created_at:      { type: string, format: date-time }
         updated_at:      { type: string, format: date-time }
+
+    # ── Auth: registration status ─────────────────────────────────────────────
+    RegistrationStatusResponse:
+      type: object
+      required: [open]
+      properties:
+        open: { type: boolean, description: "False when the instance is invite-only and POST /auth/register returns 403." }
+
+    # ── Admin (role = admin) ──────────────────────────────────────────────────
+    AdminStatsResponse:
+      type: object
+      properties:
+        total_users:     { type: integer }
+        total_projects:  { type: integer }
+        total_scenes:    { type: integer }
+        total_ai_calls:  { type: integer }
+        total_tokens:    { type: integer, format: int64 }
+        total_cost_usd:  { type: number }
+
+    AdminUserResponse:
+      type: object
+      properties:
+        id:            { type: string, format: uuid }
+        email:         { type: string, format: email }
+        display_name:  { type: string }
+        role:          { type: string, enum: [author, admin, viewer] }
+        plan:          { type: string, enum: [free, scribe, chronicler, studio] }
+        created_at:    { type: string, format: date-time }
+        project_count: { type: integer }
+
+    AdminUpdateUserRequest:
+      type: object
+      description: Send only the fields to change.
+      properties:
+        role: { type: string, enum: [author, admin, viewer] }
+        plan: { type: string, enum: [free, scribe, chronicler, studio] }
+
+    AdminAIUsageRow:
+      type: object
+      properties:
+        user_id:        { type: string, format: uuid }
+        email:          { type: string, format: email }
+        display_name:   { type: string }
+        call_count:     { type: integer }
+        total_tokens:   { type: integer, format: int64 }
+        total_cost_usd: { type: number }
+
+    # ── Waitlist ──────────────────────────────────────────────────────────────
+    WaitlistRequest:
+      type: object
+      required: [email, what_they_write]
+      properties:
+        email:           { type: string, format: email }
+        what_they_write: { type: string, maxLength: 500 }
+
+    WaitlistSignupResponse:
+      type: object
+      properties:
+        id:              { type: string, format: uuid }
+        email:           { type: string, format: email }
+        what_they_write: { type: string }
+        created_at:      { type: string, format: date-time }
+
+    # ── Project phase ─────────────────────────────────────────────────────────
+    ProjectPhase:
+      type: string
+      enum: [drafting, story_pass, character_pass, language_pass, editorial_pass]
+
+    ProjectPhaseResponse:
+      type: object
+      required: [phase]
+      properties:
+        phase: { $ref: '#/components/schemas/ProjectPhase' }
+
+    # ── Manuscript import ─────────────────────────────────────────────────────
+    ImportScene:
+      type: object
+      properties:
+        title:   { type: string }
+        content: { type: string }
+
+    ImportChapter:
+      type: object
+      properties:
+        title:  { type: string }
+        scenes: { type: array, items: { $ref: '#/components/schemas/ImportScene' } }
+
+    ImportTree:
+      type: object
+      required: [project_title, chapters]
+      properties:
+        project_title: { type: string }
+        chapters:      { type: array, items: { $ref: '#/components/schemas/ImportChapter' } }
+
+    ImportPreviewResponse:
+      type: object
+      properties:
+        tree:   { $ref: '#/components/schemas/ImportTree' }
+        format: { type: string, description: "Detected input format (e.g. markdown, docx, txt)." }
+
+    ImportConfirmRequest:
+      type: object
+      required: [tree]
+      properties:
+        tree: { $ref: '#/components/schemas/ImportTree' }
+
+    ImportConfirmResponse:
+      type: object
+      properties:
+        project_id: { type: string, format: uuid }
+        title:      { type: string }
+        chapters:   { type: integer, description: "Number of chapters created." }
+
+    # ── Wiki: mentions, appearances, rename cascade ───────────────────────────
+    MentionResponse:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        scene_id:    { type: string, format: uuid }
+        entity_id:   { type: string, format: uuid }
+        entity_name: { type: string }
+        entity_type: { type: string }
+        match_text:  { type: string, description: "The exact text in the scene that matched (name or alias)." }
+        branch_name: { type: string }
+        created_at:  { type: string, format: date-time }
+
+    EntityAppearance:
+      type: object
+      properties:
+        scene_id:      { type: string, format: uuid }
+        scene_title:   { type: string }
+        scene_order:   { type: integer }
+        chapter_id:    { type: string, format: uuid }
+        chapter_title: { type: string }
+        chapter_order: { type: integer }
+        branch_name:   { type: string }
+
+    RenameCascadePreviewRequest:
+      type: object
+      required: [old_name, new_name]
+      properties:
+        old_name: { type: string }
+        new_name: { type: string }
+
+    RenameCascadePreviewItem:
+      type: object
+      properties:
+        scene_id:      { type: string, format: uuid }
+        scene_title:   { type: string }
+        chapter_title: { type: string }
+        match_texts:   { type: array, items: { type: string }, description: "Distinct matched strings in this scene (e.g. \"John\", \"Commander John\")." }
+        unified_diff:  { type: string, description: "Before/after diff for display." }
+
+    RenameCascadeConfirmRequest:
+      type: object
+      required: [old_name, new_name, scene_ids]
+      properties:
+        old_name:  { type: string }
+        new_name:  { type: string }
+        scene_ids: { type: array, items: { type: string, format: uuid }, description: "Only the scenes the writer approved." }
+
+    RenameCascadeConfirmResponse:
+      type: object
+      properties:
+        patched_scenes: { type: integer }
+
+    # ── Story threads ─────────────────────────────────────────────────────────
+    StoryThreadType:
+      type: string
+      enum: [world, mystery, arc, conflict]
+
+    StoryThread:
+      type: object
+      properties:
+        id:                 { type: string, format: uuid }
+        project_id:         { type: string, format: uuid }
+        title:              { type: string }
+        type:               { $ref: '#/components/schemas/StoryThreadType' }
+        notes:              { type: string }
+        opened_at_scene_id: { type: string, format: uuid }
+        closed_at_scene_id: { type: string, format: uuid }
+        created_at:         { type: string, format: date-time }
+        updated_at:         { type: string, format: date-time }
+
+    CreateStoryThreadRequest:
+      type: object
+      required: [title, type]
+      properties:
+        title:              { type: string, minLength: 1, maxLength: 300 }
+        type:               { $ref: '#/components/schemas/StoryThreadType' }
+        notes:              { type: string }
+        opened_at_scene_id: { type: string, format: uuid, nullable: true }
+
+    UpdateStoryThreadRequest:
+      type: object
+      properties:
+        title:              { type: string }
+        type:               { $ref: '#/components/schemas/StoryThreadType' }
+        notes:              { type: string }
+        opened_at_scene_id: { type: string, format: uuid, nullable: true }
+        closed_at_scene_id: { type: string, format: uuid, nullable: true, description: "Scene where the thread resolves. Send null to re-open it." }
+
+    ChapterThreadCount:
+      type: object
+      properties:
+        chapter_id:        { type: string, format: uuid }
+        open_thread_count: { type: integer }
+
+    # ── Maps (D-Map) ──────────────────────────────────────────────────────────
+    MapType:
+      type: string
+      enum: [world, region, city, galaxy, planet, custom]
+
+    MapPoint:
+      type: object
+      required: [x, y]
+      properties:
+        x: { type: number }
+        y: { type: number }
+
+    MapRegion:
+      type: object
+      properties:
+        id:     { type: string }
+        type:   { type: string, description: "Terrain/space region kind (e.g. mountain, ocean, nebula)." }
+        color:  { type: string }
+        points: { type: array, items: { $ref: '#/components/schemas/MapPoint' } }
+
+    MapSymbol:
+      type: object
+      properties:
+        id:        { type: string }
+        icon_type: { type: string }
+        x:         { type: number }
+        y:         { type: number }
+        scale:     { type: number }
+        rotation:  { type: number }
+        region_id: { type: string, description: "Set when the symbol sits inside a region." }
+        entity_id: { type: string, description: "Optional link to a wiki entity." }
+
+    MapLayout:
+      type: object
+      description: Structural layout stored in git at maps/<id>.json.
+      properties:
+        regions: { type: array, items: { $ref: '#/components/schemas/MapRegion' } }
+        symbols: { type: array, items: { $ref: '#/components/schemas/MapSymbol' } }
+
+    MapResponse:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        project_id:       { type: string, format: uuid }
+        parent_entity_id: { type: string, format: uuid }
+        name:             { type: string }
+        map_type:         { $ref: '#/components/schemas/MapType' }
+        layout:           { $ref: '#/components/schemas/MapLayout', description: "Omitted in list responses (needs a git read per row)." }
+        created_at:       { type: string, format: date-time }
+        updated_at:       { type: string, format: date-time }
+
+    CreateMapRequest:
+      type: object
+      required: [name, map_type]
+      properties:
+        name:             { type: string }
+        map_type:         { $ref: '#/components/schemas/MapType' }
+        parent_entity_id: { type: string, format: uuid, nullable: true }
+
+    UpdateMapRequest:
+      type: object
+      properties:
+        name:     { type: string }
+        map_type: { $ref: '#/components/schemas/MapType' }
+        layout:   { $ref: '#/components/schemas/MapLayout' }
+
+    MapChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:   { type: array, minItems: 1, items: { $ref: '#/components/schemas/ChatMessage' } }
+        provider:   { type: string }
+        max_tokens: { type: integer }
+        max_rounds: { type: integer, description: "Tool-call rounds; 0 uses the server default (25)." }
+
+    # ── AI portraits (D-Portraits) ────────────────────────────────────────────
+    GeneratePortraitRequest:
+      type: object
+      properties:
+        prompt:                 { type: string, description: "Guidance for a first draft, or the revision instruction when a reference image is sent." }
+        reference_image_base64: { type: string, description: "Prior draft (base64) for revisions; omit for a first draft." }
+
+    GeneratePortraitResponse:
+      type: object
+      properties:
+        image_base64: { type: string }
+        provider:     { type: string }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Paths
@@ -3349,5 +3644,584 @@ paths:
       responses:
         "204":
           description: Annotation deleted.
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Auth: registration status ────────────────────────────────────────────────
+
+  /auth/registration-status:
+    get:
+      operationId: authRegistrationStatus
+      summary: Whether public registration is open
+      tags: [auth]
+      responses:
+        "200":
+          description: Registration status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegistrationStatusResponse' }
+
+  # ── Waitlist ─────────────────────────────────────────────────────────────────
+
+  /waitlist:
+    post:
+      operationId: joinWaitlist
+      summary: Join the waitlist (idempotent per email)
+      description: Re-submitting an existing email updates the entry rather than failing.
+      tags: [waitlist]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WaitlistRequest' }
+      responses:
+        "200":
+          description: Signup recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaitlistSignupResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+
+  # ── Files (signed downloads) ─────────────────────────────────────────────────
+
+  /files/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        description: Storage key, including slashes (e.g. `wiki/entities/<id>/<name>.png`). Only keys the API has signed can be fetched.
+        schema: { type: string }
+        allowReserved: true
+      - { name: exp, in: query, required: true, description: "Unix expiry time of the link.", schema: { type: integer, format: int64 } }
+      - { name: sig, in: query, required: true, description: "HMAC-SHA256 signature over the key and expiry.", schema: { type: string } }
+    get:
+      operationId: getFile
+      summary: Download a stored file via a signed URL
+      description: >
+        Authorization is the signature in the query string, not a bearer token, so
+        `<img src>` and plain download links work. Obtain URLs from `image_url` on
+        wiki entities and `download_url` on export jobs — they are minted server-side
+        and expire (images ~4 h, exports ~24 h). Supports `Range` requests. Images
+        are served inline; everything else as an attachment.
+      tags: [files]
+      responses:
+        "200":
+          description: File contents.
+          content:
+            "image/*": { schema: { type: string, format: binary } }
+            application/epub+zip: { schema: { type: string, format: binary } }
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document: { schema: { type: string, format: binary } }
+            application/octet-stream: { schema: { type: string, format: binary } }
+        "206":
+          description: Partial content (Range request).
+        "403":
+          description: Signature missing, invalid or expired.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Admin ────────────────────────────────────────────────────────────────────
+
+  /admin/stats:
+    get:
+      operationId: adminGetStats
+      summary: Instance-wide totals
+      tags: [admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Totals.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminStatsResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { description: Caller is not an admin. }
+
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      summary: List users
+      tags: [admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: limit,  in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: Users, with project counts.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/AdminUserResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { description: Caller is not an admin. }
+
+  /admin/users/{userId}:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: adminUpdateUser
+      summary: Change a user's role and/or plan
+      tags: [admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminUpdateUserRequest' }
+      responses:
+        "204": { description: Updated. }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { description: Caller is not an admin. }
+
+  /admin/ai-usage:
+    get:
+      operationId: adminListAIUsage
+      summary: AI usage per user
+      tags: [admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Per-user call, token and cost totals.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/AdminAIUsageRow' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { description: Caller is not an admin. }
+
+  # ── Project phase ────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/phase:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getProjectPhase
+      summary: Get the project's writing phase
+      tags: [projects]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Current phase.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectPhaseResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    put:
+      operationId: updateProjectPhase
+      summary: Set the project's writing phase
+      tags: [projects]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectPhaseResponse' }
+      responses:
+        "200":
+          description: Phase updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectPhaseResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ── Manuscript import ────────────────────────────────────────────────────────
+
+  /projects/import:
+    post:
+      operationId: importPreview
+      summary: Parse an uploaded manuscript into a preview tree
+      description: Nothing is created yet; edit the tree if needed, then call `/projects/import/confirm`. Max 10 MiB.
+      tags: [projects]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: "Markdown, DOCX or plain-text manuscript." }
+      responses:
+        "200":
+          description: Parsed preview.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportPreviewResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "413": { description: File exceeds 10 MiB. }
+        "422": { description: File could not be parsed. }
+
+  /projects/import/confirm:
+    post:
+      operationId: importConfirm
+      summary: Create a project from a (possibly edited) preview tree
+      tags: [projects]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportConfirmRequest' }
+      responses:
+        "201":
+          description: Project, chapters and scenes created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportConfirmResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ── Wiki: mentions, appearances, rename cascade ──────────────────────────────
+
+  /projects/{projectId}/scenes/{sceneId}/mentions:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: sceneId,   in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: branch,    in: query, description: "Timeline (git branch); defaults to the active one.", schema: { type: string } }
+    get:
+      operationId: listSceneMentions
+      summary: Entity mentions detected in a scene
+      description: Active (non-suppressed) mentions only.
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Mentions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mentions: { type: array, items: { $ref: '#/components/schemas/MentionResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      operationId: suppressAllSceneMentions
+      summary: Suppress every mention in the scene
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Suppressed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/scenes/{sceneId}/mentions/{mentionId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: sceneId,   in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: mentionId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: suppressSceneMention
+      summary: Suppress a single mention
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Suppressed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/wiki/entities/{entityId}/appearances:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId,  in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: branch,    in: query, schema: { type: string } }
+    get:
+      operationId: listEntityAppearances
+      summary: Scenes in which an entity is mentioned
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Appearances in manuscript order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appearances: { type: array, items: { $ref: '#/components/schemas/EntityAppearance' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/wiki/entities/{entityId}/rename-cascade/preview:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId,  in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: renameCascadePreview
+      summary: Preview scene edits for renaming an entity
+      description: Read-only; returns a diff per affected scene for the writer to approve.
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RenameCascadePreviewRequest' }
+      responses:
+        "200":
+          description: One item per affected scene.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/RenameCascadePreviewItem' } }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/wiki/entities/{entityId}/rename-cascade/confirm:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId,  in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: renameCascadeConfirm
+      summary: Apply the rename to the approved scenes
+      tags: [wiki]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RenameCascadeConfirmRequest' }
+      responses:
+        "200":
+          description: Scenes patched.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RenameCascadeConfirmResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ── Story threads ────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/story-threads:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listStoryThreads
+      summary: List story threads
+      tags: [threads]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Threads, open and closed.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/StoryThread' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createStoryThread
+      summary: Open a story thread
+      tags: [threads]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateStoryThreadRequest' }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StoryThread' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/story-threads/chapter-counts:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: storyThreadChapterCounts
+      summary: Open-thread count per chapter
+      tags: [threads]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: One row per chapter that has open threads.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ChapterThreadCount' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/story-threads/{threadId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: threadId,  in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: updateStoryThread
+      summary: Update or close a story thread
+      tags: [threads]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateStoryThreadRequest' }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StoryThread' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteStoryThread
+      summary: Delete a story thread
+      tags: [threads]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # ── Maps (D-Map) ─────────────────────────────────────────────────────────────
+
+  /projects/{projectId}/maps:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listMaps
+      summary: List maps
+      description: Layouts are omitted; fetch a single map for its layout.
+      tags: [maps]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Maps.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/MapResponse' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createMap
+      summary: Create a map
+      description: Creates a `map` wiki entity and an empty layout file in the project's git working tree.
+      tags: [maps]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateMapRequest' }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /projects/{projectId}/maps/{mapId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: mapId,     in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getMap
+      summary: Get a map with its layout
+      tags: [maps]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Map.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    put:
+      operationId: updateMap
+      summary: Update name, type and/or layout
+      description: The layout is written to the working tree and picked up by the next Chronicle, like scene prose.
+      tags: [maps]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMapRequest' }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteMap
+      summary: Delete a map
+      tags: [maps]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/maps/{mapId}/ai/chat:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: mapId,     in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: mapAIChat
+      summary: Chat with the map-scoped AI agent (can edit the layout via tool calls)
+      description: >
+        Stateless — send the whole conversation each time. The agent can list and
+        add/update/remove regions and symbols; the layout is saved as tool calls
+        run, so clients should re-fetch the map on each tool event.
+      tags: [ai, maps]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MapChatRequest' }
+      responses:
+        "200":
+          description: 'Server-Sent Events stream. Each event is a text token or a tool_call/tool_result JSON event; errors arrive as an {"error": ...} event followed by [DONE].'
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ── AI portraits (D-Portraits) ───────────────────────────────────────────────
+
+  /projects/{projectId}/ai/entities/{entityId}/portrait:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId,  in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: generateEntityPortrait
+      summary: Generate or revise a portrait draft for an entity
+      description: >
+        Returns an ephemeral draft; nothing is stored. To keep it, upload the image
+        through `POST /projects/{projectId}/wiki/entities/{entityId}/image`.
+      tags: [ai]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GeneratePortraitRequest' }
+      responses:
+        "200":
+          description: Draft image.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeneratePortraitResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "404": { $ref: '#/components/responses/NotFound' }

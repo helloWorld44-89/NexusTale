@@ -480,7 +480,7 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 - Scrivener / Fountain export; advanced Git branching UX
 - Series-level continuity management
 - Multi-region, scale-out collaboration tuning
-- **OpenAPI catch-up** — bring `docs/openapi.yaml` current with all B1–C routes; regenerate `api-types.ts`; restore codegen for newer endpoints (schedule before C3)
+- ✅ **OpenAPI catch-up** (2026-10-24) — `docs/openapi.yaml` now documents all 150 routes (31 were missing: admin, maps + map AI chat, story threads, mentions/appearances/rename-cascade, import, phase, portraits, waitlist, registration-status, signed file downloads); `EntityType` gained `map`; `api-types.ts` regenerated. Verified by diffing the running API's route table against the spec (0 undocumented, 0 stale). A CI check that does this automatically is still open.
 - **Customizable workspaces** — per-user, per-project saved panel layouts (which panels are open, their widths, which scene/chapter is active); named workspace presets ("drafting", "research", "editing") switchable from the TopBar; stored in `user_workspaces` table (JSONB layout blob); synced across sessions so the editor opens exactly where you left off
 
 ### D-Map — AI-assisted map builder
