@@ -19,6 +19,7 @@ import (
 	"github.com/jconder44/nexustale/internal/collaboration"
 	"github.com/jconder44/nexustale/internal/config"
 	"github.com/jconder44/nexustale/internal/export"
+	"github.com/jconder44/nexustale/internal/files"
 	"github.com/jconder44/nexustale/internal/guide"
 	"github.com/jconder44/nexustale/internal/maps"
 	"github.com/jconder44/nexustale/internal/merge"
@@ -146,16 +147,15 @@ func main() {
 		go aiService.EmbedStore().BackgroundReembed(ctx, 10*time.Minute)
 	}
 
-	// MinIO storage client (used by export service for EPUB uploads).
+	// Local file store for wiki images and EPUB/DOCX exports. Download URLs
+	// are signed with the JWT secret (domain-separated inside pkg/storage), so
+	// no extra secret needs provisioning.
 	storageClient, err := storage.New(storage.Config{
-		Endpoint:  cfg.Minio.Endpoint,
-		AccessKey: cfg.Minio.AccessKey,
-		SecretKey: cfg.Minio.SecretKey,
-		Bucket:    cfg.Minio.Bucket,
-		UseSSL:    cfg.Minio.UseSSL,
+		Root:       cfg.Storage.Path,
+		SigningKey: []byte(cfg.Auth.JWTSecret),
 	})
 	if err != nil {
-		slog.Error("failed to connect to MinIO", "error", err)
+		slog.Error("failed to initialise file storage", "path", cfg.Storage.Path, "error", err)
 		os.Exit(1)
 	}
 
@@ -181,6 +181,7 @@ func main() {
 	wikiHandler := wiki.NewHandler(wikiService)
 	aiHandler := ai.NewHandler(aiService)
 	exportHandler := export.NewHandler(exportService)
+	filesHandler := files.NewHandler(storageClient)
 	guideService := guide.NewService(queries)
 	guideService.WithSceneWriter(gitService)
 	guideHandler := guide.NewHandler(guideService)
@@ -236,6 +237,9 @@ func main() {
 		authHandler.RegisterRoutes(authGroup)
 
 		authHandler.RegisterAPIKeyRoutes(v1)
+
+		// Signed-URL file downloads; the signature is the credential.
+		filesHandler.RegisterRoutes(v1)
 
 		requireAccess := collaboration.RequireProjectAccess(queries)
 		requireChapterAccess := collaboration.RequireChapterAccess(queries)

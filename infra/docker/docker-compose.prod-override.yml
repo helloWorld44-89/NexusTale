@@ -2,7 +2,7 @@
 #
 # Docker's iptables integration bypasses UFW: any port published as "8080:8080"
 # is reachable from the internet regardless of UFW rules. This override restricts
-# the API and MinIO ports to localhost so they are only accessible via the nginx
+# the API port to localhost so they are only accessible via the nginx
 # reverse proxy running inside the frontend container.
 #
 # Usage:
@@ -16,8 +16,3 @@ services:
   api:
     ports:
       - "127.0.0.1:8080:8080"
-
-  minio:
-    ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"

@@ -32,7 +32,6 @@ backend/*.out
 backend/data/
 postgres-data/
 redis-data/
-minio-data/
 
 # ── Docs & infra (not needed in app images) ──────────────────────────────────
 docs/

@@ -113,8 +113,6 @@ jobs:
           nexustale_db_password: "${{ secrets.NEXUSTALE_DB_PASSWORD }}"
           nexustale_jwt_secret: "${{ secrets.NEXUSTALE_JWT_SECRET }}"
           nexustale_encryption_key: "${{ secrets.NEXUSTALE_ENCRYPTION_KEY }}"
-          nexustale_minio_accesskey: "${{ secrets.NEXUSTALE_MINIO_ACCESSKEY }}"
-          nexustale_minio_secretkey: "${{ secrets.NEXUSTALE_MINIO_SECRETKEY }}"
           EOF
           chmod 600 /tmp/nexustale-deploy-vars.yml
 

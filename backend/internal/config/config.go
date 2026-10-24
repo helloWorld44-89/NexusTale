@@ -20,9 +20,6 @@ func (c *Config) ValidateProd() error {
 	if c.Encryption.Key == "0000000000000000000000000000000000000000000000000000000000000000" {
 		errs = append(errs, "NEXUSTALE_ENCRYPTION_KEY is still the all-zeros default — rotate to a random 64-hex-char value")
 	}
-	if c.Minio.AccessKey == "minioadmin" || c.Minio.SecretKey == "minioadmin" {
-		errs = append(errs, "MinIO credentials are still the default minioadmin — change before going live")
-	}
 	if c.Server.AllowedOrigin == "*" {
 		errs = append(errs, "NEXUSTALE_SERVER_ALLOWEDORIGIN is '*' in release mode — set it to your app domain")
 	}
@@ -38,7 +35,7 @@ type Config struct {
 	Auth       AuthConfig
 	Encryption EncryptionConfig
 	Redis      RedisConfig
-	Minio      MinioConfig
+	Storage    StorageConfig
 	Git        GitConfig
 	AI         AIConfig
 }
@@ -78,12 +75,10 @@ type RedisConfig struct {
 	URL string
 }
 
-type MinioConfig struct {
-	Endpoint  string
-	AccessKey string
-	SecretKey string
-	Bucket    string
-	UseSSL    bool
+// StorageConfig locates the on-disk store for wiki images and export files.
+// NEXUSTALE_STORAGE_PATH; mount a persistent volume here in Docker.
+type StorageConfig struct {
+	Path string
 }
 
 type GitConfig struct {
@@ -117,11 +112,7 @@ func Load() (*Config, error) {
 	v.SetDefault("auth.refreshtokenexpiry", "168h") // 7 days
 	v.SetDefault("auth.bcryptcost", 12)
 	v.SetDefault("redis.url", "redis://localhost:6379")
-	v.SetDefault("minio.endpoint", "localhost:9000")
-	v.SetDefault("minio.accesskey", "minioadmin")
-	v.SetDefault("minio.secretkey", "minioadmin")
-	v.SetDefault("minio.bucket", "nexustale")
-	v.SetDefault("minio.usessl", false)
+	v.SetDefault("storage.path", "./data/files")
 	v.SetDefault("git.repospath", "./data/repos")
 	// 32-byte dev default — must be overridden in production
 	v.SetDefault("encryption.key", "0000000000000000000000000000000000000000000000000000000000000000")
@@ -159,12 +150,8 @@ func Load() (*Config, error) {
 		Redis: RedisConfig{
 			URL: v.GetString("redis.url"),
 		},
-		Minio: MinioConfig{
-			Endpoint:  v.GetString("minio.endpoint"),
-			AccessKey: v.GetString("minio.accesskey"),
-			SecretKey: v.GetString("minio.secretkey"),
-			Bucket:    v.GetString("minio.bucket"),
-			UseSSL:    v.GetBool("minio.usessl"),
+		Storage: StorageConfig{
+			Path: v.GetString("storage.path"),
 		},
 		Encryption: EncryptionConfig{
 			Key: v.GetString("encryption.key"),

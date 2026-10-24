@@ -36,7 +36,7 @@ frontend/*.tsbuildinfo
 *.sqlite3
 postgres-data/
 redis-data/
-minio-data/
+backend/data/files/
 
 # ── Git repos created by the project (user novel repos) ───────────────────────
 backend/data/repos/

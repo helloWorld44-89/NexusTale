@@ -1867,7 +1867,7 @@ export interface components {
             attributes: {
                 [key: string]: string;
             };
-            /** @description Presigned MinIO URL valid for ~4 hours; absent when no image is stored. */
+            /** @description Signed, relative download URL (/api/v1/files/...) valid for ~4 hours; absent when no image is stored. */
             image_url?: string | null;
             /** Format: date-time */
             created_at: string;

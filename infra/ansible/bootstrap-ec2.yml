@@ -102,11 +102,12 @@
       loop:
         - /opt/backups/nexustale/db
         - /opt/backups/nexustale/repos
+        - /opt/backups/nexustale/files
 
     # ── Firewall (ufw) ────────────────────────────────────────────────────────
     # ufw is a convenience layer; EC2 security groups are the real perimeter.
     # Allow only SSH, HTTP (for Let's Encrypt), and HTTPS.
-    # Ports 8080 (API) and 9000/9001 (MinIO) stay closed to the public.
+    # Port 8080 (API) stays closed to the public.
 
     - name: Allow SSH
       community.general.ufw:

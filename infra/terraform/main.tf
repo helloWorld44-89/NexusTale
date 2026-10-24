@@ -21,8 +21,8 @@ resource "hcloud_ssh_key" "nexustale" {
 
 # ── Firewall ────────────────────────────────────────────────────────────────
 # Only 22/80/443 and ICMP inbound; everything else blocked.
-# MinIO (9000/9001) and the API port (8080) are NOT opened here —
-# they are bound to 127.0.0.1 inside the host via docker-compose.prod-override.yml.
+# The API port (8080) is NOT opened here —
+# it is bound to 127.0.0.1 inside the host via docker-compose.prod-override.yml.
 
 resource "hcloud_firewall" "nexustale" {
   name = "${var.env}-nexustale-fw"
@@ -72,7 +72,7 @@ resource "hcloud_server" "main" {
 }
 
 # ── Data Volume ──────────────────────────────────────────────────────────────
-# Stores Docker named volumes (Postgres, Redis, MinIO, git repos) and backups.
+# Stores Docker named volumes (Postgres, Redis, uploaded files, git repos) and backups.
 # Terraform pre-formats with ext4; Ansible handles mounting + fstab.
 # automount=false so Ansible controls the exact mount point and options.
 

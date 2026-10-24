@@ -8,8 +8,6 @@
 #   NEXUSTALE_AUTH_JWTSECRET       — JWT signing secret
 #   NEXUSTALE_ENCRYPTION_KEY       — 64 hex chars (AES-256-GCM key for API keys)
 #   NEXUSTALE_DB_PASSWORD          — Postgres password
-#   NEXUSTALE_MINIO_ACCESSKEY      — MinIO root user
-#   NEXUSTALE_MINIO_SECRETKEY      — MinIO root password
 
 # Shared log rotation config applied to every service.
 x-logging: &default-logging
@@ -50,20 +48,6 @@ services:
       timeout: 5s
       retries: 5
 
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    logging: *default-logging
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${NEXUSTALE_MINIO_ACCESSKEY}
-      MINIO_ROOT_PASSWORD: ${NEXUSTALE_MINIO_SECRETKEY}
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio-data:/data
-
   # ── Application ─────────────────────────────────────────────────────────────
 
   api:
@@ -87,12 +71,8 @@ services:
       NEXUSTALE_AUTH_REFRESHTOKENEXPIRY: "168h"
       NEXUSTALE_AUTH_BCRYPTCOST: "12"
       NEXUSTALE_REDIS_URL: "redis://redis:6379"
-      NEXUSTALE_MINIO_ENDPOINT: "minio:9000"
-      NEXUSTALE_MINIO_ACCESSKEY: "${NEXUSTALE_MINIO_ACCESSKEY}"
-      NEXUSTALE_MINIO_SECRETKEY: "${NEXUSTALE_MINIO_SECRETKEY}"
-      NEXUSTALE_MINIO_BUCKET: "nexustale"
-      NEXUSTALE_MINIO_USESSL: "false"
       NEXUSTALE_GIT_REPOSPATH: "/data/repos"
+      NEXUSTALE_STORAGE_PATH: "/data/files"
       # Ollama, if used, runs on the host VM, not in a container — see
       # docker-compose.yml for why host.docker.internal is required here.
       NEXUSTALE_AI_OLLAMAURL: "${NEXUSTALE_AI_OLLAMAURL:-http://host.docker.internal:11434}"
@@ -100,13 +80,12 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - git-repos:/data/repos
+      - file-storage:/data/files
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_started
 
   frontend:
     image: ghcr.io/helloworld44-89/nexustale/frontend:${IMAGE_TAG:-dev}
@@ -126,5 +105,5 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
+  file-storage:
   git-repos:

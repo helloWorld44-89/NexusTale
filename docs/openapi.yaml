@@ -381,7 +381,7 @@ components:
         name:             { type: string }
         summary:          { type: string }
         attributes:       { type: object, additionalProperties: { type: string } }
-        image_url:        { type: string, nullable: true, description: "Presigned MinIO URL valid for ~4 hours; absent when no image is stored." }
+        image_url:        { type: string, nullable: true, description: "Signed, relative download URL (/api/v1/files/...) valid for ~4 hours; absent when no image is stored." }
         created_at:       { type: string, format: date-time }
         updated_at:       { type: string, format: date-time }
         rename_cascade_available: { type: boolean, description: "Set when a name change has ≥1 scene mention. Triggers cascade banner in UI." }

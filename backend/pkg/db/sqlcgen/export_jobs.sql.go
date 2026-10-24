@@ -13,7 +13,7 @@ import (
 )
 
 const getExportJob = `-- name: GetExportJob :one
-SELECT id, project_id, user_id, format, status, minio_key, error_msg, expires_at, created_at, updated_at
+SELECT id, project_id, user_id, format, status, storage_key, error_msg, expires_at, created_at, updated_at
 FROM export_jobs
 WHERE id = $1
 `
@@ -27,7 +27,7 @@ func (q *Queries) GetExportJob(ctx context.Context, id uuid.UUID) (ExportJob, er
 		&i.UserID,
 		&i.Format,
 		&i.Status,
-		&i.MinioKey,
+		&i.StorageKey,
 		&i.ErrorMsg,
 		&i.ExpiresAt,
 		&i.CreatedAt,
@@ -39,7 +39,7 @@ func (q *Queries) GetExportJob(ctx context.Context, id uuid.UUID) (ExportJob, er
 const insertExportJob = `-- name: InsertExportJob :one
 INSERT INTO export_jobs (project_id, user_id, format)
 VALUES ($1, $2, $3)
-RETURNING id, project_id, user_id, format, status, minio_key, error_msg, expires_at, created_at, updated_at
+RETURNING id, project_id, user_id, format, status, storage_key, error_msg, expires_at, created_at, updated_at
 `
 
 type InsertExportJobParams struct {
@@ -57,7 +57,7 @@ func (q *Queries) InsertExportJob(ctx context.Context, arg InsertExportJobParams
 		&i.UserID,
 		&i.Format,
 		&i.Status,
-		&i.MinioKey,
+		&i.StorageKey,
 		&i.ErrorMsg,
 		&i.ExpiresAt,
 		&i.CreatedAt,
@@ -67,7 +67,7 @@ func (q *Queries) InsertExportJob(ctx context.Context, arg InsertExportJobParams
 }
 
 const listExportJobsByProject = `-- name: ListExportJobsByProject :many
-SELECT id, project_id, user_id, format, status, minio_key, error_msg, expires_at, created_at, updated_at
+SELECT id, project_id, user_id, format, status, storage_key, error_msg, expires_at, created_at, updated_at
 FROM export_jobs
 WHERE project_id = $1
 ORDER BY created_at DESC
@@ -89,7 +89,7 @@ func (q *Queries) ListExportJobsByProject(ctx context.Context, projectID uuid.UU
 			&i.UserID,
 			&i.Format,
 			&i.Status,
-			&i.MinioKey,
+			&i.StorageKey,
 			&i.ErrorMsg,
 			&i.ExpiresAt,
 			&i.CreatedAt,
@@ -108,20 +108,20 @@ func (q *Queries) ListExportJobsByProject(ctx context.Context, projectID uuid.UU
 const updateExportJobDone = `-- name: UpdateExportJobDone :exec
 UPDATE export_jobs
 SET status     = 'done',
-    minio_key  = $2,
+    storage_key  = $2,
     expires_at = $3,
     updated_at = NOW()
 WHERE id = $1
 `
 
 type UpdateExportJobDoneParams struct {
-	ID        uuid.UUID          `json:"id"`
-	MinioKey  pgtype.Text        `json:"minio_key"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	ID         uuid.UUID          `json:"id"`
+	StorageKey pgtype.Text        `json:"storage_key"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) UpdateExportJobDone(ctx context.Context, arg UpdateExportJobDoneParams) error {
-	_, err := q.db.Exec(ctx, updateExportJobDone, arg.ID, arg.MinioKey, arg.ExpiresAt)
+	_, err := q.db.Exec(ctx, updateExportJobDone, arg.ID, arg.StorageKey, arg.ExpiresAt)
 	return err
 }
 

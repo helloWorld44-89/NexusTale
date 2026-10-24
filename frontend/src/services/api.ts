@@ -160,7 +160,7 @@ export interface ExportJob {
   project_id:   string
   format:       'markdown' | 'epub' | 'docx'
   status:       'pending' | 'processing' | 'done' | 'failed'
-  download_url?: string  // presigned URL; only when status=done
+  download_url?: string  // signed relative URL; only when status=done
   error_msg?:   string   // only when status=failed
   expires_at?:  string   // ISO-8601; only when status=done
   created_at:   string

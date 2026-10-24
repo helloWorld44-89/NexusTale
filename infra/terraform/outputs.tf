@@ -32,8 +32,6 @@ output "ansible_run_command" {
       -e "nexustale_db_password=REPLACE_WITH_DB_PASS" \
       -e "nexustale_jwt_secret=REPLACE_WITH_JWT_SECRET" \
       -e "nexustale_encryption_key=$(openssl rand -hex 32)" \
-      -e "nexustale_minio_accesskey=REPLACE_WITH_MINIO_USER" \
-      -e "nexustale_minio_secretkey=REPLACE_WITH_MINIO_PASS" \
       -e "nexustale_alert_email=REPLACE_WITH_EMAIL"
   EOT
 }

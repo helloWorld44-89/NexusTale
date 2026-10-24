@@ -1,6 +1,6 @@
 .PHONY: dev dev-down run build test sqlc tidy
 
-# Start dev infrastructure (PostgreSQL, Redis, MinIO)
+# Start dev infrastructure (PostgreSQL, Redis)
 dev:
 	docker compose -f infra/docker/docker-compose.dev.yml up -d
 

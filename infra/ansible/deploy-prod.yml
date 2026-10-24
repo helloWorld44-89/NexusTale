@@ -19,8 +19,6 @@
 #   nexustale_db_password
 #   nexustale_jwt_secret
 #   nexustale_encryption_key  — 64 hex chars: openssl rand -hex 32
-#   nexustale_minio_accesskey
-#   nexustale_minio_secretkey
 #   nexustale_alert_email
 
 - name: Provision and deploy NexusTale (production)
@@ -231,8 +229,6 @@
           NEXUSTALE_DB_PASSWORD={{ nexustale_db_password }}
           NEXUSTALE_AUTH_JWTSECRET={{ nexustale_jwt_secret }}
           NEXUSTALE_ENCRYPTION_KEY={{ nexustale_encryption_key }}
-          NEXUSTALE_MINIO_ACCESSKEY={{ nexustale_minio_accesskey }}
-          NEXUSTALE_MINIO_SECRETKEY={{ nexustale_minio_secretkey }}
         dest: "{{ deploy_dir }}/.env"
         mode: "0600"
       no_log: true
@@ -295,6 +291,7 @@
       loop:
         - "{{ backup_dir }}/db"
         - "{{ backup_dir }}/repos"
+        - "{{ backup_dir }}/files"
 
     - name: Set up Postgres daily backup cron
       ansible.builtin.cron:
@@ -319,6 +316,19 @@
           alpine
           tar czf /backup/repos_$(date +\%Y\%m\%d).tar.gz -C /data repos
           && find {{ backup_dir }}/repos -name "*.tar.gz" -mtime +14 -delete
+
+    - name: Set up uploaded-files daily backup cron
+      ansible.builtin.cron:
+        name: "nexustale files backup"
+        minute: "20"
+        hour: "2"
+        job: >-
+          docker run --rm
+          -v nexustale_file-storage:/data/files:ro
+          -v {{ backup_dir }}/files:/backup
+          alpine
+          tar czf /backup/files_$(date +\%Y\%m\%d).tar.gz -C /data files
+          && find {{ backup_dir }}/files -name "*.tar.gz" -mtime +14 -delete
 
 
     # ── Monitoring ────────────────────────────────────────────────────────────

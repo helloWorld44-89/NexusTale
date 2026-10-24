@@ -152,7 +152,6 @@ func (s *Service) processAsync(job asyncJob) {
 
 	var (
 		tmpPath     string
-		contentType string
 		ext         string
 		err         error
 	)
@@ -160,11 +159,9 @@ func (s *Service) processAsync(job asyncJob) {
 	switch job.format {
 	case "epub":
 		tmpPath, err = BuildEPUB(ctx, s.queries, job.projectID, job.title, repoPath)
-		contentType = "application/epub+zip"
 		ext = "epub"
 	case "docx":
 		tmpPath, err = BuildDOCX(ctx, s.queries, job.projectID, job.title, repoPath)
-		contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 		ext = "docx"
 	default:
 		s.markFailed(ctx, job.jobID, "unknown format: "+job.format)
@@ -185,14 +182,8 @@ func (s *Service) processAsync(job asyncJob) {
 	}
 	defer f.Close()
 
-	info, err := f.Stat()
-	if err != nil {
-		s.markFailed(ctx, job.jobID, "stat temp file: "+err.Error())
-		return
-	}
-
 	key := fmt.Sprintf("exports/%s/%s.%s", job.projectID, job.jobID, ext)
-	if err := s.store.PutObject(ctx, key, contentType, f, info.Size()); err != nil {
+	if err := s.store.Put(ctx, key, f); err != nil {
 		s.markFailed(ctx, job.jobID, "upload to storage: "+err.Error())
 		return
 	}
@@ -200,7 +191,7 @@ func (s *Service) processAsync(job asyncJob) {
 	exp := time.Now().Add(epubExpiry)
 	if err := s.queries.UpdateExportJobDone(ctx, sqlcgen.UpdateExportJobDoneParams{
 		ID:        job.jobID,
-		MinioKey:  pgtype.Text{String: key, Valid: true},
+		StorageKey: pgtype.Text{String: key, Valid: true},
 		ExpiresAt: pgtype.Timestamptz{Time: exp, Valid: true},
 	}); err != nil {
 		slog.Error("failed to mark export job done", "job_id", job.jobID, "error", err)
@@ -231,11 +222,11 @@ func (s *Service) toResponse(ctx context.Context, job sqlcgen.ExportJob) *JobRes
 		r.ErrorMsg = job.ErrorMsg.String
 	}
 
-	if job.Status == "done" && job.MinioKey.Valid && job.ExpiresAt.Valid {
+	if job.Status == "done" && job.StorageKey.Valid && job.ExpiresAt.Valid {
 		r.ExpiresAt = job.ExpiresAt.Time.Format(time.RFC3339)
-		url, err := s.store.PresignedGetURL(ctx, job.MinioKey.String, epubExpiry)
+		url, err := s.store.SignedURL(job.StorageKey.String, epubExpiry)
 		if err != nil {
-			slog.Warn("failed to presign export URL", "key", job.MinioKey.String, "error", err)
+			slog.Warn("failed to presign export URL", "key", job.StorageKey.String, "error", err)
 		} else {
 			r.DownloadURL = url
 		}

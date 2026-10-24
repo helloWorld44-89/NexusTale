@@ -31,7 +31,7 @@ A sci-fi/fantasy novel-writing platform: structured manuscripts (projects → ac
 | **Novel guide** | 5-step wizard (Premise → Characters → World → Outline → First Scene) that scaffolds wiki + manuscript |
 | **Story structures** | 12 seeded templates + scoring questionnaire; structure phases injected into AI context |
 | **Story threads** | Named open/closed narrative threads tracked per project; injected into AI context |
-| **Export** | Markdown (zip, sync); EPUB + DOCX (async jobs, MinIO, presigned download URL) |
+| **Export** | Markdown (zip, sync); EPUB + DOCX (async jobs, stored on local disk, signed download URL) |
 | **Collaboration** | Project invites; clone-based reviewer access; merge requests with line-level diffs; manuscript annotations (note / suggestion / question); in-app notifications |
 | **Frontend** | React 18 + Vite + TypeScript + Tailwind; VSCode-style editor, wiki hub, git panel, Nexus AI chat, Workshop, guide wizard, export panel, settings, public landing page + waitlist |
 | **CI/CD** | GitHub Actions → GHCR → Ansible → dev VM |
@@ -59,7 +59,7 @@ cd NexusTale
 cp backend/.env.example backend/.env
 # Edit backend/.env — at minimum set NEXUSTALE_AUTH_JWTSECRET and NEXUSTALE_ENCRYPTION_KEY
 
-# 3. Start infrastructure (Postgres, Redis, MinIO)
+# 3. Start infrastructure (Postgres, Redis)
 make dev
 
 # 4. Run the API (port 8080)
@@ -92,9 +92,7 @@ All variables use the `NEXUSTALE_` prefix. Copy `backend/.env.example` and fill 
 | `NEXUSTALE_AUTH_REFRESHTOKENEXPIRY` | `168h` | 7 days |
 | `NEXUSTALE_ENCRYPTION_KEY` | — | **Required.** 32-byte hex key for AES-256-GCM API key storage |
 | `NEXUSTALE_REDIS_URL` | `redis://localhost:6379` | Used for collaboration pub/sub |
-| `NEXUSTALE_MINIO_ENDPOINT` | `localhost:9000` | EPUB/DOCX exports and wiki image uploads |
-| `NEXUSTALE_MINIO_ACCESSKEY` | `minioadmin` | |
-| `NEXUSTALE_MINIO_SECRETKEY` | `minioadmin` | |
+| `NEXUSTALE_STORAGE_PATH` | `./data/files` | Where EPUB/DOCX exports and wiki images live on disk (back this directory up) |
 | `NEXUSTALE_GIT_REPOSPATH` | `./data/repos` | Where per-project Git repos live on disk |
 | `NEXUSTALE_AI_OLLAMAURL` | `http://localhost:11434` | Ollama base URL (fallback when no cloud key) |
 | `NEXUSTALE_AI_OLLAMAMODEL` | `llama3` | Default Ollama model |
@@ -109,7 +107,7 @@ From the repo root:
 
 | Command | Description |
 |---------|-------------|
-| `make dev` | Start Postgres, Redis, MinIO via Docker Compose |
+| `make dev` | Start Postgres, Redis via Docker Compose |
 | `make dev-down` | Stop infrastructure containers |
 | `make run` | Run the Go API (`cmd/api`) |
 | `make build` | Compile the API binary to `backend/bin/api` |
@@ -147,10 +145,10 @@ NexusTale/
       admin/              # (planned C8) User management, AI usage view
     pkg/
       db/
-        migrations/       # golang-migrate SQL files (000001 … 000035)
+        migrations/       # golang-migrate SQL files (000001 … 000040)
         queries/          # sqlc source files — edit these, then run make sqlc
         sqlcgen/          # Generated — do not hand-edit
-      storage/            # MinIO/S3 client (PutObject, GetObject, PresignedGetURL, DeleteObject)
+      storage/            # Local-disk file store (Put, Open, Delete, SignedURL, VerifySignature)
       cache/              # Cache interface (Redis)
   frontend/
     src/
@@ -181,7 +179,7 @@ NexusTale/
 
 - **PostgreSQL** — source of truth for all structured data; sqlc for type-safe queries
 - **go-git** — per-project repos on disk; Chronicle = commit, Diverge = branch, Canonize = fast-forward merge; per-repo mutex prevents concurrent tree mutations
-- **MinIO** — EPUB/DOCX export jobs + wiki entity image uploads; presigned URLs for client downloads
+- **Local file storage** — EPUB/DOCX export jobs + wiki entity image uploads, written under `NEXUSTALE_STORAGE_PATH`; served through HMAC-signed, expiring URLs (`GET /api/v1/files/*`)
 - **Redis** — provisioned; used for collaboration pub/sub
 - **AI adapters** — Anthropic, OpenAI, Ollama; model selectable per user; API keys stored AES-256-GCM encrypted; automatic Ollama fallback when no cloud key is set
 - **TipTap (ProseMirror)** — rich text editor in the frontend; entity mentions rendered as ProseMirror Decorations (no stored markup); plain-text round-trip preserved for backend storage

@@ -15,7 +15,7 @@ const LIMITATIONS = [
   },
   {
     title: 'Exports are best-effort',
-    body: 'Markdown and DOCX exports are stable. EPUB output depends on a background worker and MinIO storage — if the worker is busy the job may queue for a few seconds.',
+    body: 'Markdown and DOCX exports are stable. EPUB output depends on a background worker — if the worker is busy the job may queue for a few seconds.',
   },
   {
     title: 'Alpha — bugs expected',

@@ -206,7 +206,7 @@ func (h *Handler) CreateChildEntity(c *gin.Context) {
 }
 
 // allowedImageTypes maps the sniffed MIME type (from http.DetectContentType)
-// to the content-type string used for MinIO storage. SVG is intentionally absent
+// to the content-type string recorded for the stored file. SVG is intentionally absent
 // — browsers execute <script> inside SVG, enabling stored XSS.
 var allowedImageTypes = map[string]string{
 	"image/jpeg": "image/jpeg",
@@ -217,7 +217,7 @@ var allowedImageTypes = map[string]string{
 
 // UploadEntityImage accepts a multipart file in the "image" field,
 // validates both the file extension and the actual magic bytes (via
-// http.DetectContentType), and stores the result as the entity's portrait in MinIO.
+// http.DetectContentType), and stores the result as the entity's portrait on disk.
 func (h *Handler) UploadEntityImage(c *gin.Context) {
 	id, err := parseUUID(c, "eid")
 	if err != nil {
@@ -277,7 +277,7 @@ func (h *Handler) UploadEntityImage(c *gin.Context) {
 	// Reconstruct the full reader: already-read bytes + remainder of file.
 	reader := io.MultiReader(bytes.NewReader(sniffBuf[:n]), f)
 
-	resp, err := h.svc.UploadEntityImage(c.Request.Context(), id, fh.Filename, contentType, reader, fh.Size)
+	resp, err := h.svc.UploadEntityImage(c.Request.Context(), id, contentType, reader)
 	if err != nil {
 		handleError(c, err)
 		return

@@ -31,7 +31,7 @@ type Service struct {
 	storageClient      *storage.Client
 }
 
-// WithStorage wires a MinIO client so DeleteMe can clean up binary assets.
+// WithStorage wires the local file store so DeleteMe can clean up binary assets.
 func (s *Service) WithStorage(sc *storage.Client) {
 	s.storageClient = sc
 }
@@ -185,7 +185,7 @@ func (s *Service) GetMe(ctx context.Context, userID uuid.UUID) (*UserResponse, e
 }
 
 // DeleteMe removes the user and all owned data. On-disk resources (git repos,
-// collaborator clones, MinIO objects) are collected before the DB cascade and
+// collaborator clones, stored files) are collected before the DB cascade and
 // deleted best-effort afterwards.
 func (s *Service) DeleteMe(ctx context.Context, userID uuid.UUID) error {
 	// Collect all disk/object-store paths before the cascade wipes DB rows.
@@ -207,9 +207,9 @@ func (s *Service) DeleteMe(ctx context.Context, userID uuid.UUID) error {
 		}
 		wikiKeys = pgTextSlice(rawWiki)
 
-		rawExport, e := s.queries.ListUserExportMinioKeys(ctx, userID)
+		rawExport, e := s.queries.ListUserExportStorageKeys(ctx, userID)
 		if e != nil {
-			return apperror.Internal(fmt.Sprintf("list export minio keys: %v", e))
+			return apperror.Internal(fmt.Sprintf("list export storage keys: %v", e))
 		}
 		exportKeys = pgTextSlice(rawExport)
 	}
@@ -227,10 +227,10 @@ func (s *Service) DeleteMe(ctx context.Context, userID uuid.UUID) error {
 	}
 	if s.storageClient != nil {
 		for _, key := range wikiKeys {
-			_ = s.storageClient.DeleteObject(ctx, key)
+			_ = s.storageClient.Delete(ctx, key)
 		}
 		for _, key := range exportKeys {
-			_ = s.storageClient.DeleteObject(ctx, key)
+			_ = s.storageClient.Delete(ctx, key)
 		}
 	}
 

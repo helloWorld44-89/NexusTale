@@ -40,21 +40,6 @@ services:
       timeout: 5s
       retries: 5
 
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${NEXUSTALE_MINIO_ACCESSKEY}
-      MINIO_ROOT_PASSWORD: ${NEXUSTALE_MINIO_SECRETKEY}
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   api:
     image: ghcr.io/helloworld44-89/nexustale/api:${NEXUSTALE_VERSION:-latest}
     restart: unless-stopped
@@ -71,12 +56,8 @@ services:
       NEXUSTALE_AUTH_JWTSECRET: "${NEXUSTALE_JWT_SECRET}"
       NEXUSTALE_ENCRYPTION_KEY: "${NEXUSTALE_ENCRYPTION_KEY}"
       NEXUSTALE_REDIS_URL: "redis://redis:6379"
-      NEXUSTALE_MINIO_ENDPOINT: "minio:9000"
-      NEXUSTALE_MINIO_ACCESSKEY: "${NEXUSTALE_MINIO_ACCESSKEY}"
-      NEXUSTALE_MINIO_SECRETKEY: "${NEXUSTALE_MINIO_SECRETKEY}"
-      NEXUSTALE_MINIO_BUCKET: "nexustale"
-      NEXUSTALE_MINIO_USESSL: "false"
       NEXUSTALE_GIT_REPOSPATH: "/data/repos"
+      NEXUSTALE_STORAGE_PATH: "/data/files"
       # Only needed if you run Ollama on the host (not in Docker); reached
       # via host.docker.internal, mapped below. Ignore if you use a cloud
       # AI provider key instead (set per-user, in-app, under Settings).
@@ -85,12 +66,11 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - git-repos:/data/repos
+      - file-storage:/data/files
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      minio:
         condition: service_healthy
 
   frontend:
@@ -104,5 +84,5 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
+  file-storage:
   git-repos:

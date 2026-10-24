@@ -182,27 +182,27 @@ func (q *Queries) ListUserCollaboratorClonePaths(ctx context.Context, userID uui
 	return items, nil
 }
 
-const listUserExportMinioKeys = `-- name: ListUserExportMinioKeys :many
-SELECT minio_key
+const listUserExportStorageKeys = `-- name: ListUserExportStorageKeys :many
+SELECT storage_key
 FROM export_jobs
 WHERE user_id = $1
-  AND minio_key IS NOT NULL
-  AND minio_key != ''
+  AND storage_key IS NOT NULL
+  AND storage_key != ''
 `
 
-func (q *Queries) ListUserExportMinioKeys(ctx context.Context, userID uuid.UUID) ([]pgtype.Text, error) {
-	rows, err := q.db.Query(ctx, listUserExportMinioKeys, userID)
+func (q *Queries) ListUserExportStorageKeys(ctx context.Context, userID uuid.UUID) ([]pgtype.Text, error) {
+	rows, err := q.db.Query(ctx, listUserExportStorageKeys, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := []pgtype.Text{}
 	for rows.Next() {
-		var minio_key pgtype.Text
-		if err := rows.Scan(&minio_key); err != nil {
+		var storage_key pgtype.Text
+		if err := rows.Scan(&storage_key); err != nil {
 			return nil, err
 		}
-		items = append(items, minio_key)
+		items = append(items, storage_key)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

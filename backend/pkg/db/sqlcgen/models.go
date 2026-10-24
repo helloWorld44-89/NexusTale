@@ -114,16 +114,16 @@ type ChapterSummary struct {
 }
 
 type ExportJob struct {
-	ID        uuid.UUID          `json:"id"`
-	ProjectID uuid.UUID          `json:"project_id"`
-	UserID    uuid.UUID          `json:"user_id"`
-	Format    string             `json:"format"`
-	Status    string             `json:"status"`
-	MinioKey  pgtype.Text        `json:"minio_key"`
-	ErrorMsg  pgtype.Text        `json:"error_msg"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID         uuid.UUID          `json:"id"`
+	ProjectID  uuid.UUID          `json:"project_id"`
+	UserID     uuid.UUID          `json:"user_id"`
+	Format     string             `json:"format"`
+	Status     string             `json:"status"`
+	StorageKey pgtype.Text        `json:"storage_key"`
+	ErrorMsg   pgtype.Text        `json:"error_msg"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Fork struct {

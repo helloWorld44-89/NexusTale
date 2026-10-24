@@ -25,13 +25,13 @@ NexusTale is a sci-fi/fantasy novel-writing tool. Assist with narrative systems,
 ## Stack (backend)
 
 - **Go 1.25**, **Gin** for HTTP.
-- **PostgreSQL** (pgx), **Redis**, **MinIO** for local/dev (see compose file).
+- **PostgreSQL** (pgx), **Redis** for local/dev (see compose file). Binary assets (wiki images, exports) live on local disk via `pkg/storage`.
 - **sqlc** for type-safe SQL → `pkg/db/sqlcgen`.
 - **JWT** auth, **golang-migrate** for schema changes.
 
 ## Commands (repo root)
 
-- `make dev` / `make dev-down` — Postgres, Redis, MinIO via Docker.
+- `make dev` / `make dev-down` — Postgres, Redis via Docker.
 - `make run` — API from `backend/cmd/api` (ensure env/config matches `.env.example`).
 - `make test` — `go test ./...` under `backend`.
 - `make sqlc` — regenerate `pkg/db/sqlcgen` after query or schema changes.

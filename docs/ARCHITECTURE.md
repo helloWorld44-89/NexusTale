@@ -53,7 +53,7 @@ flowchart TB
   subgraph data [Data plane]
     PG[(PostgreSQL 16 + pgvector)]
     Redis[(Redis)]
-    S3[(MinIO)]
+    Files[(Local file store)]
     GitDisk[(Per-project + per-collaborator git repos on disk)]
   end
 
@@ -76,7 +76,7 @@ flowchart TB
   WikiAPI --> PG
   AIProxy --> PG
   ExportJobs --> PG
-  ExportJobs --> S3
+  ExportJobs --> Files
   Auth --> PG
 ```
 
@@ -95,8 +95,11 @@ flowchart TB
   merge requests (open/diff/resolve/merge), reviewed like a PR.
 - **Redis** is provisioned but lightly used today (rate limiting); it is
   not a pub/sub hub for real-time collaboration, since there isn't any.
-- **MinIO** (S3-compatible) holds wiki entity images and exported
-  EPUB/DOCX files behind presigned URLs.
+- **Local file storage** (`pkg/storage`, a directory on a persistent volume)
+  holds wiki entity images and exported EPUB/DOCX files. Files are never
+  served by path: the API hands out short-lived HMAC-signed URLs
+  (`/api/v1/files/<key>?exp=…&sig=…`) so `<img>` tags and plain download
+  links work without an Authorization header.
 
 ---
 
@@ -118,7 +121,7 @@ flowchart TB
 | `threads` | Open/closed story thread tracker |
 | `importer` | Parses `.md`/`.txt`/`.docx` into project/act/chapter/scene tree |
 | `guide` | Novel guide wizard steps + story structure scoring |
-| `export` | Markdown (sync), EPUB + DOCX (async worker pool → MinIO) |
+| `export` | Markdown (sync), EPUB + DOCX (async worker pool → local file store) |
 | `admin` | Admin-only stats, user management, AI usage dashboard |
 | `prompts` | Per-project writing style / system prompt presets |
 | `waitlist` | Standalone invite-request form backend (not wired to registration gating) |
@@ -126,7 +129,7 @@ flowchart TB
 | `testutil` | Shared integration test harness (`SetupRouter`, DB cleanup) |
 
 `backend/pkg/`: `db` (pool, migrations, sqlc-generated queries in
-`db/sqlcgen`), `cache`, `storage` (MinIO client), `embedding` (OpenAI/Ollama
+`db/sqlcgen`), `cache`, `storage` (local-disk store + URL signing), `embedding` (OpenAI/Ollama
 embedders + pgvector search), `apperror`.
 
 ### 3.2 API surface
@@ -167,7 +170,7 @@ embedders + pgvector search), `apperror`.
 ### 3.5 Exports
 
 Markdown is synchronous (zip stream). EPUB and DOCX run through an async
-worker pool, write to MinIO, and are served via presigned URL with a
+worker pool, write to the local file store, and are served via signed URL with a
 polling endpoint for job status.
 
 ---
@@ -227,7 +230,7 @@ Three separate deployment paths exist, intentionally kept apart:
 
 | Path | Audience | Files |
 |---|---|---|
-| **Local dev** | Contributors | `Makefile` (`make dev`/`make run`), `infra/docker/docker-compose.dev.yml` (Postgres+pgvector/Redis/MinIO only — run the Go API and Vite dev server directly on the host) |
+| **Local dev** | Contributors | `Makefile` (`make dev`/`make run`), `infra/docker/docker-compose.dev.yml` (Postgres+pgvector/Redis only — run the Go API and Vite dev server directly on the host) |
 | **Maintainer's dev VM** | The project maintainer | `infra/ansible/deploy-dev.yml`, triggered by `.github/workflows/dev.yml` on every push to `dev` — full auto-deploy including TLS/certbot, backups, health monitoring |
 | **Public self-host** | Anyone self-hosting NexusTale | `infra/docker/docker-compose.selfhost.yml` + `.env.selfhost.example` — pulls public prebuilt GHCR images, no build step, no bundled TLS (bring your own reverse proxy) |
 
@@ -246,7 +249,10 @@ An additional Hetzner Terraform + Ansible scaffold exists
 provisioned — it's dormant infrastructure-as-code for a possible future
 dedicated production box, not wired into any CI workflow.
 
-**Object storage**: MinIO today. Its AGPLv3 license is a real
-consideration only once a commercial paid tier exists (not the case yet);
-Phase D plans a swap to `aws-sdk-go-v2/s3` targeting Cloudflare R2 behind
-the same `pkg/storage` interface.
+**File storage**: local disk (`NEXUSTALE_STORAGE_PATH`). For a self-hosted
+app with a handful of users this is simpler and has no extra service to
+run, secure or upgrade; MinIO was removed entirely. If a hosted multi-node
+tier ever needs object storage, `pkg/storage` is small enough (Put / Open /
+Delete / SignedURL) to put behind an interface with an S3-backed
+implementation. Back up the storage volume alongside Postgres and the git
+repos.

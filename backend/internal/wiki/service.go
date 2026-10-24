@@ -18,9 +18,19 @@ import (
 	"github.com/jconder44/nexustale/pkg/storage"
 )
 
-// imageURLExpiry is how long presigned entity image URLs remain valid.
+// imageURLExpiry is how long signed entity image URLs remain valid.
 // Short enough to limit exposure; long enough for a typical editing session.
 const imageURLExpiry = 4 * time.Hour
+
+// imageExtensions maps the sniffed content types accepted by the upload handler
+// to the file extension used in the storage key (and, on the way back out, to
+// the Content-Type served — see storage.ContentTypeFor).
+var imageExtensions = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+}
 
 type Service struct {
 	queries *sqlcgen.Queries
@@ -176,7 +186,7 @@ func (s *Service) DeleteEntity(ctx context.Context, id uuid.UUID) error {
 		return apperror.Internal(fmt.Sprintf("get entity for delete: %v", err))
 	}
 	if err == nil && e.ImageKey.Valid && s.store != nil {
-		_ = s.store.DeleteObject(ctx, e.ImageKey.String)
+		_ = s.store.Delete(ctx, e.ImageKey.String)
 	}
 
 	if err := s.queries.DeleteEntity(ctx, id); err != nil {
@@ -185,10 +195,15 @@ func (s *Service) DeleteEntity(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// UploadEntityImage stores r as the entity's portrait image in MinIO and
-// persists the object key in the DB. Any previously stored image is deleted.
-// key format: wiki/entities/<entityID>/<filename>
-func (s *Service) UploadEntityImage(ctx context.Context, entityID uuid.UUID, filename, contentType string, r io.Reader, size int64) (*EntityResponse, error) {
+// UploadEntityImage stores r as the entity's portrait image on disk and
+// persists the storage key in the DB. Any previously stored image is deleted.
+// key format: wiki/entities/<entityID>/<random>.<ext>
+//
+// The key is built only from server-controlled values (the sniffed content
+// type picks the extension) — never from the client's filename, which would be
+// a path-traversal vector on a filesystem. A fresh random name per upload also
+// means a replaced image can never be served stale from a browser cache.
+func (s *Service) UploadEntityImage(ctx context.Context, entityID uuid.UUID, contentType string, r io.Reader) (*EntityResponse, error) {
 	if s.store == nil {
 		return nil, apperror.Internal("storage not configured")
 	}
@@ -202,15 +217,19 @@ func (s *Service) UploadEntityImage(ctx context.Context, entityID uuid.UUID, fil
 		return nil, apperror.Internal(fmt.Sprintf("get entity: %v", err))
 	}
 
-	key := fmt.Sprintf("wiki/entities/%s/%s", entityID, filename)
+	ext, ok := imageExtensions[contentType]
+	if !ok {
+		return nil, apperror.Validation("unsupported image type")
+	}
+	key := fmt.Sprintf("wiki/entities/%s/%s%s", entityID, storage.RandomName(), ext)
 
-	if err := s.store.PutObject(ctx, key, contentType, r, size); err != nil {
+	if err := s.store.Put(ctx, key, r); err != nil {
 		return nil, apperror.Internal(fmt.Sprintf("upload image: %v", err))
 	}
 
 	// Delete the old image after successful upload so we don't orphan objects.
 	if current.ImageKey.Valid && current.ImageKey.String != key {
-		_ = s.store.DeleteObject(ctx, current.ImageKey.String)
+		_ = s.store.Delete(ctx, current.ImageKey.String)
 	}
 
 	updated, err := s.queries.UpdateEntityImage(ctx, sqlcgen.UpdateEntityImageParams{
@@ -223,7 +242,7 @@ func (s *Service) UploadEntityImage(ctx context.Context, entityID uuid.UUID, fil
 	return s.entityWithURL(ctx, entityRow(updated))
 }
 
-// DeleteEntityImage removes the stored image from MinIO and clears the DB key.
+// DeleteEntityImage removes the stored image from disk and clears the DB key.
 func (s *Service) DeleteEntityImage(ctx context.Context, entityID uuid.UUID) (*EntityResponse, error) {
 	current, err := s.queries.GetEntity(ctx, entityID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -234,7 +253,7 @@ func (s *Service) DeleteEntityImage(ctx context.Context, entityID uuid.UUID) (*E
 	}
 
 	if current.ImageKey.Valid && s.store != nil {
-		if err := s.store.DeleteObject(ctx, current.ImageKey.String); err != nil {
+		if err := s.store.Delete(ctx, current.ImageKey.String); err != nil {
 			return nil, apperror.Internal(fmt.Sprintf("delete image from storage: %v", err))
 		}
 	}
@@ -539,7 +558,7 @@ type entityRow struct {
 }
 
 // toEntityResponse builds an EntityResponse without a presigned image URL.
-// Used for list operations where calling MinIO per-row would be too slow.
+// Used for list operations where signing a URL per-row would be too slow.
 func toEntityResponse(e entityRow) *EntityResponse {
 	resp := &EntityResponse{
 		ID:         e.ID,
@@ -559,11 +578,11 @@ func toEntityResponse(e entityRow) *EntityResponse {
 }
 
 // entityWithURL builds an EntityResponse and, if an image_key is stored,
-// calls MinIO to generate a short-lived presigned GET URL for it.
+// signs a short-lived download URL for it.
 func (s *Service) entityWithURL(ctx context.Context, e entityRow) (*EntityResponse, error) {
 	resp := toEntityResponse(e)
 	if e.ImageKey.Valid && e.ImageKey.String != "" && s.store != nil {
-		url, err := s.store.PresignedGetURL(ctx, e.ImageKey.String, imageURLExpiry)
+		url, err := s.store.SignedURL(e.ImageKey.String, imageURLExpiry)
 		if err != nil {
 			return nil, apperror.Internal(fmt.Sprintf("presign image url: %v", err))
 		}

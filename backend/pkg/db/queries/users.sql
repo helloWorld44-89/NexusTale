@@ -35,12 +35,12 @@ WHERE p.owner_id = $1
   AND we.image_key IS NOT NULL
   AND we.image_key != '';
 
--- name: ListUserExportMinioKeys :many
-SELECT minio_key
+-- name: ListUserExportStorageKeys :many
+SELECT storage_key
 FROM export_jobs
 WHERE user_id = $1
-  AND minio_key IS NOT NULL
-  AND minio_key != '';
+  AND storage_key IS NOT NULL
+  AND storage_key != '';
 
 -- name: ListUserCollaboratorClonePaths :many
 SELECT clone_path

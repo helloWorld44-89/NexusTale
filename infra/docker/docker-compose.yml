@@ -30,23 +30,6 @@ services:
       timeout: 5s
       retries: 5
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   # ── Application ───────────────────────────────────────────────────────────────
 
   api:
@@ -67,12 +50,8 @@ services:
       NEXUSTALE_AUTH_REFRESHTOKENEXPIRY: "${NEXUSTALE_AUTH_REFRESHTOKENEXPIRY:-168h}"
       NEXUSTALE_AUTH_BCRYPTCOST: "${NEXUSTALE_AUTH_BCRYPTCOST:-12}"
       NEXUSTALE_REDIS_URL: "redis://redis:6379"
-      NEXUSTALE_MINIO_ENDPOINT: "minio:9000"
-      NEXUSTALE_MINIO_ACCESSKEY: "minioadmin"
-      NEXUSTALE_MINIO_SECRETKEY: "minioadmin"
-      NEXUSTALE_MINIO_BUCKET: "nexustale"
-      NEXUSTALE_MINIO_USESSL: "false"
       NEXUSTALE_GIT_REPOSPATH: "/data/repos"
+      NEXUSTALE_STORAGE_PATH: "/data/files"
       # Ollama runs on the host, not in a container — "localhost" from inside
       # the api container would resolve to itself. host.docker.internal is
       # mapped to the host gateway below (works on Docker Desktop out of the
@@ -82,12 +61,11 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - git-repos:/data/repos
+      - file-storage:/data/files
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      minio:
         condition: service_healthy
     restart: unless-stopped
 
@@ -104,5 +82,5 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
+  file-storage:
   git-repos:
