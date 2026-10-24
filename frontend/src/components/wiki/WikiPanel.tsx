@@ -57,6 +57,8 @@ const TEMPLATE_FIELDS: Record<EntityType, TemplateField[]> = {
     { key: 'consequences', label: 'Consequences',   hint: 'How it shaped the world',           rows: 2 },
     { key: 'witnesses',    label: 'Who Was Present', hint: 'Characters who experienced it',    rows: 1 },
   ],
+  // Maps are created and edited in the Maps hub (MapStudio), not via wiki templates.
+  map: [],
 }
 
 function buildSummaryFromFields(type: EntityType, fields: Record<string, string>): string {
@@ -73,6 +75,7 @@ const TYPE_COLORS: Record<EntityType, string> = {
   item: 'text-emerald-400 bg-emerald-400/10',
   concept: 'text-sky-400 bg-sky-400/10',
   lore: 'text-rose-400 bg-rose-400/10',
+  map: 'text-teal-400 bg-teal-400/10',
 }
 
 export default function WikiPanel({ token, projectId, currentContent }: WikiPanelProps) {

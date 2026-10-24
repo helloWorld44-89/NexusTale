@@ -33,6 +33,7 @@ const NODE_FILL: Record<EntityType, string> = {
   item:      '#34D399',
   concept:   '#38BDF8',
   lore:      '#FB7185',
+  map:       '#2DD4BF',
 }
 
 const NODE_STROKE: Record<EntityType, string> = {
@@ -42,6 +43,7 @@ const NODE_STROKE: Record<EntityType, string> = {
   item:      '#10b981',
   concept:   '#0ea5e9',
   lore:      '#e11d48',
+  map:       '#14b8a6',
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
