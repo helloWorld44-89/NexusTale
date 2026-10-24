@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/jconder44/nexustale/pkg/apperror"
 	"github.com/jconder44/nexustale/pkg/db/sqlcgen"
 )
 
@@ -67,10 +68,18 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]NotificationRes
 
 // MarkRead marks a single notification as read (scoped to userID — no cross-user reads).
 func (s *Service) MarkRead(ctx context.Context, userID, notifID uuid.UUID) error {
-	return s.queries.MarkNotificationRead(ctx, sqlcgen.MarkNotificationReadParams{
+	n, err := s.queries.MarkNotificationRead(ctx, sqlcgen.MarkNotificationReadParams{
 		ID:     notifID,
 		UserID: userID,
 	})
+	if err != nil {
+		return err
+	}
+	// Another user's notification is indistinguishable from a missing one.
+	if n == 0 {
+		return apperror.NotFound("notification", notifID.String())
+	}
+	return nil
 }
 
 // MarkAllRead marks every unread notification for the user as read.

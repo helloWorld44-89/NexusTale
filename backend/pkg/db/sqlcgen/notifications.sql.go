@@ -98,12 +98,11 @@ func (q *Queries) MarkAllNotificationsRead(ctx context.Context, userID uuid.UUID
 	return err
 }
 
-const markNotificationRead = `-- name: MarkNotificationRead :exec
+const markNotificationRead = `-- name: MarkNotificationRead :execrows
 UPDATE notifications
-SET read_at = now()
+SET read_at = COALESCE(read_at, now())
 WHERE id = $1
   AND user_id = $2
-  AND read_at IS NULL
 `
 
 type MarkNotificationReadParams struct {
@@ -111,9 +110,14 @@ type MarkNotificationReadParams struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 
-func (q *Queries) MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) error {
-	_, err := q.db.Exec(ctx, markNotificationRead, arg.ID, arg.UserID)
-	return err
+// Idempotent: re-marking a read notification keeps its original read_at and
+// still counts as a hit, so zero rows means "no such notification for this user".
+func (q *Queries) MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markNotificationRead, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const unreadCount = `-- name: UnreadCount :one

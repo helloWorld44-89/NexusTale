@@ -14,12 +14,13 @@ ORDER BY
   created_at DESC
 LIMIT 50;
 
--- name: MarkNotificationRead :exec
+-- name: MarkNotificationRead :execrows
+-- Idempotent: re-marking a read notification keeps its original read_at and
+-- still counts as a hit, so zero rows means "no such notification for this user".
 UPDATE notifications
-SET read_at = now()
+SET read_at = COALESCE(read_at, now())
 WHERE id = $1
-  AND user_id = $2
-  AND read_at IS NULL;
+  AND user_id = $2;
 
 -- name: MarkAllNotificationsRead :exec
 UPDATE notifications
