@@ -188,3 +188,39 @@ func TestLogout(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", w2.Code, w2.Body.String())
 	}
 }
+
+// The account routes live at /users/me (matching the OpenAPI spec and the
+// frontend), not under /auth — Settings → Delete account 404'd when they were
+// mounted on the /auth group.
+func TestUsersMeRoutes(t *testing.T) {
+	router, _, _ := testutil.SetupRouter(t)
+	token := testutil.RegisterAndGetToken(t, router, "me@example.com")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, testutil.AuthRequest("GET", "/api/v1/users/me", token, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /users/me: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var u auth.UserResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &u); err != nil || u.Email != "me@example.com" {
+		t.Fatalf("unexpected body %q (err %v)", w.Body.String(), err)
+	}
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, testutil.AuthRequest("GET", "/api/v1/auth/users/me", token, nil))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("/auth/users/me should no longer exist, got %d", w.Code)
+	}
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, testutil.AuthRequest("DELETE", "/api/v1/users/me", token, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("DELETE /users/me: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, testutil.AuthRequest("GET", "/api/v1/users/me", token, nil))
+	if w.Code == http.StatusOK {
+		t.Error("deleted user should not be able to fetch /users/me")
+	}
+}

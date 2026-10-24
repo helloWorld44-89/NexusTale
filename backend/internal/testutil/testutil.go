@@ -150,6 +150,7 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 	{
 		authGroup := v1.Group("/auth")
 		authHandler.RegisterRoutes(authGroup)
+		authHandler.RegisterUserRoutes(v1)
 
 		projectsGroup := v1.Group("/projects", auth.RequireAuth(authService))
 		chaptersGroup := v1.Group("/chapters", auth.RequireAuth(authService))

@@ -23,8 +23,15 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/refresh", h.Refresh)
 	rg.POST("/logout", RequireAuth(h.svc), h.Logout)
 	rg.GET("/registration-status", h.RegistrationStatus)
+}
 
-	// Authenticated user routes
+// RegisterUserRoutes mounts the authenticated account routes. Mount it on the
+// v1 group, not the /auth group: the API, the OpenAPI spec and the frontend
+// all address these as /users/me (alongside /users/me/api-keys).
+//
+//	GET    /users/me — current user
+//	DELETE /users/me — delete account and all owned data
+func (h *Handler) RegisterUserRoutes(rg *gin.RouterGroup) {
 	me := rg.Group("/users/me", RequireAuth(h.svc))
 	me.GET("", h.GetMe)
 	me.DELETE("", h.DeleteMe)

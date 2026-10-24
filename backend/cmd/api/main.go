@@ -236,6 +236,7 @@ func main() {
 		authGroup.Use(ratelimit.ByIP(10, time.Minute))
 		authHandler.RegisterRoutes(authGroup)
 
+		authHandler.RegisterUserRoutes(v1)
 		authHandler.RegisterAPIKeyRoutes(v1)
 
 		// Signed-URL file downloads; the signature is the credential.
