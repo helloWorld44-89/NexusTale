@@ -297,9 +297,18 @@ Priority tags: **P0** = blocks alpha · **P1** = fix before beta · **P2** = nic
 
 ## Alpha / self-hosted deployment ✅ complete
 
-NexusTale is self-hosted. AWS deployment removed (2026-07-14). All features deployed via Docker Compose on a self-managed server. Public registration reopened (2026-07-16) — `NEXUSTALE_SERVER_REGISTRATIONOPEN=true` in `deploy-dev.yml` + compose default; waitlist form removed from Landing (backend `internal/waitlist` package + admin view kept, unused). MinIO stays as the object storage backend for now (AGPL concern only applies once a paid tier exists — see Phase D S3 migration note).
+NexusTale is self-hosted. AWS deployment removed (2026-07-14). All features deployed via Docker Compose on a self-managed server. Public registration reopened (2026-07-16) — `NEXUSTALE_SERVER_REGISTRATIONOPEN=true` in `deploy-dev.yml` + compose default; waitlist form removed from Landing (backend `internal/waitlist` package + admin view kept, unused). Object storage was originally MinIO; replaced by local disk on 2026-10-24 (see below).
 
-**MinIO removed (2026-10-24):** wiki images and EPUB/DOCX exports now live on local disk (`NEXUSTALE_STORAGE_PATH`, default `./data/files`; Docker volume `file-storage`). Downloads go through `GET /api/v1/files/*` using HMAC-signed, expiring URLs (`pkg/storage`, `internal/files`). Migration 039 renames `export_jobs.minio_key` → `storage_key`. No data migration — fresh installs only. Older entries below that mention MinIO/presigned URLs are historical.
+### Storage: MinIO → local disk ✅ complete (2026-10-24, v0.3.2)
+
+- [x] `pkg/storage` rewritten as a local-disk store (`Put`/`Open`/`Delete`/`SignedURL`/`VerifySignature`): atomic writes, strict key validation, empty-dir pruning; unit tests incl. traversal and tampered/expired signatures
+- [x] `internal/files` — `GET /api/v1/files/*key` serves files behind HMAC-signed, expiring URLs (signing key derived from the JWT secret, domain-separated); Range requests, `nosniff`, attachment disposition for exports
+- [x] Wiki image keys no longer use the client filename (path traversal on a filesystem) — `wiki/entities/<id>/<random>.<ext>` with the extension from the sniffed content type
+- [x] Migration 039 renames `export_jobs.minio_key` → `storage_key`; `NEXUSTALE_STORAGE_PATH` (default `./data/files`, Docker volume `file-storage`) replaces the four `NEXUSTALE_MINIO_*` vars
+- [x] MinIO removed from all compose files, Ansible, Terraform, CI, `.env` examples, README/ARCHITECTURE; daily `file-storage` backup cron added to the Ansible playbooks
+- [x] Fresh-install verified via `docker-compose.yml` (migrations 1–40, image upload/replace/delete, signed-URL auth failures, EPUB + DOCX export/download)
+- [x] **Bug found during verification:** migration 013's CHECK constraint only allowed `markdown`/`epub`, so DOCX export failed on every fresh database — fixed by migration 040
+- No data migration from MinIO (fresh installs only). Older entries in this file that mention MinIO/presigned URLs are historical.
 
 **Public self-hosting path added (2026-07-16):** `infra/docker/docker-compose.selfhost.yml` + `.env.selfhost.example` — pulls prebuilt public GHCR images, no build step, no bundled TLS (self-hosters front it with their own reverse proxy: Nginx Proxy Manager, Caddy, Traefik, Cloudflare Tunnel, etc., same pattern as other self-hosted docker-compose apps). Only 5 required env vars (JWT secret, encryption key, DB password, MinIO access/secret keys); everything else has a working default. `NEXUSTALE_SERVER_MODE` defaults to `debug` so a fresh install never crash-loops on `ValidateProd()`'s strict release-mode checks. `infra/ansible/*` is unchanged and remains the path for the maintainer's own dev VM auto-deploy — the two paths are intentionally separate.
 
@@ -503,7 +512,7 @@ Scale key: **Light** · **Medium** · **Heavy** · **Heavier** · **Heaviest**
 - `ai.Service.StreamMapChatWithTools` — a map-scoped sibling of `StreamChatWithTools` with its own planning-mandate system prompt, `MapTools` in place of `ManuscriptTools`/`selectToolsForIntent`, and `executeMapToolCall` in place of `executeToolCall`; identical planning/tool-event/final-text SSE protocol so the frontend parses both the same way; wired via `aiService.WithMaps(mapsService)` in `main.go`
 - Route `POST /projects/:id/maps/:mid/ai/chat` (`internal/ai/map_chat_handler.go`) — stateless, no session persistence (nothing here needs to survive a reload any more than an unsaved layout edit does); OpenAPI left undocumented per the established precedent for AI routes (A0.2) — types defined inline in `api.ts`
 - Frontend — `MapStudio.tsx` gets a "Nexus" toggle opening `MapChatPanel`, a right-side chat panel reusing the Workshop SSE-parsing pattern (`api.maps.streamChat`); every tool-call event triggers a re-fetch of the map (`onToolApplied`) since the AI writes straight to git, bypassing the canvas's local unsaved draft state — without the refetch, a subsequent manual Save would clobber what the AI just wrote; per-tool-call Undo button restores the pre-call layout via the same `before_layout` snapshot
-- **Verification note:** built in a sandboxed session without a Go toolchain or Docker access — backend changes are hand-reviewed for type/signature correctness but not compiler- or integration-verified. Frontend changes passed `tsc --noEmit` and `eslint` clean. Run `make test` / `go build ./...` before relying on this in production.
+- **Verification note:** built in a sandboxed session without a Go toolchain or Docker access — backend changes are hand-reviewed for type/signature correctness but not compiler- or integration-verified. Frontend changes passed `tsc --noEmit` and `eslint` clean. Run `make test` / `go build ./...` before relying on this in production. **Update 2026-10-24:** `go build`, `go vet` and `go test ./...` (incl. `internal/ai`, `internal/maps`) all pass, and the API boots against a fresh DB (migrations 1–40); the M3 chat flow itself still hasn't been exercised end-to-end with a live model.
 - A user can hand-draw a coastline in M2, then ask the AI to "add a mountain range along the north border and drop three city icons along the coast" and see the same symbols appear, fully editable afterward
 
 **M4 — Multi-provider image generation adapter** `[Heavy]`
@@ -566,7 +575,7 @@ The existing React frontend and Go backend are well-suited for desktop packaging
 
 **Phase 2 — SQLite + local storage** `[Heavy]`
 - Add sqlc SQLite driver; port queries (most translate directly)
-- Replace MinIO with local file system (`~/Library/Application Support/NexusTale/` on macOS, `%APPDATA%` on Windows, `~/.local/share` on Linux)
+- ~~Replace MinIO with local file system~~ (done 2026-10-24 for the server; desktop would just point `NEXUSTALE_STORAGE_PATH` at: `~/Library/Application Support/NexusTale/` on macOS, `%APPDATA%` on Windows, `~/.local/share` on Linux)
 - Drop Redis (not needed until real-time collab; replace with in-memory stub)
 - golang-migrate SQLite runner; new migration set
 - Output: fully self-contained — no Docker, no external services
