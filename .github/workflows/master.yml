@@ -69,7 +69,7 @@ jobs:
 
       - name: TypeScript typecheck
         working-directory: frontend
-        run: npx tsc --noEmit
+        run: npx tsc -b
 
       - name: Check API types are up to date
         working-directory: frontend
