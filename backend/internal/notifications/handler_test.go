@@ -93,8 +93,8 @@ func TestNotificationMarkRead(t *testing.T) {
 
 	// Mark single read
 	w := serve(t, r, "PUT", "/api/v1/notifications/"+nid+"/read", tok, nil)
-	if w.Code != http.StatusOK {
-		t.Fatalf("mark-read: want 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("mark-read: want 204, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// List should show it as read
@@ -119,8 +119,8 @@ func TestNotificationMarkAllRead(t *testing.T) {
 
 	// Mark all read
 	w := serve(t, r, "PUT", "/api/v1/notifications/read-all", tok, nil)
-	if w.Code != http.StatusOK {
-		t.Fatalf("mark-all-read: want 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("mark-all-read: want 204, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// All should now be read
@@ -160,5 +160,25 @@ func TestNotificationMarkReadUnknownID(t *testing.T) {
 	w := serve(t, r, "PUT", "/api/v1/notifications/00000000-0000-0000-0000-000000000000/read", tok, nil)
 	if w.Code != http.StatusNotFound {
 		t.Errorf("mark-read unknown: want 404, got %d", w.Code)
+	}
+}
+
+// Marking an already-read notification is idempotent (204), and another user's
+// notification is indistinguishable from a missing one (404).
+func TestNotificationMarkReadIdempotentAndOwned(t *testing.T) {
+	r, queries, _ := testutil.SetupRouter(t)
+	tok, uid := testutil.RegisterUser(t, r, "notif-idem@example.com", "Idem User")
+	otherTok, _ := testutil.RegisterUser(t, r, "notif-other@example.com", "Other User")
+
+	nid := insertNotification(t, queries, uid, "mr_approved")
+	url := "/api/v1/notifications/" + nid + "/read"
+
+	for i := 1; i <= 2; i++ {
+		if w := serve(t, r, "PUT", url, tok, nil); w.Code != http.StatusNoContent {
+			t.Fatalf("mark-read attempt %d: want 204, got %d", i, w.Code)
+		}
+	}
+	if w := serve(t, r, "PUT", url, otherTok, nil); w.Code != http.StatusNotFound {
+		t.Errorf("marking someone else's notification: want 404, got %d", w.Code)
 	}
 }

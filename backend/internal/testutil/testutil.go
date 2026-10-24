@@ -43,6 +43,11 @@ func SetupTestDB(t *testing.T) *pgxpool.Pool {
 
 	pool, err := db.NewPool(context.Background(), dbURL, 5, 1)
 	if err != nil {
+		// CI sets NEXUSTALE_REQUIRE_DB so an unreachable database is a failure,
+		// not a silent skip that makes the whole integration suite look green.
+		if os.Getenv("NEXUSTALE_REQUIRE_DB") != "" {
+			t.Fatalf("database required (NEXUSTALE_REQUIRE_DB set) but unreachable: %v", err)
+		}
 		t.Skipf("skipping integration test: cannot connect to database: %v", err)
 	}
 
@@ -152,20 +157,26 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 		authHandler.RegisterRoutes(authGroup)
 		authHandler.RegisterUserRoutes(v1)
 
-		projectsGroup := v1.Group("/projects", auth.RequireAuth(authService))
-		chaptersGroup := v1.Group("/chapters", auth.RequireAuth(authService))
+		// Mirror cmd/api/main.go: the access middleware is what resolves the
+		// project (and repo owner) for a request. Without it, handlers see a nil
+		// project ID and silently skip work such as writing scene files to git.
+		requireAccess := collaboration.RequireProjectAccess(queries)
+		requireChapterAccess := collaboration.RequireChapterAccess(queries)
+
+		projectsGroup := v1.Group("/projects", auth.RequireAuth(authService), requireAccess)
+		chaptersGroup := v1.Group("/chapters", auth.RequireAuth(authService), requireChapterAccess)
 		projectHandler.RegisterRoutes(projectsGroup, chaptersGroup)
 
-		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService))
+		wikiGroup := v1.Group("/projects/:id/wiki", auth.RequireAuth(authService), requireAccess)
 		wikiHandler.RegisterRoutes(wikiGroup)
 
-		mapsGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		mapsGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		mapsHandler.RegisterRoutes(mapsGroup)
 
-		researchGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		researchGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		researchHandler.RegisterRoutes(researchGroup)
 
-		annotationGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		annotationGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		annotationHandler.RegisterRoutes(annotationGroup)
 
 		notifGroup := v1.Group("", auth.RequireAuth(authService))
@@ -174,7 +185,7 @@ func setupRouter(t *testing.T, reposPath string) (*gin.Engine, *sqlcgen.Queries,
 		collabHandler.RegisterPublicRoutes(v1)
 		collabAuthGroup := v1.Group("", auth.RequireAuth(authService))
 		collabHandler.RegisterAuthRoutes(collabAuthGroup)
-		collabProjectGroup := v1.Group("/projects/:id", auth.RequireAuth(authService))
+		collabProjectGroup := v1.Group("/projects/:id", auth.RequireAuth(authService), requireAccess)
 		collabHandler.RegisterProjectRoutes(collabProjectGroup)
 	}
 

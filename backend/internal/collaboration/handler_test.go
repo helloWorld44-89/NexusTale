@@ -7,6 +7,7 @@ package collaboration_test
 // initialize the repo. That path is covered by manual Bruno tests in bruno/10-collaboration/.
 
 import (
+	"strings"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -91,10 +92,21 @@ func TestInviteCollaborator(t *testing.T) {
 	if wPublic.Code != http.StatusOK {
 		t.Fatalf("invite preview: want 200, got %d: %s", wPublic.Code, wPublic.Body.String())
 	}
-	var preview collaboration.InviteResponse
+	// The preview is unauthenticated, so it describes the invite without
+	// echoing the token or the invitee's email back.
+	var preview collaboration.InvitePreview
 	json.Unmarshal(wPublic.Body.Bytes(), &preview)
-	if preview.Token != inv.Token {
-		t.Errorf("preview token mismatch")
+	if preview.ProjectID != projID {
+		t.Errorf("preview project_id: want %s, got %s", projID, preview.ProjectID)
+	}
+	if preview.ProjectTitle != "Invite Test Project" {
+		t.Errorf("preview project_title: got %q", preview.ProjectTitle)
+	}
+	if preview.Role != "coauthor" {
+		t.Errorf("preview role: want coauthor, got %s", preview.Role)
+	}
+	if body := wPublic.Body.String(); strings.Contains(body, inv.Token) || strings.Contains(body, "collab-invitee@example.com") {
+		t.Errorf("preview must not leak the token or invitee email: %s", body)
 	}
 }
 

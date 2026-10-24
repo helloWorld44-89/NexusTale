@@ -32,9 +32,10 @@ func setupGitProject(t *testing.T) (router interface{ ServeHTTP(http.ResponseWri
 
 	base := "/api/v1/projects/" + proj.ID.String()
 
-	// Create a chapter
+	// Create a chapter under the project's default act
+	actID := defaultActID(t, r, tok, proj.ID.String())
 	w2 := httptest.NewRecorder()
-	r.ServeHTTP(w2, testutil.AuthRequest("POST", base+"/chapters", tok, map[string]interface{}{
+	r.ServeHTTP(w2, testutil.AuthRequest("POST", actChapterURL(proj.ID.String(), actID), tok, map[string]interface{}{
 		"title":      "Chapter One",
 		"sort_order": 1,
 	}))
@@ -46,7 +47,7 @@ func setupGitProject(t *testing.T) (router interface{ ServeHTTP(http.ResponseWri
 
 	// Create a scene with content so Chronicle has something to commit
 	w3 := httptest.NewRecorder()
-	r.ServeHTTP(w3, testutil.AuthRequest("POST", base+"/chapters/"+ch.ID.String()+"/scenes", tok, map[string]interface{}{
+	r.ServeHTTP(w3, testutil.AuthRequest("POST", "/api/v1/chapters/"+ch.ID.String()+"/scenes", tok, map[string]interface{}{
 		"title":      "Opening Scene",
 		"content":    "The stars were silent.",
 		"sort_order": 1,
